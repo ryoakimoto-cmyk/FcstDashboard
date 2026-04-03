@@ -1,0 +1,494 @@
+<script>
+const App = {
+  state: {
+    activeView: 'fcst',          // 'fcst' | 'trend' | 'opps'
+    selectedPeriod: 'Q',         // 'Q' | 'M5' | 'M6' | 'M7'
+    selectedGroup: '\u90e8\u5168\u4f53',      // '\u90e8\u5168\u4f53' | \u30b0\u30eb\u30fc\u30d7\u540d
+    visibleSeries: { fcstAdjusted: true, fcstCommit: true, target: true, received: true },
+    trendChart: null,
+    editedPaths: new Set(),
+    loading: false,
+    lastUpdated: '',
+    currentData: null,
+    opps: [],
+  },
+
+  init() {
+    App.showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        App.showLoading(false);
+        if (result.error) {
+          document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:red">\u30b5\u30fc\u30d0\u30fc\u30a8\u30e9\u30fc: ' + escapeHtml(String(result.error)) + '</p>';
+          return;
+        }
+        App.state.lastUpdated = (result.data && result.data.lastUpdated) || '';
+        App.state.currentData = result.data;
+        try { App.renderAll(); } catch (e) {
+          document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:red">renderAll\u30a8\u30e9\u30fc: ' + escapeHtml(e.message || String(e)) + '</p>';
+        }
+      })
+      .withFailureHandler(function(err) {
+        App.showLoading(false);
+        document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:red">GAS\u547c\u3073\u51fa\u3057\u30a8\u30e9\u30fc: ' + escapeHtml((err && err.message) || String(err)) + '</p>';
+      })
+      .getInitData();
+  },
+
+  renderAll() {
+    this.renderFcst();
+    if (this.state.activeView === 'trend') this.renderTrend();
+    this.updateEditBadge();
+  },
+
+  switchView(view) {
+    this.state.activeView = view;
+    document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
+    document.getElementById('view-' + view).classList.add('active');
+
+    if (view === 'opps' && App.state.opps.length === 0) {
+      App.showLoading(true);
+      google.script.run.withSuccessHandler(function(data) {
+        if (data.error) { App.showError(data.error); return; }
+        App.state.opps = data || [];
+        App.populateOppFilters();
+        App.showLoading(false);
+        App.renderOpps();
+      }).withFailureHandler(App.showError).getOpportunities();
+      return;
+    }
+
+    if (view === 'fcst') this.renderFcst();
+    if (view === 'trend') this.renderTrend();
+    if (view === 'opps') this.renderOpps();
+  },
+
+  selectPeriod(period) {
+    this.state.selectedPeriod = period;
+    this.renderFcst();
+  },
+
+  selectGroup(groupName) {
+    this.state.selectedGroup = groupName;
+    this.renderFcst();
+  },
+
+  renderFcst() {
+    var data = this.state.currentData;
+    if (!data || !Array.isArray(data.members)) {
+      document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:var(--color-text-sub)">\u8aad\u307f\u8fbc\u307f\u4e2d...</p>';
+      return;
+    }
+    var period = this.state.selectedPeriod;
+    var members = data.members;
+    var notes = data.notes || {};
+
+    var overallTotal = members.find(function(m) { return m && m.isTotal && m.group === 'BOAM'; }) || null;
+    var groupTotals = members.filter(function(m) { return m && m.isTotal && m.group !== 'BOAM'; });
+    var individuals = members.filter(function(m) { return m && !m.isTotal; });
+
+    var membersByGroup = {};
+    individuals.forEach(function(m) {
+      var g = m.group || '';
+      if (!membersByGroup[g]) membersByGroup[g] = [];
+      membersByGroup[g].push(m);
+    });
+
+    var groupNames = groupTotals.map(function(m) { return m.group; }).filter(Boolean);
+    var selectedGroup = this.state.selectedGroup;
+    if (selectedGroup !== '\u90e8\u5168\u4f53' && groupNames.indexOf(selectedGroup) === -1) {
+      this.state.selectedGroup = '\u90e8\u5168\u4f53';
+      selectedGroup = '\u90e8\u5168\u4f53';
+    }
+
+    var displayRows = [];
+    if (selectedGroup === '\u90e8\u5168\u4f53') {
+      if (overallTotal) displayRows.push(overallTotal);
+      groupTotals.forEach(function(gt) { displayRows.push(gt); });
+    } else {
+      var gt = groupTotals.find(function(m) { return m.group === selectedGroup; });
+      if (gt) displayRows.push(gt);
+      (membersByGroup[selectedGroup] || []).forEach(function(m) { displayRows.push(m); });
+    }
+
+    var breakdownCols = [
+      { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)' },
+      { key: 'confirmed', label: '\u78ba\u5b9a' },
+      { key: 'expectedMrr', label: '\u671f\u5f85MRR' },
+      { key: 'received', label: '\u53d7\u9818' },
+      { key: 'debtMgmt', label: '\u50b5\u6a29\u7ba1\u7406' },
+      { key: 'debtMgmtLite', label: '\u50b5\u6a29\u7ba1\u7406Lite' },
+      { key: 'expense', label: '\u7d4c\u8cbb' },
+    ];
+
+    var html = '<div class="snap-nav-inline"><span>\u6700\u7d42\u66f4\u65b0: ' + escapeHtml(this.state.lastUpdated || '') + '</span></div>';
+    html += '<div class="period-chips">';
+    ['Q', 'M5', 'M6', 'M7'].forEach(function(p) {
+      html += '<span class="chip' + (period === p ? ' active' : '') + '" onclick="App.selectPeriod(\'' + p + '\')">' + blockLabel(p) + '</span>';
+    });
+    html += '</div>';
+    html += '<div class="group-chips">';
+    html += '<span class="chip' + (selectedGroup === '\u90e8\u5168\u4f53' ? ' active' : '') + '" onclick="App.selectGroup(\'\\u90e8\\u5168\\u4f53\')">\u90e8\u5168\u4f53</span>';
+    groupNames.forEach(function(gn) {
+      html += '<span class="chip' + (selectedGroup === gn ? ' active' : '') + '" onclick="App.selectGroup(\'' + escapeAttr(gn) + '\')">' + escapeHtml(gn) + '</span>';
+    });
+    html += '</div>';
+
+    html += '<div class="table-wrapper fcst-table-wrap"><table><thead>';
+    html += '<tr>';
+    html += '<th rowspan="2">\u62c5\u5f53\u8005</th>';
+    html += '<th rowspan="2">\u76ee\u6a19</th>';
+    html += '<th rowspan="2">FCST(MAX)</th>';
+    breakdownCols.forEach(function(col) {
+      html += '<th colspan="3" class="col-group col-group-start">' + escapeHtml(col.label) + '</th>';
+    });
+    html += '<th rowspan="2">Key Deal</th>';
+    html += '<th rowspan="2">\u5099\u8003</th>';
+    html += '</tr>';
+    html += '<tr>';
+    breakdownCols.forEach(function() {
+      html += '<th class="sub-header col-group-start">Net</th>';
+      html += '<th class="sub-header">+</th>';
+      html += '<th class="sub-header">-</th>';
+    });
+    html += '</tr>';
+    html += '</thead><tbody>';
+
+    displayRows.forEach(function(member) {
+      var rd = member && member[period] ? member[period] : {};
+      var noteKey = member.name + '|' + period;
+      var noteVal = notes[noteKey] || '';
+      var isTotal = member.isTotal;
+      html += '<tr' + (isTotal ? ' class="total-row"' : '') + '>';
+      html += '<td>' + (isTotal ? '' : '\u3000') + escapeHtml(member.name || '') + '</td>';
+      html += '<td>' + fmtNum(rd.target) + '</td>';
+      html += '<td>' + fmtNum(rd.fcstMax) + '</td>';
+      breakdownCols.forEach(function(col) {
+        var b = rd[col.key] || { net: 0, newExp: 0, churn: 0 };
+        html += '<td class="col-group-start"><span class="' + valClassNum(b.net) + '">' + fmtNum(b.net) + '</span></td>';
+        html += '<td><span class="val-positive">' + fmtNum(b.newExp) + '</span></td>';
+        html += '<td><span class="val-negative">' + fmtNum(b.churn) + '</span></td>';
+      });
+      var kdText = (rd.keyDeals || []).map(function(kd) {
+        return escapeHtml(kd.company + ' ' + fmtMan(kd.monthlyMrr) + '(\u6708\u984d)/' + kd.phase + '/' + fmtMan(kd.fcst));
+      }).join('<br>');
+      html += '<td style="text-align:left;font-size:11px;min-width:160px;">' + kdText + '</td>';
+      var escapedNote = escapeHtml(noteVal);
+      var escapedName = escapeAttr(member.name || '');
+      var escapedPeriod = escapeAttr(period);
+      html += '<td style="text-align:left;min-width:120px;">' +
+        '<textarea class="notes-textarea" data-name="' + escapedName + '" data-period="' + escapedPeriod + '" onchange="App.noteChanged(this)">' + escapedNote + '</textarea>' +
+        '<button class="notes-save-btn" onclick="App.saveNote(this.previousSibling)">保存</button>' +
+        '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    document.getElementById('fcst-content').innerHTML = html;
+  },
+
+  noteChanged(textarea) {
+    textarea.style.borderColor = '#f9ab00';
+  },
+
+  saveNote(textarea) {
+    var name = textarea.dataset.name;
+    var period = textarea.dataset.period;
+    var note = textarea.value;
+    if (!this.state.currentData.notes) this.state.currentData.notes = {};
+    this.state.currentData.notes[name + '|' + period] = note;
+    textarea.style.borderColor = '';
+    google.script.run
+      .withSuccessHandler(function(r) {
+        if (r && r.error) console.error('saveNote error:', r.error);
+      })
+      .withFailureHandler(function(e) { console.error('saveNote failed:', e); })
+      .saveNote({ name: name, period: period, note: note });
+  },
+
+  renderTrend() {
+    const block = document.getElementById('trend-block-select').value;
+    document.getElementById('trend-title').textContent = blockLabel(block) + ' 推移 (Net MRR)';
+    document.getElementById('trend-period-badge').textContent = blockLabel(block);
+    App.showLoading(true);
+    google.script.run.withSuccessHandler(function(data) {
+      if (data.error) { App.showError(data.error); return; }
+      App.showLoading(false);
+      App.renderTrendWithData(data);
+    }).withFailureHandler(App.showError).getTrendData(block);
+  },
+
+  renderTrendWithData(data) {
+    const vis = this.state.visibleSeries;
+    const datasets = [
+      { key: 'target', label: '目標', color: '#dadce0', dash: [6, 3] },
+      { key: 'fcstAdjusted', label: 'FCST(調整後)', color: '#1a73e8', dash: [] },
+      { key: 'fcstCommit', label: 'FCST(コミット)', color: '#7c4dff', dash: [4, 2] },
+      { key: 'received', label: '受注', color: '#34a853', dash: [] },
+    ].filter(function(item) { return vis[item.key]; }).map(function(item) {
+      return {
+        label: item.label,
+        data: data.series[item.key] || [],
+        borderColor: item.color,
+        backgroundColor: item.color + '18',
+        borderWidth: item.key === 'target' ? 1.5 : 2,
+        borderDash: item.dash,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.3,
+        fill: false,
+      };
+    });
+
+    if (this.state.trendChart) this.state.trendChart.destroy();
+    const ctx = document.getElementById('trend-chart').getContext('2d');
+    this.state.trendChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: data.weeks || [], datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'top', labels: { font: { size: 12 }, padding: 16, usePointStyle: true } },
+          tooltip: {
+            backgroundColor: 'rgba(32,33,36,0.9)',
+            padding: 12,
+            callbacks: { label: function(ctx) { return ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y); } }
+          }
+        },
+        scales: {
+          x: { grid: { color: '#f1f3f4' }, ticks: { font: { size: 12 } } },
+          y: { grid: { color: '#f1f3f4' }, ticks: { font: { size: 12 }, callback: function(v) { return fmtNum(v); } } }
+        }
+      }
+    });
+
+    const latest = lastValue(data.series.fcstAdjusted);
+    const prev = prevValue(data.series.fcstAdjusted);
+    const target = lastValue(data.series.target);
+    const diff = latest - prev;
+    const statsHtml = [
+      { lbl: 'FCST(調整後) Net', val: fmtNum(latest), cls: 'val-neutral' },
+      { lbl: '前週比 Net', val: fmtDiffNum(diff), cls: diff >= 0 ? 'val-positive' : 'val-negative' },
+      { lbl: '目標達成率', val: target ? Math.round(latest / target * 100) + '%' : '-', cls: latest >= target ? 'val-positive' : 'val-negative' },
+    ].map(function(stat) {
+      return '<div class="trend-stat"><div class="ts-label">' + stat.lbl + '</div><div class="ts-val ' + stat.cls + '">' + stat.val + '</div></div>';
+    }).join('');
+    document.getElementById('trend-stats').innerHTML = statsHtml;
+  },
+
+  populateOppFilters() {
+    populateSelect('opp-dept-select', uniqueValues(this.state.opps, 'dept'));
+    populateSelect('opp-phase-select', uniqueValues(this.state.opps, 'phase'));
+    populateSelect('opp-type-select', uniqueValues(this.state.opps, 'type'));
+  },
+
+  renderOpps() {
+    const dept = document.getElementById('opp-dept-select').value;
+    const phase = document.getElementById('opp-phase-select').value;
+    const type = document.getElementById('opp-type-select').value;
+    const fields = ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+    const filtered = this.state.opps.filter(function(opp) {
+      return (dept === 'all' || opp.dept === dept) && (phase === 'all' || opp.phase === phase) && (type === 'all' || opp.type === type);
+    });
+    document.getElementById('opp-count').textContent = filtered.length + '件';
+
+    const html = filtered.map(function(opp) {
+      return '<tr>' +
+        '<td style="text-align:left;font-weight:600;">' + escapeHtml(opp.dealName) + '</td>' +
+        '<td style="text-align:left;">' + escapeHtml(opp.targetMonth || '') + '</td>' +
+        '<td style="text-align:left;">' + escapeHtml(opp.dept || '') + '</td>' +
+        '<td style="text-align:left;" class="' + (opp.type === 'Churn' ? 'val-negative' : opp.type === 'New' ? 'val-positive' : 'val-neutral') + '">' + escapeHtml(opp.type || '') + '</td>' +
+        '<td style="text-align:left;">' + escapeHtml(opp.phase || '') + '</td>' +
+        '<td style="text-align:left;">' + escapeHtml(opp.forecast || '') + '</td>' +
+        '<td>' + fmtNum(opp.mrr) + '</td>' +
+        fields.map(function(field) { return '<td>' + editCell(opp[field].sfNew, { type: 'oppSf', rowIndex: opp.rowIndex, field: field }, App.state.editedPaths) + '</td>'; }).join('') +
+        '<td style="text-align:left;color:var(--color-text-sub);font-size:12px;">' + escapeHtml(opp.comment || opp.notes || '') + '</td>' +
+        '</tr>';
+    }).join('');
+    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="15" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
+  },
+
+  startEditFromEl(el) {
+    const meta = JSON.parse(el.dataset.meta);
+    const original = Number(el.dataset.val);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'edit-input';
+    input.value = original;
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const newValue = Number(input.value);
+      if (isNaN(newValue)) {
+        this.renderAll();
+        return;
+      }
+      this.commitEdit(meta, newValue, original);
+    };
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') {
+        input.removeEventListener('blur', commit);
+        this.renderAll();
+      }
+    });
+  },
+
+  commitEdit(meta, newValue, originalValue) {
+    const key = editKey(meta);
+
+    if (meta.type === 'oppSf') {
+      const opp = this.state.opps.find(function(item) { return item.rowIndex === meta.rowIndex; });
+      if (opp) opp[meta.field].sfNew = newValue;
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.error) alert('保存失敗: ' + res.error);
+        })
+        .saveOppSfValue({ rowIndex: meta.rowIndex, field: meta.field, value: newValue });
+    }
+
+    if (newValue !== originalValue) this.state.editedPaths.add(key);
+    else this.state.editedPaths.delete(key);
+
+    this.updateEditBadge();
+    this.renderAll();
+  },
+
+  updateEditBadge() {
+    const n = this.state.editedPaths.size;
+    document.getElementById('edit-count').textContent = n;
+    document.getElementById('save-bar-count').textContent = n;
+    document.getElementById('edit-badge').classList.toggle('hidden', n === 0);
+    document.getElementById('save-bar').classList.toggle('show', n > 0);
+  },
+
+  clearEditedHighlights() {
+    this.state.editedPaths.clear();
+    this.updateEditBadge();
+    this.renderAll();
+  },
+
+  scrollToSaveBar() {
+    document.getElementById('save-bar').scrollIntoView({ behavior: 'smooth' });
+  },
+
+  toggleSeries(el) {
+    const key = el.dataset.series;
+    this.state.visibleSeries[key] = !this.state.visibleSeries[key];
+    el.classList.toggle('active', this.state.visibleSeries[key]);
+    this.renderTrend();
+  },
+
+  showLoading(show) {
+    this.state.loading = show;
+    document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+    document.getElementById('main-content').style.visibility = show ? 'hidden' : 'visible';
+  },
+
+  showError(err) {
+    alert('エラー: ' + ((err && err.message) || err));
+    App.showLoading(false);
+  },
+};
+
+function editCell(val, meta, editedPaths) {
+  const key = editKey(meta);
+  const cls = editedPaths && editedPaths.has(key) ? 'editable-cell edited' : 'editable-cell';
+  return '<span class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + safeNum(val) + '" onclick="App.startEditFromEl(this)">' + fmtNum(val) + '</span>';
+}
+
+function editKey(meta) {
+  return JSON.stringify(meta);
+}
+
+function fmtNum(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  return Number(value).toLocaleString('ja-JP');
+}
+
+function fmtMan(v) {
+  return Math.floor((v || 0) / 10000) + '万';
+}
+
+function fmtDiffNum(value) {
+  const n = safeNum(value);
+  return (n >= 0 ? '+' : '') + fmtNum(n);
+}
+
+function safeNum(value) {
+  return typeof value === 'number' ? value : Number(value) || 0;
+}
+
+function diffBadge(text) {
+  if (!text || text === '-') return '<span class="val-dash">-</span>';
+  const num = Number(String(text).replace(/[+,]/g, ''));
+  const cls = num > 0 ? 'week-up' : num < 0 ? 'week-down' : 'week-flat';
+  return '<span class="week-badge ' + cls + '">' + text + '</span>';
+}
+
+function valClassNum(value) {
+  const num = safeNum(value);
+  if (num < 0) return 'val-negative';
+  if (num > 0) return 'val-neutral';
+  return 'val-sub';
+}
+
+function blockLabel(block) {
+  return { Q: 'Q合計', M5: '5月', M6: '6月', M7: '7月' }[block] || block;
+}
+
+function splitDeals(text) {
+  return String(text || '').split('/').map(function(item) { return item.trim(); }).filter(Boolean);
+}
+
+function lastValue(arr) {
+  return arr && arr.length ? safeNum(arr[arr.length - 1]) : 0;
+}
+
+function prevValue(arr) {
+  return arr && arr.length > 1 ? safeNum(arr[arr.length - 2]) : 0;
+}
+
+function uniqueValues(rows, key) {
+  return Array.from(new Set(rows.map(function(row) { return row[key]; }).filter(Boolean))).sort();
+}
+
+function populateSelect(id, values) {
+  const select = document.getElementById(id);
+  select.innerHTML = '<option value="all">すべて</option>' + values.map(function(value) {
+    return '<option value="' + escapeAttr(value) + '">' + escapeHtml(value) + '</option>';
+  }).join('');
+}
+
+function formatCell(value) {
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return [y, m, d].join('-');
+  }
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function escapeHtml(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+
+document.addEventListener('DOMContentLoaded', function() { App.init(); });
+</script>

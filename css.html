@@ -1,0 +1,189 @@
+<style>
+  :root {
+    --color-primary: #1a73e8;
+    --color-primary-bg: #e8f0fe;
+    --color-positive: #137333;
+    --color-positive-bg: #e6f4ea;
+    --color-negative: #c5221f;
+    --color-negative-bg: #fce8e6;
+    --color-warning: #b05e00;
+    --color-warning-bg: #fef7e0;
+    --color-surface: #ffffff;
+    --color-bg: #f8f9fa;
+    --color-border: #dadce0;
+    --color-text: #202124;
+    --color-text-sub: #5f6368;
+    --color-header-bg: #ffffff;
+    --radius: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+    --shadow-hover: 0 4px 12px rgba(0,0,0,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Google Sans', 'Noto Sans JP', Arial, sans-serif; font-size: 14px; color: var(--color-text); background: var(--color-bg); line-height: 1.5; }
+  .app-header { position: sticky; top: 0; z-index: 100; background: var(--color-header-bg); border-bottom: 1px solid var(--color-border); box-shadow: var(--shadow); }
+  .header-top { display: flex; align-items: center; gap: 16px; padding: 12px 24px; }
+  .header-logo { font-size: 18px; font-weight: 600; color: var(--color-primary); letter-spacing: -0.3px; }
+  .header-logo span { color: var(--color-text-sub); font-weight: 400; }
+  .snapshot-nav { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+  .snap-btn { background: none; border: 1px solid var(--color-border); border-radius: 20px; padding: 4px 10px; cursor: pointer; color: var(--color-text-sub); font-size: 13px; transition: background 0.15s; }
+  .snap-btn:hover { background: var(--color-bg); }
+  .snap-label { font-size: 13px; font-weight: 600; padding: 4px 14px; border: 1px solid var(--color-primary); border-radius: 20px; min-width: 200px; text-align: center; background: var(--color-primary-bg); color: var(--color-primary); }
+  .header-right { margin-left: auto; font-size: 13px; color: var(--color-text-sub); display: flex; align-items: center; gap: 12px; }
+  .update-badge { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 12px; padding: 3px 10px; font-size: 12px; }
+  .tab-bar { display: flex; gap: 0; padding: 0 24px; border-top: 1px solid var(--color-border); }
+  .tab { padding: 10px 20px; font-size: 14px; font-weight: 500; color: var(--color-text-sub); cursor: pointer; border-bottom: 3px solid transparent; transition: all 0.15s; user-select: none; }
+  .tab:hover { color: var(--color-primary); background: var(--color-primary-bg); }
+  .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+  .main { padding: 24px; width: 100%; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .card-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .summary-card { background: var(--color-surface); border-radius: var(--radius); border: 1px solid var(--color-border); padding: 20px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden; }
+  .summary-card:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+  .summary-card.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-bg), var(--shadow); }
+  .summary-card.selected::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--color-primary); }
+  .card-period { font-size: 12px; font-weight: 600; color: var(--color-text-sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+  .card-net { font-size: 28px; font-weight: 700; color: var(--color-text); margin-bottom: 4px; }
+  .card-unit { font-size: 12px; color: var(--color-text-sub); }
+  .card-target { font-size: 13px; color: var(--color-text-sub); margin-top: 8px; }
+  .card-diff { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; padding: 2px 8px; border-radius: 12px; margin-top: 6px; }
+  .card-diff.positive { color: var(--color-positive); background: var(--color-positive-bg); }
+  .card-diff.negative { color: var(--color-negative); background: var(--color-negative-bg); }
+  .achieve-bar { height: 4px; background: var(--color-border); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .achieve-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+  .achieve-fill.good { background: var(--color-positive); }
+  .achieve-fill.ok { background: var(--color-primary); }
+  .achieve-fill.bad { background: var(--color-negative); }
+  .achieve-pct { font-size: 12px; color: var(--color-text-sub); margin-top: 4px; }
+  .section-title { font-size: 15px; font-weight: 600; color: var(--color-text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .period-badge { font-size: 12px; font-weight: 500; background: var(--color-primary-bg); color: var(--color-primary); padding: 2px 10px; border-radius: 12px; }
+  .table-wrapper { background: var(--color-surface); border-radius: var(--radius); border: 1px solid var(--color-border); overflow-x: auto; box-shadow: var(--shadow); }
+  .opp-table-wrap, .summary-sheet-wrap { overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f1f3f4; padding: 10px 16px; text-align: left; font-weight: 600; color: var(--color-text-sub); border-bottom: 1px solid var(--color-border); white-space: nowrap; }
+  tbody td { padding: 10px 16px; text-align: left; border-bottom: 1px solid #f1f3f4; white-space: nowrap; }
+  tbody td:first-child { text-align: left; color: var(--color-text-sub); font-weight: 500; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafbfc; }
+  .row-highlight td { background: #fafbfc; }
+  .row-highlight td:first-child { color: var(--color-text); }
+  .val-positive { color: var(--color-positive); font-weight: 600; }
+  .val-negative { color: var(--color-negative); font-weight: 600; }
+  .val-neutral { color: var(--color-text); }
+  .val-sub { color: var(--color-text-sub); }
+  .val-dash { color: var(--color-border); }
+  .week-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+  .week-up { background: var(--color-positive-bg); color: var(--color-positive); }
+  .week-down { background: var(--color-negative-bg); color: var(--color-negative); }
+  .week-flat { background: var(--color-bg); color: var(--color-text-sub); }
+  .dept-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .dept-controls label { font-size: 13px; color: var(--color-text-sub); font-weight: 500; }
+  select { appearance: none; -webkit-appearance: none; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 28px 6px 12px; font-size: 13px; background: var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235f6368'/%3E%3C/svg%3E") no-repeat right 10px center; cursor: pointer; color: var(--color-text); outline: none; transition: border-color 0.15s; }
+  select:focus { border-color: var(--color-primary); }
+  .dept-section { margin-bottom: 20px; }
+  .key-deals-box, .notes-box { margin: 16px 0; padding: 14px 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .key-deals-box h3, .notes-box h3 { font-size: 13px; font-weight: 600; color: var(--color-text-sub); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .key-deal-item { display: inline-flex; align-items: center; gap: 6px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 6px; padding: 4px 10px; margin: 4px 4px 4px 0; font-size: 13px; }
+  .trend-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .chart-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .chart-title { font-size: 14px; font-weight: 600; margin-bottom: 20px; }
+  .chart-wrap { position: relative; height: 280px; }
+  .trend-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+  .trend-stat { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 6px; padding: 12px 16px; text-align: center; }
+  .trend-stat .ts-label { font-size: 12px; color: var(--color-text-sub); margin-bottom: 4px; }
+  .trend-stat .ts-val { font-size: 20px; font-weight: 700; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 16px; border: 1px solid var(--color-border); font-size: 13px; cursor: pointer; background: var(--color-surface); color: var(--color-text-sub); transition: all 0.15s; user-select: none; }
+  .chip.active { background: var(--color-primary-bg); border-color: var(--color-primary); color: var(--color-primary); font-weight: 600; }
+  .chip:hover:not(.active) { background: var(--color-bg); }
+  .editable-cell { display: inline-block; cursor: pointer; border-radius: 4px; padding: 1px 6px; border: 1px solid transparent; transition: background 0.12s, border-color 0.12s; min-width: 60px; text-align: right; }
+  .editable-cell:hover { background: var(--color-primary-bg); border-color: var(--color-primary); }
+  .editable-cell.edited { background: #fff8e1; border-color: #f9ab00; color: var(--color-warning); font-weight: 700; }
+  .edit-input { width: 88px; border: 2px solid var(--color-primary); border-radius: 4px; padding: 1px 6px; font-size: 13px; font-family: inherit; outline: none; text-align: right; background: #fff; box-shadow: 0 0 0 3px var(--color-primary-bg); }
+  .edit-badge { display: inline-flex; align-items: center; gap: 5px; background: #fff8e1; border: 1px solid #f9ab00; color: var(--color-warning); font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; cursor: pointer; }
+  .edit-badge.hidden { display: none; }
+  .save-bar { position: fixed; bottom: 24px; right: 24px; display: flex; gap: 8px; align-items: center; background: var(--color-text); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 16px rgba(0,0,0,0.25); opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; }
+  .save-bar.show { opacity: 1; transform: translateY(0); pointer-events: all; }
+  .save-bar-btn { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+  .save-bar-btn.primary { background: var(--color-primary); color: #fff; }
+  .editable-col-header { color: var(--color-primary); font-weight: 700; }
+  .loading-overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(248,249,250,0.88); z-index: 999; }
+  .loading-overlay.hidden { display: none; }
+  .spinner { width: 40px; height: 40px; border: 4px solid #d2e3fc; border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .loading-text { color: var(--color-text-sub); font-size: 13px; }
+  .summary-sheet-wrap td:first-child, .summary-sheet-wrap th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 900px) { .card-grid { grid-template-columns: repeat(2, 1fr); } .trend-stats { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) { .card-grid { grid-template-columns: 1fr; } .header-top { padding: 10px 16px; } .main { padding: 16px; } }
+
+  /* ─── FCST View ─── */
+  .period-chips { display: flex; gap: 8px; margin-bottom: 16px; }
+  .group-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+
+  .snap-nav-inline { display: flex; align-items: center; gap: 4px; margin-bottom: 16px; }
+  .snap-nav-inline .snap-btn { background: none; border: 1px solid var(--color-border); border-radius: 20px; padding: 4px 10px; cursor: pointer; color: var(--color-text-sub); font-size: 13px; transition: background 0.15s; }
+  .snap-nav-inline .snap-btn:hover { background: var(--color-bg); }
+  .snap-nav-inline #snap-label { font-size: 13px; font-weight: 600; padding: 4px 14px; border: 1px solid var(--color-primary); border-radius: 20px; min-width: 200px; text-align: center; background: var(--color-primary-bg); color: var(--color-primary); }
+
+  .fcst-table-wrap { overflow-x: auto; }
+
+  .col-expand-btn { background: none; border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 5px; font-size: 11px; cursor: pointer; color: var(--color-text-sub); margin-left: 4px; vertical-align: middle; line-height: 1; }
+  .col-expand-btn:hover { background: var(--color-bg); }
+  .col-hidden { display: none !important; }
+
+  .total-row td { font-weight: 700; background: #f1f3f4; }
+  .total-row td:first-child { color: var(--color-text); }
+
+  /* 2行目サブヘッダー（Net / N+E / Churn） */
+  thead th.sub-header { font-size: 11px; font-weight: 500; color: var(--color-text-sub); padding: 4px 16px; border-bottom: 1px solid var(--color-border); }
+  thead th.col-group { border-bottom: none; text-align: left; }
+  thead th.sub-header { text-align: left; }
+
+  /* ─── FCSTテーブルヘッダー視認性強化 ─── */
+  /* 主ヘッダー行: 指標名グループ列 */
+  thead th.col-group { background: #e8f0fe; color: #1a73e8; font-weight: 700; }
+  /* 主ヘッダー行: 担当者・期待MRR（rowspan="2"） */
+  thead th[rowspan="2"] { background: #f1f3f4; color: #5f6368; }
+  /* サブヘッダー行: Net / N+E / Churn */
+  thead th.sub-header { background: #f8f9fa; color: #80868b; }
+
+  /* [+]ボタンのスタイル改善 */
+  button.col-expand-btn { font-size: 11px; color: #1a73e8; background: none; border: none; margin-left: 4px; cursor: pointer; opacity: 0.8; vertical-align: middle; line-height: 1; padding: 0; }
+  button.col-expand-btn:hover { opacity: 1; background: none; }
+
+  /* 合計行の視認性強化 */
+  .total-row td { font-weight: 700; background: #f1f3f4; border-top: 2px solid #dadce0; }
+  .total-row td:first-child { color: #202124; }
+
+  /* グループチップ（緑系）で期間チップ（青系）と区別 */
+  .group-chips .chip.active { background: #e6f4ea; border-color: #137333; color: #137333; font-weight: 600; }
+
+  /* 各列グループの先頭列（Net列）に左ボーダーで区切りを入れる */
+  .col-group-start { border-left: 2px solid #dadce0 !important; }
+
+  .notes-textarea {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: vertical;
+    color: var(--color-text);
+    background: var(--color-surface);
+    line-height: 1.5;
+  }
+  .notes-textarea:focus { outline: none; border-color: var(--color-primary); }
+  .notes-save-btn {
+    margin-top: 4px;
+    padding: 3px 10px;
+    font-size: 12px;
+    border: 1px solid var(--color-primary);
+    border-radius: 4px;
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    cursor: pointer;
+  }
+  .notes-save-btn:hover { background: var(--color-primary); color: #fff; }
+</style>
