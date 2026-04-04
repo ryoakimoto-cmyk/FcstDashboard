@@ -3,12 +3,12 @@ function OppListWriter_saveDrafts(changes) {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
   var exportRes = OppListWriter_upsertExportWaiting_(ss, list);
-  var proposalRes = OppListWriter_upsertProposalWaiting_(ss, list);
+  var proposalRes = OppListWriter_upsertProposalExportWaiting_(ss, list);
 
   return {
     success: true,
     exportWaiting: exportRes,
-    exportProposal: proposalRes
+    proposalExportWaiting: proposalRes
   };
 }
 
@@ -71,7 +71,7 @@ function OppListWriter_upsertExportWaiting_(ss, changes) {
   return { newCount: newRows.length, updatedCount: updatedCount };
 }
 
-function OppListWriter_upsertProposalWaiting_(ss, changes) {
+function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
   var sheet = ss.getSheetByName('Export待機_提案商品');
   if (!sheet) throw new Error('Export待機_提案商品シートが見つかりません');
 
@@ -88,39 +88,34 @@ function OppListWriter_upsertProposalWaiting_(ss, changes) {
   });
 
   var modules = [
-    { field: 'received', label: '受領', idKey: 'received' },
-    { field: 'debtMgmt', label: '債権管理', idKey: 'debtMgmt' },
-    { field: 'debtMgmtLite', label: '債権管理 Lite', idKey: 'debtMgmtLite' },
-    { field: 'expense', label: '経費', idKey: 'expense' }
+    { field: 'received', proposalKey: 'received', moduleName: 'AP' },
+    { field: 'debtMgmt', proposalKey: 'debtMgmt', moduleName: 'AR' },
+    { field: 'debtMgmtLite', proposalKey: 'debtMgmtLite', moduleName: '債権管理 Lite' },
+    { field: 'expense', proposalKey: 'expense', moduleName: 'EX' }
   ];
 
   var newRows = [];
   var updatedIndexes = {};
   var updatedCount = 0;
-  var skipped = [];
 
   changes.forEach(function(change) {
-    var oppId = String(change.oppId || '').trim();
     var fields = change.fields || {};
-    var proposalProductIds = change.proposalProductIds || {};
+    var proposalIds = change.proposalProductIds || {};
 
     modules.forEach(function(module) {
       if (!fields.hasOwnProperty(module.field)) return;
 
-      var proposalId = String(proposalProductIds[module.idKey] || '').trim();
-      if (!proposalId) {
-        skipped.push({ oppId: oppId, field: module.field, reason: 'missing_proposal_product_id' });
-        return;
-      }
+      var proposalId = String(proposalIds[module.proposalKey] || '').trim();
+      if (!proposalId) return;
 
       var row = rowMap.hasOwnProperty(proposalId)
         ? (values[rowMap[proposalId]] || Array(colCount).fill('')).slice()
         : Array(colCount).fill('');
 
       row[0] = proposalId;
-      row[1] = module.label;
+      row[1] = module.moduleName;
       row[2] = OppListWriter_toNumberOrBlank_(fields[module.field]);
-      row[3] = oppId;
+      row[3] = String(change.oppId || '');
       row[5] = '-';
 
       if (rowMap.hasOwnProperty(proposalId)) {
@@ -143,7 +138,7 @@ function OppListWriter_upsertProposalWaiting_(ss, changes) {
     sheet.getRange(appendRow, 1, newRows.length, colCount).setValues(newRows);
   }
 
-  return { newCount: newRows.length, updatedCount: updatedCount, skipped: skipped };
+  return { newCount: newRows.length, updatedCount: updatedCount };
 }
 
 function OppListWriter_toNumberOrBlank_(value) {

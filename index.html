@@ -12,15 +12,15 @@
   <div class="header-top">
     <div class="header-logo">Sansan <span>FCST</span></div>
     <div class="header-right">
-      <span class="update-badge">更新: 毎日 03:00</span>
-      <span class="edit-badge hidden" id="edit-badge" onclick="App.scrollToSaveBar()">変更済み <span id="edit-count">0</span> 件</span>
+      <span class="update-badge">最新: 毎日 03:00</span>
+      <span class="edit-badge hidden" id="edit-badge" onclick="App.scrollToSaveBar()">編集中 <span id="edit-count">0</span> 件</span>
       <span>Owner: Ryo</span>
     </div>
   </div>
   <nav class="tab-bar">
     <div class="tab active" data-view="fcst" onclick="App.switchView('fcst')">FCST</div>
-    <div class="tab" data-view="trend" onclick="App.switchView('trend')">推移グラフ</div>
     <div class="tab" data-view="opps" onclick="App.switchView('opps')">案件リスト</div>
+    <div class="tab" data-view="trend" onclick="App.switchView('trend')">推移グラフ</div>
   </nav>
 </header>
 
@@ -36,31 +36,31 @@
 
   <div id="view-trend" class="view">
     <div class="trend-controls">
-      <label>対象月</label>
+      <label>対象期間</label>
       <select id="trend-block-select" onchange="App.renderTrend()">
         <option value="Q">Q合計</option>
         <option value="M5">5月</option>
         <option value="M6">6月</option>
         <option value="M7">7月</option>
       </select>
-      <label style="margin-left:8px;">系列</label>
+      <label style="margin-left:8px;">表示</label>
       <span class="chip active" data-series="fcstAdjusted" onclick="App.toggleSeries(this)">FCST(調整後)</span>
       <span class="chip active" data-series="fcstCommit" onclick="App.toggleSeries(this)">FCST(コミット)</span>
       <span class="chip active" data-series="target" onclick="App.toggleSeries(this)">目標</span>
-      <span class="chip active" data-series="received" onclick="App.toggleSeries(this)">受注</span>
+      <span class="chip active" data-series="received" onclick="App.toggleSeries(this)">受領</span>
     </div>
     <div class="chart-card">
       <div class="chart-title" id="trend-title">Q合計 推移 (Net MRR)</div>
       <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
     </div>
-    <div class="section-title">直近サマリ <span class="period-badge" id="trend-period-badge">Q合計</span></div>
+    <div class="section-title">週次サマリ <span class="period-badge" id="trend-period-badge">Q合計</span></div>
     <div class="trend-stats" id="trend-stats"></div>
   </div>
 
   <div id="view-opps" class="view">
     <div class="dept-controls" style="flex-wrap:wrap;gap:10px;">
       <button class="save-bar-btn primary" type="button" onclick="App.reloadOpps()">最新取得</button>
-      <label>部署:</label>
+      <label>担当部署:</label>
       <select id="opp-dept-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
@@ -68,57 +68,61 @@
       <select id="opp-phase-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
-      <label style="margin-left:8px;">種類:</label>
+      <label style="margin-left:8px;">種別:</label>
       <select id="opp-type-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
       <span style="margin-left:auto;font-size:12px;color:var(--color-text-sub);" id="opp-count"></span>
     </div>
+    <div class="dept-controls opp-filter-grid">
+      <label>対象Q:</label>
+      <select id="opp-quarter-select" onchange="App.changeOppQuarter()"><option value="all">すべて</option></select>
+      <label>案件副担当:</label>
+      <select id="opp-owner-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+      <label>フォーキャスト:</label>
+      <select id="opp-forecast-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+      <label>予定日 / 確定日:</label>
+      <select id="opp-date-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+      <label>案件名:</label>
+      <input id="opp-name-search" type="text" oninput="App.renderOpps()" placeholder="部分一致で検索">
+      <label>Key Deal:</label>
+      <select id="opp-keydeal-select" onchange="App.renderOpps()">
+        <option value="all">すべて</option>
+        <option value="true">TRUE</option>
+        <option value="false">FALSE</option>
+      </select>
+      <button class="save-bar-btn" type="button" onclick="App.resetOppFilters()">フィルタ解除</button>
+    </div>
+    <div class="opp-quarter-months" id="opp-quarter-months"></div>
     <div id="opp-week-nav"></div>
     <div class="table-wrapper opp-table-wrap">
       <table id="opp-table">
         <thead>
           <tr>
-            <th rowspan="2" style="text-align:left;">完了予定月</th>
-            <th rowspan="2" style="text-align:left;">担当部署</th>
-            <th rowspan="2" style="text-align:left;">種別</th>
-            <th rowspan="2" style="text-align:left;">案件副担当</th>
-            <th rowspan="2" style="text-align:left;">フェーズ</th>
-            <th rowspan="2" style="text-align:left;">フォーキャスト</th>
-            <th rowspan="2" style="text-align:left;">予定日 / 確定日</th>
-            <th rowspan="2" style="text-align:left;">案件名</th>
-            <th rowspan="2">計上割合(%)</th>
-            <th rowspan="2">MRR</th>
-            <th rowspan="2">初期費用</th>
-            <th rowspan="2">Key Deal</th>
-            <th colspan="2">FCST(コミット)</th>
-            <th colspan="2">FCST(MIN)</th>
-            <th colspan="2">FCST(MAX)</th>
-            <th colspan="2">受領</th>
-            <th colspan="2">債権管理</th>
-            <th colspan="2">債権管理 Lite</th>
-            <th colspan="2">経費</th>
-            <th rowspan="2" style="text-align:left;">FCSTコメント</th>
-            <th rowspan="2" style="text-align:left;">初回商談日</th>
-            <th rowspan="2" style="text-align:left;">案件概要</th>
-            <th rowspan="2" style="text-align:left;">オプション機能</th>
-            <th rowspan="2" style="text-align:left;">施策</th>
-          </tr>
-          <tr>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
-            <th>SF上の値</th>
-            <th>SF更新用</th>
+            <th class="opp-col-month">完了予定月</th>
+            <th class="opp-col-dept">担当部署</th>
+            <th class="opp-col-type">種別</th>
+            <th class="opp-col-owner">案件副担当</th>
+            <th class="opp-col-phase">フェーズ</th>
+            <th class="opp-col-forecast">フォーキャスト</th>
+            <th class="opp-col-date">予定日 / 確定日</th>
+            <th class="opp-name-header">案件名</th>
+            <th class="opp-num-header">計上割合(%)</th>
+            <th class="opp-num-header">MRR</th>
+            <th class="opp-num-header">初期費用</th>
+            <th class="opp-col-keydeal">Key Deal</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstCommit" data-base-label="FCST(コミット)">FCST(コミット)</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstMin" data-base-label="FCST(MIN)">FCST(MIN)</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstMax" data-base-label="FCST(MAX)">FCST(MAX)</th>
+            <th class="opp-num-header" data-opp-diff-field="received" data-base-label="受領">受領</th>
+            <th class="opp-num-header" data-opp-diff-field="debtMgmt" data-base-label="債権管理">債権管理</th>
+            <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理 Lite">債権管理 Lite</th>
+            <th class="opp-num-header" data-opp-diff-field="expense" data-base-label="経費">経費</th>
+            <th class="opp-col-comment">FCSTコメント</th>
+            <th class="opp-col-firstmeeting">初回商談日</th>
+            <th class="opp-col-summary">案件概要</th>
+            <th class="opp-col-summary">オプション機能</th>
+            <th class="opp-col-summary">施策</th>
           </tr>
         </thead>
         <tbody id="opp-tbody"></tbody>
@@ -128,7 +132,7 @@
 </div>
 
 <div class="save-bar" id="save-bar">
-  <span>変更済み <span id="save-bar-count">0</span> 件</span>
+  <span>編集中 <span id="save-bar-count">0</span> 件</span>
   <button class="save-bar-btn primary" onclick="App.saveOppDrafts()">保存</button>
   <button class="save-bar-btn" onclick="App.clearEditedHighlights()">変更を破棄</button>
 </div>

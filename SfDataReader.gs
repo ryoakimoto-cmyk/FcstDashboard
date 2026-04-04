@@ -37,6 +37,7 @@ function SfDataReader_getAggregated(users, targets) {
         monthlyMrr: SfDataReader_toNumber_(row[10]),
         phase: String(row[30] || '').trim(),
         fcst: SfDataReader_toNumber_(row[38]),
+        oppId: String(row[21] || '').trim(),
       });
     }
 
