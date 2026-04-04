@@ -59,6 +59,7 @@
 
   <div id="view-opps" class="view">
     <div class="dept-controls" style="flex-wrap:wrap;gap:10px;">
+      <button class="save-bar-btn primary" type="button" onclick="App.reloadOpps()">最新取得</button>
       <label>部署:</label>
       <select id="opp-dept-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
@@ -73,25 +74,51 @@
       </select>
       <span style="margin-left:auto;font-size:12px;color:var(--color-text-sub);" id="opp-count"></span>
     </div>
+    <div id="opp-week-nav"></div>
     <div class="table-wrapper opp-table-wrap">
       <table id="opp-table">
         <thead>
           <tr>
-            <th style="text-align:left;">案件名</th>
-            <th style="text-align:left;">対予定月</th>
-            <th style="text-align:left;">事業部等</th>
-            <th style="text-align:left;">種類</th>
-            <th style="text-align:left;">フェーズ</th>
-            <th style="text-align:left;">Forecast</th>
-            <th>MRR</th>
-            <th>FCST(Commit)</th>
-            <th>FCST(Min)</th>
-            <th>FCST(Max)</th>
-            <th>受注</th>
-            <th>債務管理</th>
-            <th>債務管理Lite</th>
-            <th>費用</th>
-            <th style="text-align:left;">コメント</th>
+            <th rowspan="2" style="text-align:left;">完了予定月</th>
+            <th rowspan="2" style="text-align:left;">担当部署</th>
+            <th rowspan="2" style="text-align:left;">種別</th>
+            <th rowspan="2" style="text-align:left;">案件副担当</th>
+            <th rowspan="2" style="text-align:left;">フェーズ</th>
+            <th rowspan="2" style="text-align:left;">フォーキャスト</th>
+            <th rowspan="2" style="text-align:left;">予定日 / 確定日</th>
+            <th rowspan="2" style="text-align:left;">案件名</th>
+            <th rowspan="2">計上割合(%)</th>
+            <th rowspan="2">MRR</th>
+            <th rowspan="2">初期費用</th>
+            <th rowspan="2">Key Deal</th>
+            <th colspan="2">FCST(コミット)</th>
+            <th colspan="2">FCST(MIN)</th>
+            <th colspan="2">FCST(MAX)</th>
+            <th colspan="2">受領</th>
+            <th colspan="2">債権管理</th>
+            <th colspan="2">債権管理 Lite</th>
+            <th colspan="2">経費</th>
+            <th rowspan="2" style="text-align:left;">FCSTコメント</th>
+            <th rowspan="2" style="text-align:left;">初回商談日</th>
+            <th rowspan="2" style="text-align:left;">案件概要</th>
+            <th rowspan="2" style="text-align:left;">オプション機能</th>
+            <th rowspan="2" style="text-align:left;">施策</th>
+          </tr>
+          <tr>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
+            <th>SF上の値</th>
+            <th>SF更新用</th>
           </tr>
         </thead>
         <tbody id="opp-tbody"></tbody>
@@ -102,7 +129,23 @@
 
 <div class="save-bar" id="save-bar">
   <span>変更済み <span id="save-bar-count">0</span> 件</span>
-  <button class="save-bar-btn primary" onclick="App.clearEditedHighlights()">ハイライトをクリア</button>
+  <button class="save-bar-btn primary" onclick="App.saveOppDrafts()">保存</button>
+  <button class="save-bar-btn" onclick="App.clearEditedHighlights()">変更を破棄</button>
+</div>
+
+<div id="detail-modal" class="detail-modal hidden">
+  <div class="detail-modal-backdrop" onclick="App.closeDetailModal()"></div>
+  <div class="detail-modal-card">
+    <div class="detail-modal-header">
+      <div>
+        <div class="detail-modal-kicker" id="detail-modal-kicker"></div>
+        <h2 id="detail-modal-title">詳細</h2>
+      </div>
+      <button class="detail-modal-close" onclick="App.closeDetailModal()">×</button>
+    </div>
+    <div class="detail-modal-body" id="detail-modal-body"></div>
+    <div class="detail-modal-footer" id="detail-modal-footer"></div>
+  </div>
 </div>
 
 <?!= include('js') ?>

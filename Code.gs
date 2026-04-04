@@ -49,14 +49,47 @@ function getInitData() {
     var users = UserReader_getUsers();
     var targets = TargetReader_getTargets();
     var result = SfDataReader_getAggregated(users, targets);
-    var notes = NotesSheet_getNotes();
-    result.notes = notes;
+    result.notes = NotesSheet_getNotes();
+    result.fcstAdjusted = FcstAdjusted_getAll();
+    result.weekOverWeekMap = FcstSnapshot_getWeekOverWeek();
+    result.snapshotDates = FcstSnapshot_getSnapshotDates();
+    result.previousSnapshot = FcstSnapshot_getLatestMembers();
     return { data: result };
   } catch (e) { return { error: e.message }; }
 }
 function getTrendData(block) { try { return FcstReader_getTrendData(block); } catch (e) { return { error: e.message }; } }
-function getOpportunities() { try { return OppReader_getOpportunities(); } catch (e) { return { error: e.message }; } }
+function getOpportunities() {
+  try {
+    var result = OppListReader_getLiveRows();
+    result.snapshotDates = OppListSnapshot_getSnapshotDates();
+    return result;
+  } catch (e) { return { error: e.message }; }
+}
+function getOppSnapshotData(dateStr) { try { return OppListSnapshot_getByDate(dateStr); } catch (e) { return { error: e.message }; } }
 function getSummaryData() { try { return SummaryReader_getSummaryData(); } catch (e) { return { error: e.message }; } }
 function saveFcstAdjusted(p) { try { return FcstWriter_saveFcstAdjusted(p); } catch (e) { return { error: e.message }; } }
-function saveOppSfValue(p) { try { return FcstWriter_saveOppSfValue(p); } catch (e) { return { error: e.message }; } }
+function saveOppSfValue(p) { try { return OppListWriter_saveDrafts([p]); } catch (e) { return { error: e.message }; } }
+function saveOppDrafts(changes) { try { return OppListWriter_saveDrafts(changes); } catch (e) { return { error: e.message }; } }
 function saveNote(p) { try { return NotesSheet_saveNote(p); } catch (e) { return { error: e.message }; } }
+function saveFcstAdjusted2(p) { try { return FcstAdjusted_save(p); } catch (e) { return { error: e.message }; } }
+function getSnapshotDates() { try { return FcstSnapshot_getSnapshotDates(); } catch (e) { return { error: e.message }; } }
+function getSnapshotData(dateStr) { try { return FcstSnapshot_getDataByDate(dateStr); } catch (e) { return { error: e.message }; } }
+function createOppSnapshot() { try { return OppListSnapshot_createWeekly(); } catch (e) { return { error: e.message }; } }
+function setupOppSnapshotTrigger() { try { return OppListSnapshot_setupWeeklyTrigger(); } catch (e) { return { error: e.message }; } }
+function createSnapshot() {
+  try {
+    var users = UserReader_getUsers();
+    var targets = TargetReader_getTargets();
+    var result = SfDataReader_getAggregated(users, targets);
+    var fcstAdj = FcstAdjusted_getAll();
+    var periods = ['Q', 'M5', 'M6', 'M7'];
+    result.members.forEach(function(member) {
+      periods.forEach(function(p) {
+        var key = member.name + '|' + p;
+        if (!member[p]) member[p] = {};
+        member[p].fcstAdjusted = fcstAdj[key] || { net: 0, newExp: 0, churn: 0 };
+      });
+    });
+    return FcstSnapshot_create(result.members);
+  } catch (e) { return { error: e.message }; }
+}

@@ -5,12 +5,26 @@ const App = {
     selectedPeriod: 'Q',         // 'Q' | 'M5' | 'M6' | 'M7'
     selectedGroup: '\u90e8\u5168\u4f53',      // '\u90e8\u5168\u4f53' | \u30b0\u30eb\u30fc\u30d7\u540d
     visibleSeries: { fcstAdjusted: true, fcstCommit: true, target: true, received: true },
+    expandedMetrics: { fcstAdjusted: false, fcstCommit: false, confirmed: false, expectedMrr: false, received: false, debtMgmt: false, debtMgmtLite: false, expense: false },
+    expandedAll: { keyDeals: false },
+    expandedNoteKeys: {},
     trendChart: null,
     editedPaths: new Set(),
     loading: false,
     lastUpdated: '',
     currentData: null,
+    fcstAdjusted: {},
+    diffToggles: {},
+    wowMap: {},
+    snapshotDates: [],
+    snapshotDate: null,
+    snapshotViewData: null,
     opps: [],
+    oppsLastUpdated: '',
+    oppSnapshotDates: [],
+    oppSnapshotDate: null,
+    oppSnapshotRows: null,
+    detailModal: null,
   },
 
   init() {
@@ -24,6 +38,10 @@ const App = {
         }
         App.state.lastUpdated = (result.data && result.data.lastUpdated) || '';
         App.state.currentData = result.data;
+        App.state.fcstAdjusted = (result.data && result.data.fcstAdjusted) || {};
+        var prevMembers = (result.data && result.data.previousSnapshot && result.data.previousSnapshot.members) || [];
+        App.state.wowMap = computeWowMap_((result.data && result.data.members) || [], prevMembers);
+        App.state.snapshotDates = (result.data && result.data.snapshotDates) || [];
         try { App.renderAll(); } catch (e) {
           document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:red">renderAll\u30a8\u30e9\u30fc: ' + escapeHtml(e.message || String(e)) + '</p>';
         }
@@ -38,6 +56,7 @@ const App = {
   renderAll() {
     this.renderFcst();
     if (this.state.activeView === 'trend') this.renderTrend();
+    if (this.state.activeView === 'opps') this.renderOpps();
     this.updateEditBadge();
   },
 
@@ -48,14 +67,7 @@ const App = {
     document.getElementById('view-' + view).classList.add('active');
 
     if (view === 'opps' && App.state.opps.length === 0) {
-      App.showLoading(true);
-      google.script.run.withSuccessHandler(function(data) {
-        if (data.error) { App.showError(data.error); return; }
-        App.state.opps = data || [];
-        App.populateOppFilters();
-        App.showLoading(false);
-        App.renderOpps();
-      }).withFailureHandler(App.showError).getOpportunities();
+      App.reloadOpps();
       return;
     }
 
@@ -75,14 +87,23 @@ const App = {
   },
 
   renderFcst() {
-    var data = this.state.currentData;
-    if (!data || !Array.isArray(data.members)) {
+    var currentData = this.state.currentData;
+    if (!currentData || !Array.isArray(currentData.members)) {
       document.getElementById('fcst-content').innerHTML = '<p style="padding:24px;color:var(--color-text-sub)">\u8aad\u307f\u8fbc\u307f\u4e2d...</p>';
       return;
     }
+    var viewData = App.state.snapshotDate && App.state.snapshotViewData
+      ? App.state.snapshotViewData
+      : (App.state.currentData || {});
     var period = this.state.selectedPeriod;
-    var members = data.members;
-    var notes = data.notes || {};
+    var members = viewData.members || [];
+    var notes = viewData.notes || (App.state.currentData && App.state.currentData.notes) || {};
+    var fcstAdjForView = App.state.snapshotDate && App.state.snapshotViewData
+      ? (App.state.snapshotViewData.fcstAdjusted || {})
+      : App.state.fcstAdjusted;
+    var wowForView = App.state.snapshotDate && App.state.snapshotViewData
+      ? (App.state.snapshotViewData.weekOverWeekMap || {})
+      : App.state.wowMap;
 
     var overallTotal = members.find(function(m) { return m && m.isTotal && m.group === 'BOAM'; }) || null;
     var groupTotals = members.filter(function(m) { return m && m.isTotal && m.group !== 'BOAM'; });
@@ -102,27 +123,30 @@ const App = {
       selectedGroup = '\u90e8\u5168\u4f53';
     }
 
-    var displayRows = [];
-    if (selectedGroup === '\u90e8\u5168\u4f53') {
-      if (overallTotal) displayRows.push(overallTotal);
-      groupTotals.forEach(function(gt) { displayRows.push(gt); });
-    } else {
-      var gt = groupTotals.find(function(m) { return m.group === selectedGroup; });
-      if (gt) displayRows.push(gt);
-      (membersByGroup[selectedGroup] || []).forEach(function(m) { displayRows.push(m); });
-    }
-
     var breakdownCols = [
-      { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)' },
-      { key: 'confirmed', label: '\u78ba\u5b9a' },
-      { key: 'expectedMrr', label: '\u671f\u5f85MRR' },
-      { key: 'received', label: '\u53d7\u9818' },
-      { key: 'debtMgmt', label: '\u50b5\u6a29\u7ba1\u7406' },
-      { key: 'debtMgmtLite', label: '\u50b5\u6a29\u7ba1\u7406Lite' },
-      { key: 'expense', label: '\u7d4c\u8cbb' },
+      { key: 'target', label: '\u76ee\u6a19', className: 'metric-target', noToggle: true, isTarget: true },
+      { key: 'fcstAdjusted', label: 'FCST(\u8abf\u6574\u5f8c)', className: 'metric-fcst-adjusted', editable: true },
+      { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)', className: 'metric-fcst-commit' },
+      { key: 'confirmed', label: '\u78ba\u5b9a', className: 'metric-confirmed' },
+      { key: 'expectedMrr', label: '\u671f\u5f85MRR', className: 'metric-expected' },
+      { key: 'received', label: '\u53d7\u9818', className: 'metric-received' },
+      { key: 'debtMgmt', label: '\u50b5\u52d9\u7ba1\u7406', className: 'metric-debt' },
+      { key: 'debtMgmtLite', label: '\u50b5\u52d9\u7ba1\u7406Lite', className: 'metric-debt-lite' },
+      { key: 'expense', label: '\u7d4c\u8cbb', className: 'metric-expense' },
     ];
 
     var html = '<div class="snap-nav-inline"><span>\u6700\u7d42\u66f4\u65b0: ' + escapeHtml(this.state.lastUpdated || '') + '</span></div>';
+    var isLive = !App.state.snapshotDate;
+    var dates = App.state.snapshotDates;
+    var curDateLabel = isLive ? '\u4eca\u9031' : App.state.snapshotDate;
+    var canGoPrev = isLive ? (dates.length > 0) : true;
+    var canGoNext = !isLive;
+    html += '<div class="week-nav-bar">';
+    html += '<button class="week-nav-btn" ' + (canGoPrev ? '' : 'disabled') + ' onclick="App.weekNavPrev()">\u25c4</button>';
+    html += '<span class="week-nav-label' + (isLive ? ' week-nav-live' : '') + '">' + escapeHtml(curDateLabel) + '</span>';
+    html += '<button class="week-nav-btn" ' + (canGoNext ? '' : 'disabled') + ' onclick="App.weekNavNext()">\u25ba</button>';
+    if (!isLive) html += '<button class="week-nav-btn week-nav-today" onclick="App.weekNavToday()">\u4eca\u9031</button>';
+    html += '</div>';
     html += '<div class="period-chips">';
     ['Q', 'M5', 'M6', 'M7'].forEach(function(p) {
       html += '<span class="chip' + (period === p ? ' active' : '') + '" onclick="App.selectPeriod(\'' + p + '\')">' + blockLabel(p) + '</span>';
@@ -135,57 +159,503 @@ const App = {
     });
     html += '</div>';
 
+    var displayRows = [];
+    if (selectedGroup === '\u90e8\u5168\u4f53') {
+      if (overallTotal) displayRows.push(overallTotal);
+      groupTotals.forEach(function(groupTotal) { displayRows.push(groupTotal); });
+    } else {
+      var gt = groupTotals.find(function(m) { return m.group === selectedGroup; });
+      if (gt) displayRows.push(gt);
+      (membersByGroup[selectedGroup] || []).forEach(function(m) { displayRows.push(m); });
+    }
+
+    var isGlobalView = selectedGroup === '\u90e8\u5168\u4f53';
+    html += App.renderFcstTable_(displayRows, period, notes, breakdownCols, isGlobalView, fcstAdjForView, wowForView);
+    document.getElementById('fcst-content').innerHTML = html;
+  },
+
+  renderFcstTable_(displayRows, period, notes, breakdownCols, isGlobalView, fcstAdjMap, weekOverWeekMap) {
+    var fcstAdj = fcstAdjMap || {};
+    var wowMap = weekOverWeekMap || {};
+    var isSnapshotMode = !!App.state.snapshotDate;
+    var keyDealsExpanded = !!App.state.expandedAll.keyDeals;
+    var html = '<div class="expand-all-bar">';
+    var notesExpanded = false;
+    html += '<button class="expand-all-btn' + (keyDealsExpanded ? ' active' : '') + '" onclick="App.toggleExpandAll(\'keyDeals\')">Key Deal 常に展開</button>';
+    html += '<button class="expand-all-btn' + (notesExpanded ? ' active' : '') + '" onclick="App.toggleExpandAll(\'notes\')">備考・メモ 常に展開</button>';
+    html += '</div>';
+    html = html.replace(/<button class="expand-all-btn[^"]*" onclick="App\.toggleExpandAll\('notes'\)">[\s\S]*?<\/button>/, '');
     html += '<div class="table-wrapper fcst-table-wrap"><table><thead>';
     html += '<tr>';
-    html += '<th rowspan="2">\u62c5\u5f53\u8005</th>';
-    html += '<th rowspan="2">\u76ee\u6a19</th>';
-    html += '<th rowspan="2">FCST(MAX)</th>';
+    html += '<th rowspan="2" class="col-group col-group-start th-person">\u62c5\u5f53\u8005</th>';
     breakdownCols.forEach(function(col) {
-      html += '<th colspan="3" class="col-group col-group-start">' + escapeHtml(col.label) + '</th>';
+      var expanded = !!App.state.expandedMetrics[col.key];
+      var btnLabel = expanded ? '\u2212' : '\uff0b';
+      html += '<th colspan="' + (expanded ? '3' : '1') + '" class="col-group col-group-start ' + col.className + '">';
+      html += escapeHtml(col.label) + '<button class="col-expand-btn" onclick="App.toggleMetricDetails(\'' + col.key + '\')">' + btnLabel + '</button>';
+      html += '</th>';
     });
-    html += '<th rowspan="2">Key Deal</th>';
-    html += '<th rowspan="2">\u5099\u8003</th>';
+    html += '<th rowspan="2" class="col-group col-group-start th-keydeal keydeal-col">Key Deal</th>';
+    html += '<th rowspan="2" class="col-group col-group-start th-notes notes-col">\u5099\u8003\u30fb\u30e1\u30e2</th>';
     html += '</tr>';
     html += '<tr>';
-    breakdownCols.forEach(function() {
-      html += '<th class="sub-header col-group-start">Net</th>';
-      html += '<th class="sub-header">+</th>';
-      html += '<th class="sub-header">-</th>';
+    breakdownCols.forEach(function(col) {
+      var expanded = !!App.state.expandedMetrics[col.key];
+      var colDiff = App.state.diffToggles[col.key] || {};
+      html += '<th class="sub-header sub-header-net col-group-start">Net';
+      if (!col.noToggle) {
+        var netD = colDiff.net || {};
+        html += '<button class="diff-toggle-btn' + (netD.wow ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'net\', \'wow\')">\u5148\u9031\u6bd4</button>';
+        html += '<button class="diff-toggle-btn' + (netD.target ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'net\', \'target\')">\u76ee\u6a19\u5dee</button>';
+      }
+      html += '</th>';
+      if (expanded) {
+        var newExpD = colDiff.newExp || {};
+        var churnD = colDiff.churn || {};
+        html += '<th class="sub-header sub-header-plus">New+Exp';
+        if (!col.noToggle) {
+          html += '<button class="diff-toggle-btn' + (newExpD.wow ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'newExp\', \'wow\')">\u5148\u9031\u6bd4</button>';
+          html += '<button class="diff-toggle-btn' + (newExpD.target ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'newExp\', \'target\')">\u76ee\u6a19\u5dee</button>';
+        }
+        html += '</th>';
+        html += '<th class="sub-header sub-header-minus">Churn';
+        if (!col.noToggle) {
+          html += '<button class="diff-toggle-btn' + (churnD.wow ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'churn\', \'wow\')">\u5148\u9031\u6bd4</button>';
+          html += '<button class="diff-toggle-btn' + (churnD.target ? ' active' : '') + '" onclick="App.toggleDiff(\'' + col.key + '\', \'churn\', \'target\')">\u76ee\u6a19\u5dee</button>';
+        }
+        html += '</th>';
+      }
     });
     html += '</tr>';
     html += '</thead><tbody>';
 
     displayRows.forEach(function(member) {
       var rd = member && member[period] ? member[period] : {};
+      var memberKey = member.name + '|' + period;
+      rd.fcstAdjusted = fcstAdj[memberKey] || { net: 0, newExp: 0, churn: 0 };
       var noteKey = member.name + '|' + period;
       var noteVal = notes[noteKey] || '';
       var isTotal = member.isTotal;
-      html += '<tr' + (isTotal ? ' class="total-row"' : '') + '>';
-      html += '<td>' + (isTotal ? '' : '\u3000') + escapeHtml(member.name || '') + '</td>';
-      html += '<td>' + fmtNum(rd.target) + '</td>';
-      html += '<td>' + fmtNum(rd.fcstMax) + '</td>';
+      var isOverallTotal = isTotal && member.group === 'BOAM';
+      var rowClass = isOverallTotal ? ' class="overall-total-row"' : (isTotal && !isGlobalView ? ' class="total-row"' : '');
+      html += '<tr' + rowClass + '>';
+      html += '<td class="td-person">' + (isTotal ? '' : '\u3000') + escapeHtml(displayMemberName(member)) + '</td>';
       breakdownCols.forEach(function(col) {
-        var b = rd[col.key] || { net: 0, newExp: 0, churn: 0 };
-        html += '<td class="col-group-start"><span class="' + valClassNum(b.net) + '">' + fmtNum(b.net) + '</span></td>';
-        html += '<td><span class="val-positive">' + fmtNum(b.newExp) + '</span></td>';
-        html += '<td><span class="val-negative">' + fmtNum(b.churn) + '</span></td>';
+        var b;
+        if (col.isTarget) {
+          var netVal = typeof rd.target === 'number' ? rd.target : (rd.target || 0);
+          b = { net: netVal, newExp: 0, churn: 0 };
+        } else {
+          b = rd[col.key] || { net: 0, newExp: 0, churn: 0 };
+        }
+        var expanded = !!App.state.expandedMetrics[col.key];
+        var colDiff = App.state.diffToggles[col.key] || {};
+        var netD = colDiff.net || {};
+        var newExpD = colDiff.newExp || {};
+        var churnD = colDiff.churn || {};
+        var wowEntry = (weekOverWeekMap && weekOverWeekMap[memberKey] && weekOverWeekMap[memberKey][col.key])
+          ? weekOverWeekMap[memberKey][col.key]
+          : { net: 0, newExp: 0, churn: 0 };
+        var targetBreakdown = (typeof rd.target === 'object' && rd.target !== null)
+          ? rd.target
+          : { net: (rd.target || 0), newExp: 0, churn: 0 };
+        var targetDiffNet = (b.net || 0) - targetBreakdown.net;
+        var targetDiffNewExp = (b.newExp || 0) - targetBreakdown.newExp;
+        var targetDiffChurn = (b.churn || 0) - targetBreakdown.churn;
+
+        if (col.editable && !col.isTarget) {
+          var adjCell = isSnapshotMode
+            ? '<span class="' + valClassNum(b.net) + '">' + fmtNum(b.net) + '</span>'
+            : App.renderFcstAdjCell_(member.name, period, 'net', b.net);
+          var adjNetBadges = '';
+          if (!col.noToggle && !isSnapshotMode && netD.wow) {
+            adjNetBadges += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.net) + '">' + fmtDiffNum(wowEntry.net) + '</span>';
+          }
+          html += '<td class="col-group-start">' + adjCell + adjNetBadges + '</td>';
+        } else {
+          var netVal = typeof b === 'number' ? b : (b.net || 0);
+          var netBadges = '';
+          if (!col.noToggle) {
+            if (netD.wow) {
+              netBadges += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.net) + '">' + fmtDiffNum(wowEntry.net) + '</span>';
+            }
+            if (netD.target) {
+              netBadges += '<span class="diff-badge ' + diffBadgeClass_(targetDiffNet) + '">' + fmtDiffNum(targetDiffNet) + '</span>';
+            }
+          }
+          html += '<td class="col-group-start"><span class="' + valClassNum(netVal) + '">' + fmtNum(netVal) + '</span>' + netBadges + '</td>';
+        }
+        if (expanded) {
+          if (col.editable && !isSnapshotMode) {
+            var adjNewExpBadge = '';
+            if (!col.noToggle) {
+              if (newExpD.wow) {
+                adjNewExpBadge += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.newExp) + '">' + fmtDiffNum(wowEntry.newExp) + '</span>';
+              }
+              if (newExpD.target) {
+                adjNewExpBadge += '<span class="diff-badge ' + diffBadgeClass_(targetDiffNewExp) + '">' + fmtDiffNum(targetDiffNewExp) + '</span>';
+              }
+            }
+            html += '<td>' + App.renderFcstAdjCell_(member.name, period, 'newExp', b.newExp) + adjNewExpBadge + '</td>';
+
+            var adjChurnBadge = '';
+            if (!col.noToggle) {
+              if (churnD.wow) {
+                adjChurnBadge += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.churn) + '">' + fmtDiffNum(wowEntry.churn) + '</span>';
+              }
+              if (churnD.target) {
+                adjChurnBadge += '<span class="diff-badge ' + diffBadgeClass_(targetDiffChurn) + '">' + fmtDiffNum(targetDiffChurn) + '</span>';
+              }
+            }
+            html += '<td>' + App.renderFcstAdjCell_(member.name, period, 'churn', b.churn) + adjChurnBadge + '</td>';
+          } else {
+            var newExpBadge = '';
+            if (!col.noToggle) {
+              if (newExpD.wow) {
+                newExpBadge += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.newExp) + '">' + fmtDiffNum(wowEntry.newExp) + '</span>';
+              }
+              if (newExpD.target) {
+                newExpBadge += '<span class="diff-badge ' + diffBadgeClass_(targetDiffNewExp) + '">' + fmtDiffNum(targetDiffNewExp) + '</span>';
+              }
+            }
+            html += '<td><span class="val-positive">' + fmtNum(b.newExp) + '</span>' + newExpBadge + '</td>';
+
+            var churnBadge = '';
+            if (!col.noToggle) {
+              if (churnD.wow) {
+                churnBadge += '<span class="diff-badge ' + diffBadgeClass_(wowEntry.churn) + '">' + fmtDiffNum(wowEntry.churn) + '</span>';
+              }
+              if (churnD.target) {
+                churnBadge += '<span class="diff-badge ' + diffBadgeClass_(targetDiffChurn) + '">' + fmtDiffNum(targetDiffChurn) + '</span>';
+              }
+            }
+            html += '<td><span class="val-negative">' + fmtNum(b.churn) + '</span>' + churnBadge + '</td>';
+          }
+        }
       });
       var kdText = (rd.keyDeals || []).map(function(kd) {
-        return escapeHtml(kd.company + ' ' + fmtMan(kd.monthlyMrr) + '(\u6708\u984d)/' + kd.phase + '/' + fmtMan(kd.fcst));
+        return escapeHtml(kd.company + ' ' + fmtMan(kd.monthlyMrr) + '/' + kd.phase + '/' + fmtMan(kd.fcst));
       }).join('<br>');
-      html += '<td style="text-align:left;font-size:11px;min-width:160px;">' + kdText + '</td>';
-      var escapedNote = escapeHtml(noteVal);
-      var escapedName = escapeAttr(member.name || '');
-      var escapedPeriod = escapeAttr(period);
-      html += '<td style="text-align:left;min-width:120px;">' +
-        '<textarea class="notes-textarea" data-name="' + escapedName + '" data-period="' + escapedPeriod + '" onchange="App.noteChanged(this)">' + escapedNote + '</textarea>' +
-        '<button class="notes-save-btn" onclick="App.saveNote(this.previousSibling)">保存</button>' +
-        '</td>';
+      html += '<td class="td-keydeal">' + App.renderKeyDealCell_(member, period, rd.keyDeals || [], kdText) + '</td>';
+      html += '<td class="td-notes">' + App.renderNoteCell_(member, period, noteVal) + '</td>';
       html += '</tr>';
     });
 
     html += '</tbody></table></div>';
-    document.getElementById('fcst-content').innerHTML = html;
+    return html;
+  },
+
+  toggleMetricDetails(metricKey) {
+    this.state.expandedMetrics[metricKey] = !this.state.expandedMetrics[metricKey];
+    this.renderFcst();
+  },
+
+  toggleExpandAll(key) {
+    this.state.expandedAll[key] = !this.state.expandedAll[key];
+    this.renderFcst();
+  },
+
+  toggleDiff(metricKey, subCol, type) {
+    if (!App.state.diffToggles[metricKey]) App.state.diffToggles[metricKey] = {};
+    if (!App.state.diffToggles[metricKey][subCol]) App.state.diffToggles[metricKey][subCol] = {};
+    App.state.diffToggles[metricKey][subCol][type] = !App.state.diffToggles[metricKey][subCol][type];
+    App.renderFcst();
+  },
+
+  toggleNoteExpand(name, period) {
+    var key = name + '|' + period;
+    if (App.state.expandedNoteKeys[key]) {
+      delete App.state.expandedNoteKeys[key];
+    } else {
+      App.state.expandedNoteKeys[key] = true;
+    }
+    App.renderFcst();
+  },
+
+  weekNavPrev() {
+    var dates = App.state.snapshotDates;
+    if (!dates.length) return;
+    if (!App.state.snapshotDate) {
+      App.loadSnapshotByDate_(dates[0]);
+    } else {
+      var idx = dates.indexOf(App.state.snapshotDate);
+      if (idx < dates.length - 1) App.loadSnapshotByDate_(dates[idx + 1]);
+    }
+  },
+
+  weekNavNext() {
+    var dates = App.state.snapshotDates;
+    if (!App.state.snapshotDate) return;
+    var idx = dates.indexOf(App.state.snapshotDate);
+    if (idx > 0) {
+      App.loadSnapshotByDate_(dates[idx - 1]);
+    } else {
+      App.weekNavToday();
+    }
+  },
+
+  weekNavToday() {
+    App.state.snapshotDate = null;
+    App.state.snapshotViewData = null;
+    App.renderFcst();
+  },
+
+  loadSnapshotByDate_(dateStr) {
+    if (App.state.snapshotViewData && App.state.snapshotViewData.date === dateStr) {
+      App.state.snapshotDate = dateStr;
+      App.renderFcst();
+      return;
+    }
+    App.showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        App.showLoading(false);
+        if (result.error) { alert('\u8aad\u307f\u8fbc\u307f\u30a8\u30e9\u30fc: ' + result.error); return; }
+        App.state.snapshotDate = dateStr;
+        App.state.snapshotViewData = result;
+        App.renderFcst();
+      })
+      .withFailureHandler(function(e) {
+        App.showLoading(false);
+        alert('\u30a8\u30e9\u30fc: ' + ((e && e.message) || e));
+      })
+      .getSnapshotData(dateStr);
+  },
+
+  renderFcstAdjCell_(name, period, field, value) {
+    var displayVal = (value === 0 || value === null || value === undefined) ? '\u672a\u5165\u529b' : fmtNum(value);
+    return '<span class="fcst-adj-cell ' + valClassNum(value) + '" ' +
+      'data-name="' + escapeAttr(name) + '" ' +
+      'data-period="' + escapeAttr(period) + '" ' +
+      'data-field="' + field + '" ' +
+      'data-val="' + (Number(value) || 0) + '" ' +
+      'onclick="App.activateFcstAdjInput(this)">' +
+      displayVal + '</span>';
+  },
+
+  activateFcstAdjInput(el) {
+    var name = el.dataset.name;
+    var period = el.dataset.period;
+    var field = el.dataset.field;
+    var val = Number(el.dataset.val) || 0;
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'edit-input fcst-adj-input';
+    input.value = val === 0 ? '' : val;
+    input.style.width = '80px';
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+    var committed = false;
+    var commit = function() {
+      if (committed) return;
+      committed = true;
+      var newVal = input.value === '' ? 0 : (Number(input.value) || 0);
+      App.commitFcstAdj(name, period, field, newVal);
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        input.removeEventListener('blur', commit);
+        commit();
+      }
+      if (e.key === 'Escape') {
+        committed = true;
+        App.renderFcst();
+      }
+    });
+  },
+
+  commitFcstAdj(name, period, field, newVal) {
+    var key = name + '|' + period;
+    var adj = Object.assign({ net: 0, newExp: 0, churn: 0 }, App.state.fcstAdjusted[key] || {});
+    if (field === 'net') {
+      adj.net = newVal;
+      adj.newExp = 0;
+      adj.churn = 0;
+    } else {
+      adj[field] = newVal;
+      adj.net = (Number(adj.newExp) || 0) + (Number(adj.churn) || 0);
+    }
+    App.state.fcstAdjusted[key] = adj;
+    App.renderFcst();
+    google.script.run
+      .withSuccessHandler(function(r) { if (r && r.error) alert('\u4fdd\u5b58\u5931\u6557: ' + r.error); })
+      .withFailureHandler(function(e) { alert('\u4fdd\u5b58\u5931\u6557: ' + ((e && e.message) || e)); })
+      .saveFcstAdjusted2({ name: name, period: period, net: adj.net, newExp: adj.newExp, churn: adj.churn });
+  },
+
+  renderKeyDealCell_(member, period, keyDeals, previewHtml) {
+    var previewTextSafe = '';
+    if (keyDeals && keyDeals.length) {
+      if (keyDeals.length === 1) {
+        var previewDeal = keyDeals[0] || {};
+        previewTextSafe = [previewDeal.company, fmtMan(previewDeal.monthlyMrr), previewDeal.phase, fmtMan(previewDeal.fcst)].filter(Boolean).join(' / ');
+      } else {
+        previewTextSafe = (keyDeals[0].company || '') + ' ほか' + keyDeals.length + '件';
+      }
+    }
+    if (keyDeals && keyDeals.length > 1) {
+      previewTextSafe = (keyDeals[0].company || '') + ' +' + (keyDeals.length - 1) + ' more';
+    }
+    if (!App.state.expandedAll.keyDeals) {
+      return '<div class="cell-detail">' +
+        '<div class="cell-detail-preview' + (previewTextSafe ? '' : ' empty') + '">' + escapeHtml(previewTextSafe || '譛ｪ險ｭ螳・') + '</div>' +
+        '<button class="cell-detail-btn" onclick="App.openKeyDealModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">隧ｳ邏ｰ</button>' +
+      '</div>';
+    }
+    var previewText = previewHtml ? previewHtml.replace(/<br>/g, ' / ') : '';
+    if (App.state.expandedAll.keyDeals) {
+      return '<div class="cell-detail">' +
+        '<div class="cell-detail-preview' + (previewHtml ? '' : ' empty') + ' cell-detail-expanded">' + (previewHtml || '未設定') + '</div>' +
+      '</div>';
+    }
+    return '<div class="cell-detail">' +
+      '<div class="cell-detail-preview' + (previewText ? '' : ' empty') + '">' + (previewText || '未設定') + '</div>' +
+      '<button class="cell-detail-btn" onclick="App.openKeyDealModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">詳細</button>' +
+    '</div>';
+  },
+
+  renderNoteCell_(member, period, noteVal) {
+    var notePreview = noteVal || '';
+    if (notePreview.length > 60) notePreview = notePreview.slice(0, 60) + '...';
+    if (!App.state.expandedAll.notes) {
+      return '<div class="cell-detail">' +
+        '<div class="cell-detail-preview' + (notePreview ? '' : ' empty') + '">' + escapeHtml(notePreview || '譛ｪ蜈･蜉・') + '</div>' +
+        '<button class="cell-detail-btn" onclick="App.openNoteModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">隧ｳ邏ｰ</button>' +
+      '</div>';
+    }
+    if (App.state.expandedAll.notes) {
+      return '<div class="cell-detail">' +
+        '<div class="cell-detail-preview' + (noteVal ? '' : ' empty') + ' cell-detail-expanded">' + escapeHtml(noteVal || '未入力') + '</div>' +
+      '</div>';
+    }
+    return '<div class="cell-detail">' +
+      '<div class="cell-detail-preview' + (noteVal ? '' : ' empty') + '">' + escapeHtml(noteVal || '未入力') + '</div>' +
+      '<button class="cell-detail-btn" onclick="App.openNoteModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">詳細</button>' +
+    '</div>';
+  },
+
+  openKeyDealModal(name, period) {
+    var member = this.findMember_(name);
+    var rd = member && member[period] ? member[period] : {};
+    var deals = rd.keyDeals || [];
+    var body = '';
+    if (!deals.length) {
+      body = '<div class="cell-detail-preview empty">Key Deal はありません</div>';
+    } else {
+      body = '<div class="detail-section-title">Key Deal</div><div class="deal-list">' + deals.map(function(kd) {
+        var dealTitle = escapeHtml(kd.company + ' ' + fmtMan(kd.monthlyMrr) + '/' + kd.phase + '/' + fmtMan(kd.fcst));
+        var titleHtml;
+        if (kd.oppId) {
+          var sfUrl = 'https://sansan.lightning.force.com/lightning/r/Opportunity/' + encodeURIComponent(kd.oppId) + '/view';
+          titleHtml = '<a href="' + sfUrl + '" target="_blank" class="deal-card-link">' + dealTitle + '</a>';
+        } else {
+          titleHtml = dealTitle;
+        }
+        return '<div class="deal-card">' +
+          '<div class="deal-card-main">' + titleHtml + '</div>' +
+          '<div class="deal-card-sub">' + escapeHtml(displayMemberName(member) + ' / ' + blockLabel(period)) + '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+    }
+    this.openDetailModal_('Key Deal', displayMemberName(member) + ' / ' + blockLabel(period), body, '<button class="detail-btn-secondary" onclick="App.closeDetailModal()">閉じる</button>');
+  },
+
+  openNoteModal(name, period) {
+    var member = this.findMember_(name);
+    var noteKey = name + '|' + period;
+    var notes = (this.state.currentData && this.state.currentData.notes) || {};
+    var noteVal = notes[noteKey] || '';
+    var body = '<div class="detail-section-title">\u5099\u8003\u30fb\u30e1\u30e2</div>' +
+      '<textarea id="detail-note-textarea" class="notes-textarea" style="min-height:200px;flex:1;" placeholder="\u5099\u8003\u30fb\u30e1\u30e2\u3092\u5165\u529b">' + escapeHtml(noteVal) + '</textarea>';
+    var footer = '<button class="detail-btn-secondary" onclick="App.closeDetailModal()">キャンセル</button>' +
+      '<button class="detail-btn-primary" onclick="App.saveNoteFromModal(\'' + escapeAttr(name) + '\', \'' + escapeAttr(period) + '\')">保存</button>';
+    this.openDetailModal_('\u5099\u8003\u30fb\u30e1\u30e2', displayMemberName(member) + ' / ' + blockLabel(period), body, footer);
+  },
+
+  saveNoteFromModal(name, period) {
+    var textarea = document.getElementById('detail-note-textarea');
+    if (!textarea) return;
+    var note = textarea.value;
+    if (!this.state.currentData.notes) this.state.currentData.notes = {};
+    this.state.currentData.notes[name + '|' + period] = note;
+    google.script.run
+      .withSuccessHandler(function(r) {
+        if (r && r.error) {
+          alert('保存失敗: ' + r.error);
+          return;
+        }
+        App.closeDetailModal();
+        App.renderFcst();
+      })
+      .withFailureHandler(function(e) { alert('保存失敗: ' + ((e && e.message) || e)); })
+      .saveNote({ name: name, period: period, note: note });
+  },
+
+  renderKeyDealCell_(member, period, keyDeals, previewHtml) {
+    var previewTextSafe = '';
+    if (keyDeals && keyDeals.length) {
+      if (keyDeals.length === 1) {
+        var previewDeal = keyDeals[0] || {};
+        previewTextSafe = [previewDeal.company, fmtMan(previewDeal.monthlyMrr), previewDeal.phase, fmtMan(previewDeal.fcst)].filter(Boolean).join(' / ');
+      } else {
+        previewTextSafe = (keyDeals[0].company || '') + ' +' + (keyDeals.length - 1) + ' \u307b\u304b';
+      }
+    }
+    if (!App.state.expandedAll.keyDeals) {
+      return '<div class="cell-detail">' +
+        '<div class="cell-detail-preview' + (previewTextSafe ? '' : ' empty') + '">' + escapeHtml(previewTextSafe || '\u672a\u8a2d\u5b9a') + '</div>' +
+        '<button class="cell-detail-btn" onclick="App.openKeyDealModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">\u8a73\u7d30</button>' +
+      '</div>';
+    }
+    return '<div class="cell-detail">' +
+      '<div class="cell-detail-preview' + (previewHtml ? '' : ' empty') + ' cell-detail-expanded">' + (previewHtml || '\u672a\u8a2d\u5b9a') + '</div>' +
+    '</div>';
+  },
+
+  renderNoteCell_(member, period, noteVal) {
+    var key = member.name + '|' + period;
+    var expanded = !!App.state.expandedNoteKeys[key];
+    var detailBtnLabel = expanded ? '\u9589\u3058\u308b' : '\u8a73\u7d30';
+    var nameAttr = escapeAttr(member.name || '');
+    var periodAttr = escapeAttr(period);
+
+    var contentHtml;
+    if (expanded) {
+      contentHtml = '<div class="cell-detail-note-full' + (noteVal ? '' : ' empty') + '">' +
+        escapeHtml(noteVal || '\u672a\u5165\u529b') + '</div>';
+    } else {
+      contentHtml = '<div class="cell-detail-note-preview' + (noteVal ? '' : ' empty') + '">' +
+        escapeHtml(noteVal || '\u672a\u5165\u529b') + '</div>';
+    }
+
+    var actionsHtml = '<div class="cell-detail-actions">';
+    actionsHtml += '<button class="cell-detail-btn" onclick="App.toggleNoteExpand(\'' + nameAttr + '\', \'' + periodAttr + '\')">' + detailBtnLabel + '</button>';
+    actionsHtml += '<button class="cell-detail-btn cell-detail-btn-input" onclick="App.openNoteModal(\'' + nameAttr + '\', \'' + periodAttr + '\')">\u5165\u529b</button>';
+    actionsHtml += '</div>';
+
+    return '<div class="cell-detail">' + contentHtml + actionsHtml + '</div>';
+  },
+
+  openDetailModal_(title, kicker, bodyHtml, footerHtml) {
+    document.getElementById('detail-modal-title').textContent = title;
+    document.getElementById('detail-modal-kicker').textContent = kicker;
+    document.getElementById('detail-modal-body').innerHTML = bodyHtml;
+    document.getElementById('detail-modal-footer').innerHTML = footerHtml || '';
+    document.getElementById('detail-modal').classList.remove('hidden');
+  },
+
+  closeDetailModal() {
+    document.getElementById('detail-modal').classList.add('hidden');
+  },
+
+  findMember_(name) {
+    var data = this.state.snapshotDate && this.state.snapshotViewData ? this.state.snapshotViewData : this.state.currentData;
+    if (!data || !Array.isArray(data.members)) return null;
+    return data.members.find(function(member) {
+      return member && member.name === name;
+    }) || null;
   },
 
   noteChanged(textarea) {
@@ -280,9 +750,37 @@ const App = {
   },
 
   populateOppFilters() {
-    populateSelect('opp-dept-select', uniqueValues(this.state.opps, 'dept'));
-    populateSelect('opp-phase-select', uniqueValues(this.state.opps, 'phase'));
-    populateSelect('opp-type-select', uniqueValues(this.state.opps, 'type'));
+    var rows = this.getOppRowsForView_();
+    populateSelect('opp-dept-select', uniqueValues(rows, 'dept'));
+    populateSelect('opp-phase-select', uniqueValues(rows, 'phase'));
+    populateSelect('opp-type-select', uniqueValues(rows, 'type'));
+  },
+
+  reloadOpps() {
+    App.showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        App.showLoading(false);
+        if (result && result.error) { App.showError(result.error); return; }
+        App.state.opps = ((result && result.rows) || []).map(function(opp) {
+          opp._base = App.extractOppBase_(opp);
+          return opp;
+        });
+        App.state.oppsLastUpdated = (result && result.lastUpdated) || '';
+        App.state.oppSnapshotDates = (result && result.snapshotDates) || [];
+        App.state.oppSnapshotDate = null;
+        App.state.oppSnapshotRows = null;
+        App.state.editedPaths.clear();
+        App.populateOppFilters();
+        App.updateEditBadge();
+        App.renderOpps();
+      })
+      .withFailureHandler(App.showError)
+      .getOpportunities();
+  },
+
+  getOppRowsForView_() {
+    return this.state.oppSnapshotDate ? (this.state.oppSnapshotRows || []) : this.state.opps;
   },
 
   renderOpps() {
@@ -290,32 +788,70 @@ const App = {
     const phase = document.getElementById('opp-phase-select').value;
     const type = document.getElementById('opp-type-select').value;
     const fields = ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
-    const filtered = this.state.opps.filter(function(opp) {
+    const sourceRows = this.getOppRowsForView_();
+    const filtered = sourceRows.filter(function(opp) {
       return (dept === 'all' || opp.dept === dept) && (phase === 'all' || opp.phase === phase) && (type === 'all' || opp.type === type);
     });
-    document.getElementById('opp-count').textContent = filtered.length + '件';
+    const isLive = !this.state.oppSnapshotDate;
+    const label = isLive ? '今週' : this.state.oppSnapshotDate;
+    const canGoPrev = isLive ? this.state.oppSnapshotDates.length > 0 : true;
+    const canGoNext = !isLive;
+    document.getElementById('opp-count').textContent = filtered.length + '件 / 最終更新 ' + (this.state.oppsLastUpdated || '-');
+
+    let navHtml = '';
+    navHtml += '<div class="week-nav-bar">';
+    navHtml += '<button class="week-nav-btn" ' + (canGoPrev ? '' : 'disabled') + ' onclick="App.oppWeekNavPrev()">◄</button>';
+    navHtml += '<span class="week-nav-label' + (isLive ? ' week-nav-live' : '') + '">' + escapeHtml(label) + '</span>';
+    navHtml += '<button class="week-nav-btn" ' + (canGoNext ? '' : 'disabled') + ' onclick="App.oppWeekNavNext()">►</button>';
+    if (!isLive) navHtml += '<button class="week-nav-btn week-nav-today" onclick="App.oppWeekNavToday()">今週</button>';
+    navHtml += '</div>';
+    document.getElementById('opp-week-nav').innerHTML = navHtml;
 
     const html = filtered.map(function(opp) {
+      const checkKey = editKey({ type: 'oppKeyDeal', oppId: opp.oppId });
+      const checked = opp.keyDeal ? ' checked' : '';
+      const editable = isLive && !App.state.oppSnapshotDate;
       return '<tr>' +
-        '<td style="text-align:left;font-weight:600;">' + escapeHtml(opp.dealName) + '</td>' +
-        '<td style="text-align:left;">' + escapeHtml(opp.targetMonth || '') + '</td>' +
-        '<td style="text-align:left;">' + escapeHtml(opp.dept || '') + '</td>' +
-        '<td style="text-align:left;" class="' + (opp.type === 'Churn' ? 'val-negative' : opp.type === 'New' ? 'val-positive' : 'val-neutral') + '">' + escapeHtml(opp.type || '') + '</td>' +
+        '<td>' + escapeHtml(opp.completedMonth || '') + '</td>' +
+        '<td>' + escapeHtml(opp.dept || '') + '</td>' +
+        '<td class="' + (opp.type === 'Churn' ? 'val-negative' : opp.type === 'New' ? 'val-positive' : 'val-neutral') + '">' + escapeHtml(opp.type || '') + '</td>' +
+        '<td>' + escapeHtml(opp.subOwner || '') + '</td>' +
         '<td style="text-align:left;">' + escapeHtml(opp.phase || '') + '</td>' +
         '<td style="text-align:left;">' + escapeHtml(opp.forecast || '') + '</td>' +
+        '<td style="text-align:left;">' + escapeHtml(opp.scheduleOrCloseDate || '') + '</td>' +
+        '<td class="opp-name-cell" style="text-align:left;font-weight:600;">' + escapeHtml(opp.dealName) + '</td>' +
+        '<td>' + fmtNum(opp.allocationPercent) + '</td>' +
         '<td>' + fmtNum(opp.mrr) + '</td>' +
-        fields.map(function(field) { return '<td>' + editCell(opp[field].sfNew, { type: 'oppSf', rowIndex: opp.rowIndex, field: field }, App.state.editedPaths) + '</td>'; }).join('') +
-        '<td style="text-align:left;color:var(--color-text-sub);font-size:12px;">' + escapeHtml(opp.comment || opp.notes || '') + '</td>' +
+        '<td>' + fmtNum(opp.initialCost) + '</td>' +
+        '<td>' + (editable
+          ? '<input type="checkbox" class="opp-checkbox" data-key="' + escapeAttr(checkKey) + '"' + checked + ' onchange="App.toggleOppKeyDeal(\'' + escapeAttr(opp.oppId) + '\', this.checked)">'
+          : (opp.keyDeal ? 'TRUE' : 'FALSE')) + '</td>' +
+        fields.map(function(field) {
+          return '<td class="opp-cell-readonly">' + fmtNum(opp[field].sfValue) + '</td><td>' + (
+            editable
+              ? editCell(opp[field].draftValue, { type: 'oppDraft', oppId: opp.oppId, field: field }, App.state.editedPaths)
+              : '<span class="opp-cell-readonly">' + fmtNum(opp[field].draftValue) + '</span>'
+          ) + '</td>';
+        }).join('') +
+        '<td class="opp-cell-comment">' + (
+          editable
+            ? editTextCell(opp.fcstComment, { type: 'oppComment', oppId: opp.oppId }, App.state.editedPaths)
+            : '<span class="opp-cell-readonly">' + escapeHtml(opp.fcstComment || '') + '</span>'
+        ) + '</td>' +
+        '<td>' + escapeHtml(opp.firstMeetingDate || '') + '</td>' +
+        '<td class="opp-summary-cell">' + escapeHtml(opp.summary || '') + '</td>' +
+        '<td class="opp-summary-cell">' + escapeHtml(opp.optionFeatures || '') + '</td>' +
+        '<td class="opp-summary-cell">' + escapeHtml(opp.initiative || '') + '</td>' +
         '</tr>';
     }).join('');
-    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="15" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
+    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="31" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
   },
 
   startEditFromEl(el) {
     const meta = JSON.parse(el.dataset.meta);
-    const original = Number(el.dataset.val);
+    const original = meta.type === 'oppComment' ? String(el.dataset.val || '') : Number(el.dataset.val);
     const input = document.createElement('input');
-    input.type = 'number';
+    input.type = meta.type === 'oppComment' ? 'text' : 'number';
     input.className = 'edit-input';
     input.value = original;
     el.replaceWith(input);
@@ -323,8 +859,8 @@ const App = {
     input.select();
 
     const commit = () => {
-      const newValue = Number(input.value);
-      if (isNaN(newValue)) {
+      const newValue = meta.type === 'oppComment' ? String(input.value || '') : Number(input.value);
+      if (meta.type !== 'oppComment' && isNaN(newValue)) {
         this.renderAll();
         return;
       }
@@ -344,21 +880,55 @@ const App = {
   commitEdit(meta, newValue, originalValue) {
     const key = editKey(meta);
 
-    if (meta.type === 'oppSf') {
-      const opp = this.state.opps.find(function(item) { return item.rowIndex === meta.rowIndex; });
-      if (opp) opp[meta.field].sfNew = newValue;
-      google.script.run
-        .withSuccessHandler(function(res) {
-          if (res && res.error) alert('保存失敗: ' + res.error);
-        })
-        .saveOppSfValue({ rowIndex: meta.rowIndex, field: meta.field, value: newValue });
+    if (meta.type === 'oppDraft') {
+      const opp = this.findOpp_(meta.oppId);
+      if (opp) {
+        opp[meta.field].draftValue = newValue;
+        this.syncOppEditedState_(opp, key, newValue, opp._base[meta.field]);
+      }
     }
 
-    if (newValue !== originalValue) this.state.editedPaths.add(key);
-    else this.state.editedPaths.delete(key);
+    if (meta.type === 'oppComment') {
+      const opp = this.findOpp_(meta.oppId);
+      if (opp) {
+        opp.fcstComment = newValue;
+        this.syncOppEditedState_(opp, key, newValue, opp._base.fcstComment);
+      }
+    }
 
     this.updateEditBadge();
     this.renderAll();
+  },
+
+  toggleOppKeyDeal(oppId, checked) {
+    var opp = this.findOpp_(oppId);
+    if (!opp) return;
+    opp.keyDeal = !!checked;
+    this.syncOppEditedState_(opp, editKey({ type: 'oppKeyDeal', oppId: oppId }), opp.keyDeal, opp._base.keyDeal);
+    this.updateEditBadge();
+  },
+
+  findOpp_(oppId) {
+    return this.state.opps.find(function(item) { return item.oppId === oppId; });
+  },
+
+  extractOppBase_(opp) {
+    return {
+      keyDeal: !!opp.keyDeal,
+      fcstCommit: safeNum(opp.fcstCommit && opp.fcstCommit.draftValue),
+      fcstMin: safeNum(opp.fcstMin && opp.fcstMin.draftValue),
+      fcstMax: safeNum(opp.fcstMax && opp.fcstMax.draftValue),
+      received: safeNum(opp.received && opp.received.draftValue),
+      debtMgmt: safeNum(opp.debtMgmt && opp.debtMgmt.draftValue),
+      debtMgmtLite: safeNum(opp.debtMgmtLite && opp.debtMgmtLite.draftValue),
+      expense: safeNum(opp.expense && opp.expense.draftValue),
+      fcstComment: String(opp.fcstComment || '')
+    };
+  },
+
+  syncOppEditedState_(opp, key, value, baseValue) {
+    if (String(value) !== String(baseValue)) this.state.editedPaths.add(key);
+    else this.state.editedPaths.delete(key);
   },
 
   updateEditBadge() {
@@ -370,9 +940,110 @@ const App = {
   },
 
   clearEditedHighlights() {
+    if (this.state.activeView === 'opps') {
+      this.reloadOpps();
+      return;
+    }
     this.state.editedPaths.clear();
     this.updateEditBadge();
     this.renderAll();
+  },
+
+  saveOppDrafts() {
+    if (!this.state.editedPaths.size) return;
+
+    var changes = this.state.opps.reduce(function(list, opp) {
+      if (!opp || !opp._base) return list;
+      var fields = {};
+      ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'].forEach(function(field) {
+        var current = safeNum(opp[field] && opp[field].draftValue);
+        if (String(current) !== String(opp._base[field])) fields[field] = current;
+      });
+      if (String(opp.fcstComment || '') !== String(opp._base.fcstComment || '')) fields.comment = String(opp.fcstComment || '');
+
+      var keyDealChanged = !!opp.keyDeal !== !!opp._base.keyDeal;
+      if (!keyDealChanged && !Object.keys(fields).length) return list;
+
+      list.push({
+        oppId: opp.oppId,
+        keyDeal: !!opp.keyDeal,
+        proposalProductIds: opp.proposalProductIds || {},
+        fields: fields
+      });
+      return list;
+    }, []);
+
+    if (!changes.length) return;
+
+    App.showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        App.showLoading(false);
+        if (result && result.error) {
+          App.showError(result.error);
+          return;
+        }
+        var skipped = ((result.exportProposal && result.exportProposal.skipped) || []);
+        if (skipped.length) {
+          alert('一部保存しました。提案商品IDが無い項目はスキップしています: ' + skipped.length + '件');
+        }
+        App.reloadOpps();
+      })
+      .withFailureHandler(App.showError)
+      .saveOppDrafts(changes);
+  },
+
+  oppWeekNavPrev() {
+    if (this.state.editedPaths.size) {
+      alert('未保存の変更があります。保存または破棄してから移動してください。');
+      return;
+    }
+    if (!this.state.oppSnapshotDate) {
+      if (this.state.oppSnapshotDates.length) this.loadOppSnapshot_(this.state.oppSnapshotDates[0]);
+      return;
+    }
+    var idx = this.state.oppSnapshotDates.indexOf(this.state.oppSnapshotDate);
+    if (idx < this.state.oppSnapshotDates.length - 1) this.loadOppSnapshot_(this.state.oppSnapshotDates[idx + 1]);
+  },
+
+  oppWeekNavNext() {
+    if (this.state.editedPaths.size) {
+      alert('未保存の変更があります。保存または破棄してから移動してください。');
+      return;
+    }
+    if (!this.state.oppSnapshotDate) return;
+    var idx = this.state.oppSnapshotDates.indexOf(this.state.oppSnapshotDate);
+    if (idx > 0) this.loadOppSnapshot_(this.state.oppSnapshotDates[idx - 1]);
+    else this.oppWeekNavToday();
+  },
+
+  oppWeekNavToday() {
+    if (this.state.editedPaths.size) {
+      alert('未保存の変更があります。保存または破棄してから移動してください。');
+      return;
+    }
+    this.state.oppSnapshotDate = null;
+    this.state.oppSnapshotRows = null;
+    this.populateOppFilters();
+    this.renderOpps();
+  },
+
+  loadOppSnapshot_(dateStr) {
+    App.showLoading(true);
+    google.script.run
+      .withSuccessHandler(function(result) {
+        App.showLoading(false);
+        if (result && result.error) {
+          App.showError(result.error);
+          return;
+        }
+        App.state.oppSnapshotDate = dateStr;
+        App.state.oppSnapshotRows = (result && result.rows) || [];
+        App.populateOppFilters();
+        App.renderOpps();
+      })
+      .withFailureHandler(App.showError)
+      .getOppSnapshotData(dateStr);
   },
 
   scrollToSaveBar() {
@@ -404,6 +1075,13 @@ function editCell(val, meta, editedPaths) {
   return '<span class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + safeNum(val) + '" onclick="App.startEditFromEl(this)">' + fmtNum(val) + '</span>';
 }
 
+function editTextCell(val, meta, editedPaths) {
+  const key = editKey(meta);
+  const cls = editedPaths && editedPaths.has(key) ? 'editable-cell edited' : 'editable-cell';
+  const safe = String(val === null || val === undefined ? '' : val);
+  return '<span class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + escapeAttr(safe) + '" onclick="App.startEditFromEl(this)">' + escapeHtml(safe || ' ') + '</span>';
+}
+
 function editKey(meta) {
   return JSON.stringify(meta);
 }
@@ -431,6 +1109,18 @@ function diffBadge(text) {
   const num = Number(String(text).replace(/[+,]/g, ''));
   const cls = num > 0 ? 'week-up' : num < 0 ? 'week-down' : 'week-flat';
   return '<span class="week-badge ' + cls + '">' + text + '</span>';
+}
+
+function diffClassNum(value) {
+  const num = safeNum(value);
+  if (num > 0) return 'val-positive';
+  if (num < 0) return 'val-negative';
+  return 'val-sub';
+}
+
+function diffBadgeClass_(val) {
+  var n = Number(val) || 0;
+  return n > 0 ? 'diff-badge-up' : n < 0 ? 'diff-badge-down' : 'diff-badge-flat';
 }
 
 function valClassNum(value) {
@@ -467,6 +1157,12 @@ function populateSelect(id, values) {
   }).join('');
 }
 
+function displayMemberName(member) {
+  if (!member) return '';
+  if (member.isTotal && member.group) return member.group;
+  return member.name || '';
+}
+
 function formatCell(value) {
   if (value instanceof Date) {
     const y = value.getFullYear();
@@ -488,6 +1184,44 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
+}
+
+function computeWowMap_(currentMembers, prevMembers) {
+  var prevMetricMap = {};
+  var periods = ['Q', 'M5', 'M6', 'M7'];
+  var metricKeys = ['fcstAdjusted', 'fcstCommit', 'confirmed', 'expectedMrr', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+  (prevMembers || []).forEach(function(m) {
+    if (!m || !m.name) return;
+    periods.forEach(function(p) {
+      var key = m.name + '|' + p;
+      prevMetricMap[key] = m[p] || {};
+    });
+  });
+  var wowMap = {};
+  (currentMembers || []).forEach(function(m) {
+    if (!m || !m.name) return;
+    periods.forEach(function(p) {
+      var key = m.name + '|' + p;
+      var cur = m[p] || {};
+      var prev = prevMetricMap[key] || {};
+      var wow = {};
+      metricKeys.forEach(function(mk) {
+        var curVal = cur[mk] || { net: 0, newExp: 0, churn: 0 };
+        var prevVal = prev[mk] || { net: 0, newExp: 0, churn: 0 };
+        if (typeof curVal === 'number') {
+          wow[mk] = { net: curVal - (typeof prevVal === 'number' ? prevVal : (prevVal.net || 0)), newExp: 0, churn: 0 };
+        } else {
+          wow[mk] = {
+            net: (Number(curVal.net) || 0) - (Number(typeof prevVal === 'number' ? prevVal : (prevVal.net || 0)) || 0),
+            newExp: (Number(curVal.newExp) || 0) - (Number(prevVal.newExp) || 0),
+            churn: (Number(curVal.churn) || 0) - (Number(prevVal.churn) || 0),
+          };
+        }
+      });
+      wowMap[key] = wow;
+    });
+  });
+  return wowMap;
 }
 
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
