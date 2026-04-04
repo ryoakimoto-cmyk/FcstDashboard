@@ -49,8 +49,9 @@ function getInitData() {
     var users = UserReader_getUsers();
     var targets = TargetReader_getTargets();
     var result = SfDataReader_getAggregated(users, targets);
-    result.notes = NotesSheet_getNotes();
-    result.fcstAdjusted = FcstAdjusted_getAll();
+    var fcstState = FcstAdjusted_getState();
+    result.notes = fcstState.notes;
+    result.fcstAdjusted = fcstState.adjusted;
     result.weekOverWeekMap = FcstSnapshot_getWeekOverWeek();
     result.snapshotDates = FcstSnapshot_getSnapshotDates();
     result.previousSnapshot = FcstSnapshot_getLatestMembers();
@@ -62,6 +63,9 @@ function getOpportunities() {
   try {
     var result = OppListReader_getLiveRows();
     result.snapshotDates = OppListSnapshot_getSnapshotDates();
+    result.previousRows = result.snapshotDates.length
+      ? OppListSnapshot_getByDate(result.snapshotDates[0]).rows
+      : [];
     return result;
   } catch (e) { return { error: e.message }; }
 }
@@ -70,7 +74,7 @@ function getSummaryData() { try { return SummaryReader_getSummaryData(); } catch
 function saveFcstAdjusted(p) { try { return FcstWriter_saveFcstAdjusted(p); } catch (e) { return { error: e.message }; } }
 function saveOppSfValue(p) { try { return OppListWriter_saveDrafts([p]); } catch (e) { return { error: e.message }; } }
 function saveOppDrafts(changes) { try { return OppListWriter_saveDrafts(changes); } catch (e) { return { error: e.message }; } }
-function saveNote(p) { try { return NotesSheet_saveNote(p); } catch (e) { return { error: e.message }; } }
+function saveNote(p) { try { return FcstAdjusted_save(p); } catch (e) { return { error: e.message }; } }
 function saveFcstAdjusted2(p) { try { return FcstAdjusted_save(p); } catch (e) { return { error: e.message }; } }
 function getSnapshotDates() { try { return FcstSnapshot_getSnapshotDates(); } catch (e) { return { error: e.message }; } }
 function getSnapshotData(dateStr) { try { return FcstSnapshot_getDataByDate(dateStr); } catch (e) { return { error: e.message }; } }
@@ -81,7 +85,9 @@ function createSnapshot() {
     var users = UserReader_getUsers();
     var targets = TargetReader_getTargets();
     var result = SfDataReader_getAggregated(users, targets);
-    var fcstAdj = FcstAdjusted_getAll();
+    var fcstState = FcstAdjusted_getState();
+    var fcstAdj = fcstState.adjusted;
+    var notes = fcstState.notes;
     var periods = ['Q', 'M5', 'M6', 'M7'];
     result.members.forEach(function(member) {
       periods.forEach(function(p) {
@@ -90,6 +96,6 @@ function createSnapshot() {
         member[p].fcstAdjusted = fcstAdj[key] || { net: 0, newExp: 0, churn: 0 };
       });
     });
-    return FcstSnapshot_create(result.members);
+    return FcstSnapshot_create(result.members, notes);
   } catch (e) { return { error: e.message }; }
 }

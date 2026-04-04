@@ -1,4 +1,4 @@
-<script>
+﻿<script>
 const App = {
   state: {
     activeView: 'fcst',          // 'fcst' | 'trend' | 'opps'
@@ -24,6 +24,11 @@ const App = {
     oppSnapshotDates: [],
     oppSnapshotDate: null,
     oppSnapshotRows: null,
+    oppPreviousMap: {},
+    oppDiffToggles: {},
+    oppQuarterMonths: [],
+    oppEditMeta: null,
+    oppEditAnchor: null,
     detailModal: null,
   },
 
@@ -500,8 +505,8 @@ const App = {
     }
     if (!App.state.expandedAll.keyDeals) {
       return '<div class="cell-detail">' +
-        '<div class="cell-detail-preview' + (previewTextSafe ? '' : ' empty') + '">' + escapeHtml(previewTextSafe || '譛ｪ險ｭ螳・') + '</div>' +
-        '<button class="cell-detail-btn" onclick="App.openKeyDealModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">隧ｳ邏ｰ</button>' +
+        '<div class="cell-detail-preview' + (previewTextSafe ? '' : ' empty') + '">' + escapeHtml(previewTextSafe || '未設定') + '</div>' +
+        '<button class="cell-detail-btn" onclick="App.openKeyDealModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">詳細</button>' +
       '</div>';
     }
     var previewText = previewHtml ? previewHtml.replace(/<br>/g, ' / ') : '';
@@ -521,8 +526,8 @@ const App = {
     if (notePreview.length > 60) notePreview = notePreview.slice(0, 60) + '...';
     if (!App.state.expandedAll.notes) {
       return '<div class="cell-detail">' +
-        '<div class="cell-detail-preview' + (notePreview ? '' : ' empty') + '">' + escapeHtml(notePreview || '譛ｪ蜈･蜉・') + '</div>' +
-        '<button class="cell-detail-btn" onclick="App.openNoteModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">隧ｳ邏ｰ</button>' +
+        '<div class="cell-detail-preview' + (notePreview ? '' : ' empty') + '">' + escapeHtml(notePreview || '未入力') + '</div>' +
+        '<button class="cell-detail-btn" onclick="App.openNoteModal(\'' + escapeAttr(member.name || '') + '\', \'' + escapeAttr(period) + '\')">詳細</button>' +
       '</div>';
     }
     if (App.state.expandedAll.notes) {
@@ -565,12 +570,22 @@ const App = {
   openNoteModal(name, period) {
     var member = this.findMember_(name);
     var noteKey = name + '|' + period;
-    var notes = (this.state.currentData && this.state.currentData.notes) || {};
+    var noteSource = this.state.snapshotDate && this.state.snapshotViewData
+      ? this.state.snapshotViewData
+      : this.state.currentData;
+    var notes = (noteSource && noteSource.notes) || {};
     var noteVal = notes[noteKey] || '';
-    var body = '<div class="detail-section-title">\u5099\u8003\u30fb\u30e1\u30e2</div>' +
-      '<textarea id="detail-note-textarea" class="notes-textarea" style="min-height:200px;flex:1;" placeholder="\u5099\u8003\u30fb\u30e1\u30e2\u3092\u5165\u529b">' + escapeHtml(noteVal) + '</textarea>';
-    var footer = '<button class="detail-btn-secondary" onclick="App.closeDetailModal()">キャンセル</button>' +
-      '<button class="detail-btn-primary" onclick="App.saveNoteFromModal(\'' + escapeAttr(name) + '\', \'' + escapeAttr(period) + '\')">保存</button>';
+    var isSnapshotMode = !!this.state.snapshotDate;
+    var body = '<div class="detail-section-title">\u5099\u8003\u30fb\u30e1\u30e2</div>';
+    if (isSnapshotMode) {
+      body += '<div class="cell-detail-preview' + (noteVal ? '' : ' empty') + ' cell-detail-expanded">' + escapeHtml(noteVal || '未入力') + '</div>';
+    } else {
+      body += '<textarea id="detail-note-textarea" class="notes-textarea" style="min-height:200px;flex:1;" placeholder="\u5099\u8003\u30fb\u30e1\u30e2\u3092\u5165\u529b">' + escapeHtml(noteVal) + '</textarea>';
+    }
+    var footer = '<button class="detail-btn-secondary" onclick="App.closeDetailModal()">閉じる</button>';
+    if (!isSnapshotMode) {
+      footer += '<button class="detail-btn-primary" onclick="App.saveNoteFromModal(\'' + escapeAttr(name) + '\', \'' + escapeAttr(period) + '\')">保存</button>';
+    }
     this.openDetailModal_('\u5099\u8003\u30fb\u30e1\u30e2', displayMemberName(member) + ' / ' + blockLabel(period), body, footer);
   },
 
@@ -583,13 +598,13 @@ const App = {
     google.script.run
       .withSuccessHandler(function(r) {
         if (r && r.error) {
-          alert('保存失敗: ' + r.error);
+          alert('菫晏ｭ伜､ｱ謨・ ' + r.error);
           return;
         }
         App.closeDetailModal();
         App.renderFcst();
       })
-      .withFailureHandler(function(e) { alert('保存失敗: ' + ((e && e.message) || e)); })
+      .withFailureHandler(function(e) { alert('菫晏ｭ伜､ｱ謨・ ' + ((e && e.message) || e)); })
       .saveNote({ name: name, period: period, note: note });
   },
 
@@ -679,7 +694,7 @@ const App = {
 
   renderTrend() {
     const block = document.getElementById('trend-block-select').value;
-    document.getElementById('trend-title').textContent = blockLabel(block) + ' 推移 (Net MRR)';
+    document.getElementById('trend-title').textContent = blockLabel(block) + ' 謗ｨ遘ｻ (Net MRR)';
     document.getElementById('trend-period-badge').textContent = blockLabel(block);
     App.showLoading(true);
     google.script.run.withSuccessHandler(function(data) {
@@ -693,9 +708,9 @@ const App = {
     const vis = this.state.visibleSeries;
     const datasets = [
       { key: 'target', label: '目標', color: '#dadce0', dash: [6, 3] },
-      { key: 'fcstAdjusted', label: 'FCST(調整後)', color: '#1a73e8', dash: [] },
+      { key: 'fcstAdjusted', label: 'FCST(隱ｿ謨ｴ蠕・', color: '#1a73e8', dash: [] },
       { key: 'fcstCommit', label: 'FCST(コミット)', color: '#7c4dff', dash: [4, 2] },
-      { key: 'received', label: '受注', color: '#34a853', dash: [] },
+      { key: 'received', label: '受領', color: '#34a853', dash: [] },
     ].filter(function(item) { return vis[item.key]; }).map(function(item) {
       return {
         label: item.label,
@@ -741,8 +756,8 @@ const App = {
     const diff = latest - prev;
     const statsHtml = [
       { lbl: 'FCST(調整後) Net', val: fmtNum(latest), cls: 'val-neutral' },
-      { lbl: '前週比 Net', val: fmtDiffNum(diff), cls: diff >= 0 ? 'val-positive' : 'val-negative' },
-      { lbl: '目標達成率', val: target ? Math.round(latest / target * 100) + '%' : '-', cls: latest >= target ? 'val-positive' : 'val-negative' },
+      { lbl: '先週比 Net', val: fmtDiffNum(diff), cls: diff >= 0 ? 'val-positive' : 'val-negative' },
+      { lbl: '目標差達成率', val: target ? Math.round(latest / target * 100) + '%' : '-', cls: latest >= target ? 'val-positive' : 'val-negative' },
     ].map(function(stat) {
       return '<div class="trend-stat"><div class="ts-label">' + stat.lbl + '</div><div class="ts-val ' + stat.cls + '">' + stat.val + '</div></div>';
     }).join('');
@@ -754,6 +769,137 @@ const App = {
     populateSelect('opp-dept-select', uniqueValues(rows, 'dept'));
     populateSelect('opp-phase-select', uniqueValues(rows, 'phase'));
     populateSelect('opp-type-select', uniqueValues(rows, 'type'));
+    populateSelect('opp-owner-select', uniqueValues(rows, 'subOwner'));
+    populateSelect('opp-forecast-select', uniqueValues(rows, 'forecast'));
+    populateSelect('opp-date-select', uniqueValues(rows, 'scheduleOrCloseDate'));
+    this.populateOppQuarterSelect_();
+    this.syncOppQuarterMonths_();
+  },
+
+  populateOppQuarterSelect_() {
+    var select = document.getElementById('opp-quarter-select');
+    if (!select) return;
+    var current = select.value || 'all';
+    var defs = getOppQuarterDefinitions_();
+    select.innerHTML = '<option value="all">すべて</option>' + defs.map(function(def) {
+      return '<option value="' + escapeAttr(def.key) + '">' + escapeHtml(def.label) + '</option>';
+    }).join('');
+    if (selectContainsValue_(select, current)) select.value = current;
+    else select.value = 'all';
+  },
+
+  changeOppQuarter() {
+    this.syncOppQuarterMonths_(true);
+    this.persistOppQuarterSelection_();
+    this.renderOpps();
+  },
+
+  syncOppQuarterMonths_(reset) {
+    var select = document.getElementById('opp-quarter-select');
+    var quarterKey = select ? select.value : 'all';
+    if (quarterKey === 'all') {
+      this.state.oppQuarterMonths = [];
+      this.renderOppQuarterMonths_();
+      return;
+    }
+
+    var def = getOppQuarterDefinition_(quarterKey);
+    if (!def) {
+      this.state.oppQuarterMonths = [];
+      this.renderOppQuarterMonths_();
+      return;
+    }
+
+    if (reset || !sameMonthSelection_(this.state.oppQuarterMonths, def.months)) {
+      this.state.oppQuarterMonths = def.months.slice();
+    }
+    this.persistOppQuarterSelection_();
+    this.renderOppQuarterMonths_();
+  },
+
+  renderOppQuarterMonths_() {
+    var wrap = document.getElementById('opp-quarter-months');
+    if (!wrap) return;
+    var select = document.getElementById('opp-quarter-select');
+    var quarterKey = select ? select.value : 'all';
+    if (quarterKey === 'all') {
+      wrap.innerHTML = '';
+      wrap.classList.remove('show');
+      return;
+    }
+
+    var def = getOppQuarterDefinition_(quarterKey);
+    if (!def) {
+      wrap.innerHTML = '';
+      wrap.classList.remove('show');
+      return;
+    }
+
+    wrap.classList.add('show');
+    wrap.innerHTML = '<span class="opp-quarter-months-label">対象月</span>' + def.months.map(function(monthKey) {
+      var active = App.state.oppQuarterMonths.indexOf(monthKey) !== -1;
+      return '<button type="button" class="opp-month-chip' + (active ? ' active' : '') + '" onclick="App.toggleOppQuarterMonth(\'' + monthKey + '\')">' + escapeHtml(formatOppMonthLabel_(monthKey)) + '</button>';
+    }).join('');
+  },
+
+  toggleOppQuarterMonth(monthKey) {
+    var idx = this.state.oppQuarterMonths.indexOf(monthKey);
+    if (idx === -1) this.state.oppQuarterMonths.push(monthKey);
+    else this.state.oppQuarterMonths.splice(idx, 1);
+    this.persistOppQuarterSelection_();
+    this.renderOppQuarterMonths_();
+    this.renderOpps();
+  },
+
+  persistOppQuarterSelection_() {
+    try {
+      var select = document.getElementById('opp-quarter-select');
+      var payload = {
+        quarter: select ? select.value : 'all',
+        months: (this.state.oppQuarterMonths || []).slice()
+      };
+      window.localStorage.setItem('fcstDashboard.oppQuarterSelection', JSON.stringify(payload));
+    } catch (e) {}
+  },
+
+  restoreOppQuarterSelection_() {
+    try {
+      var raw = window.localStorage.getItem('fcstDashboard.oppQuarterSelection');
+      if (!raw) return;
+      var payload = JSON.parse(raw);
+      var select = document.getElementById('opp-quarter-select');
+      if (select && payload && payload.quarter && selectContainsValue_(select, payload.quarter)) {
+        select.value = payload.quarter;
+      }
+      this.state.oppQuarterMonths = Array.isArray(payload && payload.months) ? payload.months.slice() : [];
+    } catch (e) {}
+  },
+
+  toggleOppDiff(field) {
+    this.state.oppDiffToggles[field] = !this.state.oppDiffToggles[field];
+    this.renderOpps();
+  },
+
+  resetOppFilters() {
+    [
+      'opp-dept-select',
+      'opp-phase-select',
+      'opp-type-select',
+      'opp-quarter-select',
+      'opp-owner-select',
+      'opp-forecast-select',
+      'opp-date-select',
+      'opp-keydeal-select'
+    ].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = 'all';
+    });
+    var search = document.getElementById('opp-name-search');
+    if (search) search.value = '';
+    this.state.oppQuarterMonths = [];
+    this.persistOppQuarterSelection_();
+    this.renderOppQuarterMonths_();
+    this.renderOpps();
   },
 
   reloadOpps() {
@@ -768,10 +914,13 @@ const App = {
         });
         App.state.oppsLastUpdated = (result && result.lastUpdated) || '';
         App.state.oppSnapshotDates = (result && result.snapshotDates) || [];
+        App.state.oppPreviousMap = buildOppRowMap_((result && result.previousRows) || []);
         App.state.oppSnapshotDate = null;
         App.state.oppSnapshotRows = null;
         App.state.editedPaths.clear();
         App.populateOppFilters();
+        App.restoreOppQuarterSelection_();
+        App.syncOppQuarterMonths_();
         App.updateEditBadge();
         App.renderOpps();
       })
@@ -787,10 +936,29 @@ const App = {
     const dept = document.getElementById('opp-dept-select').value;
     const phase = document.getElementById('opp-phase-select').value;
     const type = document.getElementById('opp-type-select').value;
-    const fields = ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+    const quarter = document.getElementById('opp-quarter-select').value;
+    const owner = document.getElementById('opp-owner-select').value;
+    const forecast = document.getElementById('opp-forecast-select').value;
+    const dateValue = document.getElementById('opp-date-select').value;
+    const keyDeal = document.getElementById('opp-keydeal-select').value;
+    const nameQuery = String(document.getElementById('opp-name-search').value || '').trim().toLowerCase();
+    const editableFields = ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+    const diffFields = ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'];
     const sourceRows = this.getOppRowsForView_();
     const filtered = sourceRows.filter(function(opp) {
-      return (dept === 'all' || opp.dept === dept) && (phase === 'all' || opp.phase === phase) && (type === 'all' || opp.type === type);
+      const matchesName = !nameQuery || String(opp.dealName || '').toLowerCase().indexOf(nameQuery) !== -1;
+      const matchesKeyDeal = keyDeal === 'all' || String(!!opp.keyDeal) === keyDeal;
+      const oppMonthKey = normalizeOppMonthValue_(opp.completedMonth);
+      const matchesQuarter = quarter === 'all' || App.state.oppQuarterMonths.indexOf(oppMonthKey) !== -1;
+      return (dept === 'all' || opp.dept === dept) &&
+        (phase === 'all' || opp.phase === phase) &&
+        (type === 'all' || opp.type === type) &&
+        matchesQuarter &&
+        (owner === 'all' || opp.subOwner === owner) &&
+        (forecast === 'all' || opp.forecast === forecast) &&
+        (dateValue === 'all' || opp.scheduleOrCloseDate === dateValue) &&
+        matchesName &&
+        matchesKeyDeal;
     });
     const isLive = !this.state.oppSnapshotDate;
     const label = isLive ? '今週' : this.state.oppSnapshotDate;
@@ -800,88 +968,139 @@ const App = {
 
     let navHtml = '';
     navHtml += '<div class="week-nav-bar">';
-    navHtml += '<button class="week-nav-btn" ' + (canGoPrev ? '' : 'disabled') + ' onclick="App.oppWeekNavPrev()">◄</button>';
+    navHtml += '<button class="week-nav-btn" ' + (canGoPrev ? '' : 'disabled') + ' onclick="App.oppWeekNavPrev()">\u25c4</button>';
     navHtml += '<span class="week-nav-label' + (isLive ? ' week-nav-live' : '') + '">' + escapeHtml(label) + '</span>';
-    navHtml += '<button class="week-nav-btn" ' + (canGoNext ? '' : 'disabled') + ' onclick="App.oppWeekNavNext()">►</button>';
+    navHtml += '<button class="week-nav-btn" ' + (canGoNext ? '' : 'disabled') + ' onclick="App.oppWeekNavNext()">\u25ba</button>';
     if (!isLive) navHtml += '<button class="week-nav-btn week-nav-today" onclick="App.oppWeekNavToday()">今週</button>';
     navHtml += '</div>';
     document.getElementById('opp-week-nav').innerHTML = navHtml;
+    App.renderOppDiffHeaderButtons_(diffFields);
 
     const html = filtered.map(function(opp) {
       const checkKey = editKey({ type: 'oppKeyDeal', oppId: opp.oppId });
       const checked = opp.keyDeal ? ' checked' : '';
       const editable = isLive && !App.state.oppSnapshotDate;
+      const dealNameHtml = renderOppDealLink_(opp);
+      const keyDealEdited = App.state.editedPaths.has(checkKey);
       return '<tr>' +
-        '<td>' + escapeHtml(opp.completedMonth || '') + '</td>' +
-        '<td>' + escapeHtml(opp.dept || '') + '</td>' +
-        '<td class="' + (opp.type === 'Churn' ? 'val-negative' : opp.type === 'New' ? 'val-positive' : 'val-neutral') + '">' + escapeHtml(opp.type || '') + '</td>' +
-        '<td>' + escapeHtml(opp.subOwner || '') + '</td>' +
-        '<td style="text-align:left;">' + escapeHtml(opp.phase || '') + '</td>' +
-        '<td style="text-align:left;">' + escapeHtml(opp.forecast || '') + '</td>' +
-        '<td style="text-align:left;">' + escapeHtml(opp.scheduleOrCloseDate || '') + '</td>' +
-        '<td class="opp-name-cell" style="text-align:left;font-weight:600;">' + escapeHtml(opp.dealName) + '</td>' +
-        '<td>' + fmtNum(opp.allocationPercent) + '</td>' +
-        '<td>' + fmtNum(opp.mrr) + '</td>' +
-        '<td>' + fmtNum(opp.initialCost) + '</td>' +
-        '<td>' + (editable
-          ? '<input type="checkbox" class="opp-checkbox" data-key="' + escapeAttr(checkKey) + '"' + checked + ' onchange="App.toggleOppKeyDeal(\'' + escapeAttr(opp.oppId) + '\', this.checked)">'
+        '<td class="opp-col-month">' + escapeHtml(opp.completedMonth || '') + '</td>' +
+        '<td class="opp-col-dept opp-clip-cell">' + escapeHtml(opp.dept || '') + '</td>' +
+        '<td class="opp-col-type ' + (opp.type === 'Churn' ? 'val-negative' : opp.type === 'New' ? 'val-positive' : 'val-neutral') + '">' + escapeHtml(opp.type || '') + '</td>' +
+        '<td class="opp-col-owner opp-clip-cell">' + escapeHtml(opp.subOwner || '') + '</td>' +
+        '<td class="opp-col-phase opp-clip-cell">' + escapeHtml(opp.phase || '') + '</td>' +
+        '<td class="opp-col-forecast opp-clip-cell">' + escapeHtml(opp.forecast || '') + '</td>' +
+        '<td class="opp-col-date">' + escapeHtml(opp.scheduleOrCloseDate || '') + '</td>' +
+        '<td class="opp-name-cell" style="text-align:left;font-weight:600;">' + dealNameHtml + '</td>' +
+        '<td class="opp-num-col">' + fmtNum(opp.allocationPercent) + '</td>' +
+        '<td class="opp-num-col">' + fmtNum(opp.mrr) + '</td>' +
+        '<td class="opp-num-col">' + fmtNum(opp.initialCost) + '</td>' +
+        '<td class="opp-col-keydeal">' + (editable
+          ? '<span class="opp-keydeal-wrap' + (keyDealEdited ? ' edited' : '') + '"><input type="checkbox" class="opp-checkbox" data-key="' + escapeAttr(checkKey) + '"' + checked + ' onchange="App.toggleOppKeyDeal(\'' + escapeAttr(opp.oppId) + '\', this.checked)"></span>'
           : (opp.keyDeal ? 'TRUE' : 'FALSE')) + '</td>' +
-        fields.map(function(field) {
-          return '<td class="opp-cell-readonly">' + fmtNum(opp[field].sfValue) + '</td><td>' + (
-            editable
-              ? editCell(opp[field].draftValue, { type: 'oppDraft', oppId: opp.oppId, field: field }, App.state.editedPaths)
-              : '<span class="opp-cell-readonly">' + fmtNum(opp[field].draftValue) + '</span>'
-          ) + '</td>';
+        editableFields.map(function(field) {
+          return '<td class="opp-num-col">' + App.renderOppAmountCell_(opp, field, editable) + '</td>';
         }).join('') +
         '<td class="opp-cell-comment">' + (
           editable
-            ? editTextCell(opp.fcstComment, { type: 'oppComment', oppId: opp.oppId }, App.state.editedPaths)
+            ? App.renderOppCommentCell_(opp)
             : '<span class="opp-cell-readonly">' + escapeHtml(opp.fcstComment || '') + '</span>'
         ) + '</td>' +
-        '<td>' + escapeHtml(opp.firstMeetingDate || '') + '</td>' +
+        '<td class="opp-col-firstmeeting">' + escapeHtml(opp.firstMeetingDate || '') + '</td>' +
         '<td class="opp-summary-cell">' + escapeHtml(opp.summary || '') + '</td>' +
         '<td class="opp-summary-cell">' + escapeHtml(opp.optionFeatures || '') + '</td>' +
         '<td class="opp-summary-cell">' + escapeHtml(opp.initiative || '') + '</td>' +
         '</tr>';
     }).join('');
-    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="31" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
+    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="24" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
+  },
+
+  renderOppDiffHeaderButtons_(fields) {
+    fields.forEach(function(field) {
+      var th = document.querySelector('[data-opp-diff-field="' + field + '"]');
+      if (!th) return;
+      var label = th.dataset.baseLabel || th.textContent;
+      var active = !!App.state.oppDiffToggles[field];
+      th.innerHTML = escapeHtml(label) + '<button class="diff-toggle-btn' + (active ? ' active' : '') + '" onclick="App.toggleOppDiff(\'' + field + '\')">\u5148\u9031\u6bd4</button>';
+    });
+  },
+
+  renderOppAmountCell_(opp, field, editable) {
+    var key = editKey({ type: 'oppDraft', oppId: opp.oppId, field: field });
+    var current = editable ? safeNum(opp[field] && opp[field].draftValue) : safeNum(opp[field] && opp[field].sfValue);
+    var base = safeNum(opp._base && opp._base[field]);
+    var prevRow = !this.state.oppSnapshotDate ? (this.state.oppPreviousMap[opp.oppId] || null) : null;
+    var prevValue = prevRow && prevRow[field] ? safeNum(prevRow[field].sfValue) : null;
+    var diffHtml = '';
+    if (!!this.state.oppDiffToggles[field] && prevValue !== null) {
+      var diff = current - prevValue;
+      diffHtml = '<span class="opp-inline-diff ' + diffBadgeClass_(diff) + '">' + fmtDiffNum(diff) + '</span>';
+    }
+    var previousHtml = '';
+    if (editable && this.state.editedPaths.has(key)) {
+      previousHtml = '<div class="opp-prev-value">変更前: ' + escapeHtml(fmtNum(base)) + '</div>';
+    }
+    var valueHtml = editable
+      ? editCell(current, { type: 'oppDraft', oppId: opp.oppId, field: field }, this.state.editedPaths)
+      : '<span class="opp-cell-readonly">' + fmtNum(current) + '</span>';
+    var toneClass = '';
+    if (prevValue !== null && current > prevValue) toneClass = ' opp-value-up';
+    if (prevValue !== null && current < prevValue) toneClass = ' opp-value-down';
+    return '<div class="opp-value-stack' + toneClass + '"><div class="opp-value-main">' + valueHtml + diffHtml + '</div>' + previousHtml + '</div>';
+  },
+
+  renderOppCommentCell_(opp) {
+    var meta = { type: 'oppComment', oppId: opp.oppId };
+    var key = editKey(meta);
+    var current = String(opp.fcstComment || '');
+    var previousHtml = '';
+    if (this.state.editedPaths.has(key)) {
+      previousHtml = '<div class="opp-prev-value opp-prev-comment">変更前: ' + escapeHtml(String(opp._base.fcstComment || '')) + '</div>';
+    }
+    return '<div class="opp-comment-stack">' + renderCommentCell(current, meta, this.state.editedPaths) + previousHtml + '</div>';
   },
 
   startEditFromEl(el) {
     const meta = JSON.parse(el.dataset.meta);
-    const original = meta.type === 'oppComment' ? String(el.dataset.val || '') : Number(el.dataset.val);
+    if (meta.type === 'oppComment') {
+      this.openOppCommentEditor_(meta.oppId);
+      return;
+    }
+    const value = Number(el.dataset.val);
     const input = document.createElement('input');
-    input.type = meta.type === 'oppComment' ? 'text' : 'number';
+    input.type = 'number';
     input.className = 'edit-input';
-    input.value = original;
+    input.value = value;
+    this.state.oppEditAnchor = el;
+    this.state.oppEditMeta = meta;
     el.replaceWith(input);
     input.focus();
     input.select();
 
     const commit = () => {
-      const newValue = meta.type === 'oppComment' ? String(input.value || '') : Number(input.value);
-      if (meta.type !== 'oppComment' && isNaN(newValue)) {
-        this.renderAll();
+      const newValue = Number(input.value);
+      if (isNaN(newValue)) {
+        App.restoreOppEditInput_(input, meta);
         return;
       }
-      this.commitEdit(meta, newValue, original);
+      App.commitEdit(meta, newValue, input);
     };
 
     input.addEventListener('blur', commit);
-    input.addEventListener('keydown', (e) => {
+    input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') input.blur();
       if (e.key === 'Escape') {
         input.removeEventListener('blur', commit);
-        this.renderAll();
+        App.restoreOppEditInput_(input, meta);
       }
     });
   },
 
-  commitEdit(meta, newValue, originalValue) {
+  commitEdit(meta, newValue, inputEl) {
     const key = editKey(meta);
+    var opp = null;
 
     if (meta.type === 'oppDraft') {
-      const opp = this.findOpp_(meta.oppId);
+      opp = this.findOpp_(meta.oppId);
       if (opp) {
         opp[meta.field].draftValue = newValue;
         this.syncOppEditedState_(opp, key, newValue, opp._base[meta.field]);
@@ -889,7 +1108,7 @@ const App = {
     }
 
     if (meta.type === 'oppComment') {
-      const opp = this.findOpp_(meta.oppId);
+      opp = this.findOpp_(meta.oppId);
       if (opp) {
         opp.fcstComment = newValue;
         this.syncOppEditedState_(opp, key, newValue, opp._base.fcstComment);
@@ -897,7 +1116,7 @@ const App = {
     }
 
     this.updateEditBadge();
-    this.renderAll();
+    this.restoreOppEditInput_(inputEl, meta);
   },
 
   toggleOppKeyDeal(oppId, checked) {
@@ -929,6 +1148,45 @@ const App = {
   syncOppEditedState_(opp, key, value, baseValue) {
     if (String(value) !== String(baseValue)) this.state.editedPaths.add(key);
     else this.state.editedPaths.delete(key);
+  },
+
+  oppFieldLabel_(field) {
+    return {
+      fcstCommit: 'FCST(コミット)',
+      fcstMin: 'FCST(MIN)',
+      fcstMax: 'FCST(MAX)',
+      received: '受領',
+      debtMgmt: '債権管理',
+      debtMgmtLite: '債権管理 Lite',
+      expense: '経費'
+    }[field] || field;
+  },
+
+  restoreOppEditInput_(inputEl, meta) {
+    var opp = this.findOpp_(meta.oppId);
+    if (!opp) {
+      this.renderOpps();
+      return;
+    }
+
+    var wrapper = document.createElement('div');
+    if (meta.type === 'oppDraft') {
+      wrapper.innerHTML = editCell(opp[meta.field].draftValue, meta, App.state.editedPaths);
+    } else if (meta.type === 'oppComment') {
+      wrapper.innerHTML = renderCommentCell(opp.fcstComment, meta, App.state.editedPaths);
+    } else {
+      this.renderOpps();
+      return;
+    }
+
+    var next = wrapper.firstChild;
+    if (!next) {
+      this.renderOpps();
+      return;
+    }
+    inputEl.replaceWith(next);
+    this.state.oppEditAnchor = next;
+    this.state.oppEditMeta = null;
   },
 
   updateEditBadge() {
@@ -983,14 +1241,72 @@ const App = {
           App.showError(result.error);
           return;
         }
-        var skipped = ((result.exportProposal && result.exportProposal.skipped) || []);
-        if (skipped.length) {
-          alert('一部保存しました。提案商品IDが無い項目はスキップしています: ' + skipped.length + '件');
-        }
-        App.reloadOpps();
+        App.applySavedOppDrafts_(changes);
       })
       .withFailureHandler(App.showError)
       .saveOppDrafts(changes);
+  },
+
+  applySavedOppDrafts_(changes) {
+    (changes || []).forEach(function(change) {
+      var opp = App.findOpp_(change.oppId);
+      if (!opp) return;
+
+      opp.keyDeal = !!change.keyDeal;
+      opp._base.keyDeal = !!change.keyDeal;
+
+      var fields = change.fields || {};
+      ['fcstCommit', 'fcstMin', 'fcstMax', 'received', 'debtMgmt', 'debtMgmtLite', 'expense'].forEach(function(field) {
+        if (!fields.hasOwnProperty(field)) return;
+        var val = safeNum(fields[field]);
+        if (opp[field]) {
+          opp[field].draftValue = val;
+          opp[field].sfValue = val;
+        }
+        if (opp._base) opp._base[field] = val;
+      });
+
+      if (fields.hasOwnProperty('comment')) {
+        opp.fcstComment = String(fields.comment || '');
+        if (opp._base) opp._base.fcstComment = opp.fcstComment;
+      }
+    });
+
+    App.state.editedPaths.clear();
+    App.updateEditBadge();
+    App.renderOpps();
+  },
+
+  openOppCommentEditor_(oppId) {
+    var opp = this.findOpp_(oppId);
+    if (!opp) return;
+    var meta = { type: 'oppComment', oppId: oppId };
+    var current = String(opp.fcstComment || '');
+    var bodyHtml = ''
+      + '<div class="detail-section-title">FCSTコメント</div>'
+      + '<textarea id="opp-comment-textarea" class="notes-textarea" placeholder="コメントを入力">' + escapeHtml(current) + '</textarea>';
+    var footerHtml = ''
+      + '<button class="detail-btn-secondary" onclick="App.closeDetailModal()">キャンセル</button>'
+      + '<button class="detail-btn-primary" onclick="App.saveOppCommentFromModal_(\'' + escapeAttr(oppId) + '\')">保存</button>';
+    this.openDetailModal_(opp.dealName || '案件', '案件リスト', bodyHtml, footerHtml);
+    var textarea = document.getElementById('opp-comment-textarea');
+    if (textarea) textarea.focus();
+    this.state.oppEditMeta = meta;
+  },
+
+  saveOppCommentFromModal_(oppId) {
+    var textarea = document.getElementById('opp-comment-textarea');
+    if (!textarea) return;
+    var opp = this.findOpp_(oppId);
+    if (!opp) {
+      this.closeDetailModal();
+      return;
+    }
+    opp.fcstComment = String(textarea.value || '');
+    this.syncOppEditedState_(opp, editKey({ type: 'oppComment', oppId: oppId }), opp.fcstComment, opp._base.fcstComment);
+    this.closeDetailModal();
+    this.updateEditBadge();
+    this.renderOpps();
   },
 
   oppWeekNavPrev() {
@@ -1075,11 +1391,11 @@ function editCell(val, meta, editedPaths) {
   return '<span class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + safeNum(val) + '" onclick="App.startEditFromEl(this)">' + fmtNum(val) + '</span>';
 }
 
-function editTextCell(val, meta, editedPaths) {
+function renderCommentCell(val, meta, editedPaths) {
   const key = editKey(meta);
-  const cls = editedPaths && editedPaths.has(key) ? 'editable-cell edited' : 'editable-cell';
+  const cls = editedPaths && editedPaths.has(key) ? 'opp-comment-chip edited' : 'opp-comment-chip';
   const safe = String(val === null || val === undefined ? '' : val);
-  return '<span class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + escapeAttr(safe) + '" onclick="App.startEditFromEl(this)">' + escapeHtml(safe || ' ') + '</span>';
+  return '<button type="button" class="' + cls + '" data-meta=\'' + JSON.stringify(meta) + '\' data-val="' + escapeAttr(safe) + '" onclick="App.startEditFromEl(this)">' + escapeHtml(safe || 'コメント入力') + '</button>';
 }
 
 function editKey(meta) {
@@ -1155,6 +1471,89 @@ function populateSelect(id, values) {
   select.innerHTML = '<option value="all">すべて</option>' + values.map(function(value) {
     return '<option value="' + escapeAttr(value) + '">' + escapeHtml(value) + '</option>';
   }).join('');
+}
+
+function selectContainsValue_(select, value) {
+  for (var i = 0; i < select.options.length; i++) {
+    if (select.options[i].value === value) return true;
+  }
+  return false;
+}
+
+function getOppQuarterDefinitions_() {
+  var defs = [];
+  var baseYear = 2025;
+  var baseMonth = 6;
+  for (var fiscal = 19; fiscal <= 20; fiscal++) {
+    for (var quarter = 1; quarter <= 4; quarter++) {
+      var monthOffset = ((fiscal - 19) * 12) + ((quarter - 1) * 3);
+      var months = [];
+      for (var i = 0; i < 3; i++) {
+        months.push(addMonthsToMonthKey_(baseYear, baseMonth, monthOffset + i));
+      }
+      defs.push({
+        key: fiscal + 'Q' + quarter,
+        label: fiscal + '\u671f' + quarter + 'Q',
+        months: months
+      });
+    }
+  }
+  return defs;
+}
+
+function getOppQuarterDefinition_(key) {
+  return getOppQuarterDefinitions_().find(function(def) {
+    return def.key === key;
+  }) || null;
+}
+
+function addMonthsToMonthKey_(year, month, offset) {
+  var total = (year * 12 + (month - 1)) + offset;
+  var y = Math.floor(total / 12);
+  var m = (total % 12) + 1;
+  return y + '-' + String(m).padStart(2, '0');
+}
+
+function normalizeOppMonthValue_(value) {
+  var text = String(value || '');
+  var match = text.match(/(\d{4})[-\/年](\d{1,2})/);
+  if (!match) return '';
+  return match[1] + '-' + String(Number(match[2])).padStart(2, '0');
+}
+
+function formatOppMonthLabel_(monthKey) {
+  var match = String(monthKey || '').match(/(\d{4})-(\d{2})/);
+  if (!match) return monthKey;
+  return match[1] + '年' + Number(match[2]) + '月';
+}
+
+function sameMonthSelection_(left, right) {
+  if ((left || []).length !== (right || []).length) return false;
+  return (left || []).every(function(monthKey) {
+    return right.indexOf(monthKey) !== -1;
+  });
+}
+
+function buildOppRowMap_(rows) {
+  var map = {};
+  (rows || []).forEach(function(row) {
+    if (!row || !row.oppId) return;
+    map[row.oppId] = row;
+  });
+  return map;
+}
+
+function buildOpportunityUrl_(oppId) {
+  var id = String(oppId || '').trim();
+  if (!/^[A-Za-z0-9]{15,18}$/.test(id)) return "";
+  return 'https://sansan.lightning.force.com/lightning/r/Opportunity/' + encodeURIComponent(id) + '/view';
+}
+
+function renderOppDealLink_(opp) {
+  var url = buildOpportunityUrl_(opp && opp.oppId);
+  var label = escapeHtml((opp && opp.dealName) || '');
+  if (!url) return label;
+  return '<a href="' + escapeAttr(url) + '" target="_blank" class="deal-card-link">' + label + '</a>';
 }
 
 function displayMemberName(member) {
