@@ -1,0 +1,17 @@
+name: Deploy to GAS
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g @google/clasp
+      - run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+      - run: clasp push --force
