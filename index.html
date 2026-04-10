@@ -3,30 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FCST Dashboard - BOAM</title>
+<title>FCST Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <?!= include('css') ?>
 </head>
 <body>
 <header class="app-header">
   <div class="header-top">
-    <div class="header-logo">Sansan <span>FCST</span></div>
+    <div class="header-logo">Sansan <span>FCST</span><span class="division-badge"></span></div>
     <div class="header-right">
-      <span class="update-badge">最新: 毎日 03:00</span>
-      <span class="edit-badge hidden" id="edit-badge" onclick="App.scrollToSaveBar()">編集中 <span id="edit-count">0</span> 件</span>
+      <span class="update-badge">最終更新: 読み込み中</span>
+      <span class="edit-badge hidden" id="edit-badge" onclick="App.scrollToSaveBar()">未保存の変更 <span id="edit-count">0</span> 件</span>
       <span>Owner: Ryo</span>
     </div>
   </div>
   <nav class="tab-bar">
     <div class="tab active" data-view="fcst" onclick="App.switchView('fcst')">FCST</div>
     <div class="tab" data-view="opps" onclick="App.switchView('opps')">案件リスト</div>
-    <div class="tab" data-view="trend" onclick="App.switchView('trend')">推移グラフ</div>
+    <div class="tab" data-view="trend" onclick="App.switchView('trend')">推移</div>
   </nav>
 </header>
 
 <div id="loading-overlay" class="loading-overlay hidden">
-  <div class="spinner"></div>
-  <div class="loading-text">Loading...</div>
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">Loading...</div>
+    <div class="loading-subtext" id="loading-subtext">しばらくお待ちください</div>
+    <div class="loading-progress">
+      <div class="loading-progress-bar" id="loading-progress-bar"></div>
+    </div>
+    <div class="loading-percent" id="loading-percent">0%</div>
+  </div>
 </div>
 
 <div class="main" id="main-content">
@@ -34,58 +41,41 @@
     <div id="fcst-content"></div>
   </div>
 
-  <div id="view-trend" class="view">
-    <div class="trend-controls">
-      <label>対象期間</label>
-      <select id="trend-block-select" onchange="App.renderTrend()">
-        <option value="Q">Q合計</option>
-        <option value="M5">5月</option>
-        <option value="M6">6月</option>
-        <option value="M7">7月</option>
-      </select>
-      <label style="margin-left:8px;">表示</label>
-      <span class="chip active" data-series="fcstAdjusted" onclick="App.toggleSeries(this)">FCST(調整後)</span>
-      <span class="chip active" data-series="fcstCommit" onclick="App.toggleSeries(this)">FCST(コミット)</span>
-      <span class="chip active" data-series="target" onclick="App.toggleSeries(this)">目標</span>
-      <span class="chip active" data-series="received" onclick="App.toggleSeries(this)">受領</span>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title" id="trend-title">Q合計 推移 (Net MRR)</div>
-      <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
-    </div>
-    <div class="section-title">週次サマリ <span class="period-badge" id="trend-period-badge">Q合計</span></div>
-    <div class="trend-stats" id="trend-stats"></div>
-  </div>
-
   <div id="view-opps" class="view">
     <div class="dept-controls" style="flex-wrap:wrap;gap:10px;">
-      <button class="save-bar-btn primary" type="button" onclick="App.reloadOpps()">最新取得</button>
+      <button class="save-bar-btn" type="button" onclick="App.reloadOppsFromSS()">スプレッドシート再読込</button>
+      <button class="save-bar-btn primary" type="button" onclick="App.reloadOpps()">SF最新取得</button>
       <label>担当部署:</label>
       <select id="opp-dept-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
-      <label style="margin-left:8px;">フェーズ:</label>
+      <label>フェーズ:</label>
       <select id="opp-phase-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
-      <label style="margin-left:8px;">種別:</label>
+      <label>種別:</label>
       <select id="opp-type-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
       <span style="margin-left:auto;font-size:12px;color:var(--color-text-sub);" id="opp-count"></span>
     </div>
+
     <div class="dept-controls opp-filter-grid">
-      <label>対象Q:</label>
-      <select id="opp-quarter-select" onchange="App.changeOppQuarter()"><option value="all">すべて</option></select>
-      <label>案件副担当:</label>
-      <select id="opp-owner-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
-      <label>フォーキャスト:</label>
-      <select id="opp-forecast-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
-      <label>予定日 / 確定日:</label>
-      <select id="opp-date-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
-      <label>案件名:</label>
-      <input id="opp-name-search" type="text" oninput="App.renderOpps()" placeholder="部分一致で検索">
-      <label>Key Deal:</label>
+      <label>サブオーナー</label>
+      <select id="opp-owner-select" onchange="App.renderOpps()">
+        <option value="all">すべて</option>
+      </select>
+      <label>フォーキャスト</label>
+      <select id="opp-forecast-select" onchange="App.renderOpps()">
+        <option value="all">すべて</option>
+      </select>
+      <label>予定日 / 受注日</label>
+      <select id="opp-date-select" onchange="App.renderOpps()">
+        <option value="all">すべて</option>
+      </select>
+      <label>案件名</label>
+      <input id="opp-name-search" type="text" oninput="App.renderOpps()" placeholder="案件名で絞り込み">
+      <label>Key Deal</label>
       <select id="opp-keydeal-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
         <option value="true">TRUE</option>
@@ -93,8 +83,14 @@
       </select>
       <button class="save-bar-btn" type="button" onclick="App.resetOppFilters()">フィルタ解除</button>
     </div>
-    <div class="opp-quarter-months" id="opp-quarter-months"></div>
+
+    <div class="opp-period-bar">
+      <div class="quarter-chips opp-period-chips" id="opp-quarter-chips"></div>
+      <div class="period-chips opp-period-months" id="opp-quarter-months"></div>
+    </div>
+
     <div id="opp-week-nav"></div>
+
     <div class="table-wrapper opp-table-wrap">
       <table id="opp-table">
         <thead>
@@ -102,26 +98,26 @@
             <th class="opp-col-month">完了予定月</th>
             <th class="opp-col-dept">担当部署</th>
             <th class="opp-col-type">種別</th>
-            <th class="opp-col-owner">案件副担当</th>
+            <th class="opp-col-owner">サブオーナー</th>
             <th class="opp-col-phase">フェーズ</th>
             <th class="opp-col-forecast">フォーキャスト</th>
-            <th class="opp-col-date">予定日 / 確定日</th>
+            <th class="opp-col-date">予定日 / 受注日</th>
             <th class="opp-name-header">案件名</th>
-            <th class="opp-num-header">計上割合(%)</th>
+            <th class="opp-num-header">按分率(%)</th>
             <th class="opp-num-header">MRR</th>
             <th class="opp-num-header">初期費用</th>
             <th class="opp-col-keydeal">Key Deal</th>
             <th class="opp-num-header" data-opp-diff-field="fcstCommit" data-base-label="FCST(コミット)">FCST(コミット)</th>
             <th class="opp-num-header" data-opp-diff-field="fcstMin" data-base-label="FCST(MIN)">FCST(MIN)</th>
             <th class="opp-num-header" data-opp-diff-field="fcstMax" data-base-label="FCST(MAX)">FCST(MAX)</th>
-            <th class="opp-num-header" data-opp-diff-field="received" data-base-label="受領">受領</th>
-            <th class="opp-num-header" data-opp-diff-field="debtMgmt" data-base-label="債権管理">債権管理</th>
-            <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理 Lite">債権管理 Lite</th>
-            <th class="opp-num-header" data-opp-diff-field="expense" data-base-label="経費">経費</th>
+            <th class="opp-num-header" data-opp-diff-field="received" data-base-label="受領" data-feature="proposalProducts">受領</th>
+            <th class="opp-num-header" data-opp-diff-field="debtMgmt" data-base-label="債権管理" data-feature="proposalProducts">債権管理</th>
+            <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理Lite" data-feature="proposalProducts">債権管理Lite</th>
+            <th class="opp-num-header" data-opp-diff-field="expense" data-base-label="経費" data-feature="proposalProducts">経費</th>
             <th class="opp-col-comment">FCSTコメント</th>
-            <th class="opp-col-firstmeeting">初回商談日</th>
+            <th class="opp-col-firstmeeting">初回MTG日</th>
             <th class="opp-col-summary">案件概要</th>
-            <th class="opp-col-summary">オプション機能</th>
+            <th class="opp-col-summary">オプション商材</th>
             <th class="opp-col-summary">施策</th>
           </tr>
         </thead>
@@ -129,12 +125,35 @@
       </table>
     </div>
   </div>
+
+  <div id="view-trend" class="view">
+    <div class="trend-controls">
+      <label>表示期間</label>
+      <select id="trend-block-select" onchange="App.renderTrend()">
+        <option value="Q">Q合計</option>
+        <option value="M5">5月</option>
+        <option value="M6">6月</option>
+        <option value="M7">7月</option>
+      </select>
+      <label style="margin-left:8px;">系列</label>
+      <span class="chip active" data-series="fcstAdjusted" onclick="App.toggleSeries(this)">FCST調整</span>
+      <span class="chip active" data-series="fcstCommit" onclick="App.toggleSeries(this)">FCST(コミット)</span>
+      <span class="chip active" data-series="target" onclick="App.toggleSeries(this)">目標</span>
+      <span class="chip active" data-series="received" onclick="App.toggleSeries(this)" data-feature="proposalProducts">受領</span>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title" id="trend-title">推移グラフ (Net MRR)</div>
+      <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+    </div>
+    <div class="section-title">週次サマリ <span class="period-badge" id="trend-period-badge">Q合計</span></div>
+    <div class="trend-stats" id="trend-stats"></div>
+  </div>
 </div>
 
 <div class="save-bar" id="save-bar">
-  <span>編集中 <span id="save-bar-count">0</span> 件</span>
+  <span>未保存の変更 <span id="save-bar-count">0</span> 件</span>
   <button class="save-bar-btn primary" onclick="App.saveOppDrafts()">保存</button>
-  <button class="save-bar-btn" onclick="App.clearEditedHighlights()">変更を破棄</button>
+  <button class="save-bar-btn" onclick="App.clearEditedHighlights()">変更解除</button>
 </div>
 
 <div id="detail-modal" class="detail-modal hidden">
@@ -152,6 +171,13 @@
   </div>
 </div>
 
+<script>
+  var GAS_SELECTED_DEPT = '<?= selectedDept ?>';
+  var GAS_USER_DEFAULT_DEPT = '<?= userDefaultDept ?>';
+  var GAS_USER_EMAIL = '<?= userEmail ?>';
+</script>
+<script id="gas-dept-config-json" type="application/json"><?!= deptConfigJson ?></script>
+<script id="gas-embedded-init-data-json" type="application/json"><?!= embeddedInitData ?></script>
 <?!= include('js') ?>
 </body>
 </html>

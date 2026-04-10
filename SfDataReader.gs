@@ -1,108 +1,204 @@
-function SfDataReader_getAggregated(users, targets) {
-  const sheet = SfDataReader_getSheet_();
-  const lastRow = sheet.getLastRow();
-  const lastCol = Math.max(sheet.getLastColumn(), 57);
-  const rows = lastRow <= 2 ? [] : sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
-  const membersByName = {};
+function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
+  var context = SfDataReader_normalizeContext_(contextOrUsers, legacyTargets);
+  var sheet = SfDataReader_getSheet_(deptKey);
+  if (!sheet) {
+    return { lastUpdated: '', periodOptions: [], members: [] };
+  }
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = Math.max(sheet.getLastColumn(), 57);
+  var headers = lastRow >= 2 ? sheet.getRange(2, 1, 1, lastCol).getValues()[0] : [];
+  if (deptKey === 'SSSMBCS') headers = normalizeSSCSHeaders_(headers);
+  var headerMap = SfDataReader_buildHeaderMap_(headers);
+  var rows = lastRow <= 2 ? [] : sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
+  var membersByName = {};
+  var monthKeyMap = {};
 
   rows.forEach(function(row) {
-    const date = SfDataReader_parseDate_(row[0]);
-    if (!date) return;
-    if (date.getFullYear() !== FCST_TARGET_YEAR) return;
+    var date = SfDataReader_parseDate_(SfDataReader_valueByKeys_(row, headerMap, ['完了月', '計上月', 'Close Month'], 0));
+    if (!date || !FcstPeriods_isSupportedDate_(date)) return;
 
-    const month = date.getMonth() + 1;
-    if (FCST_TARGET_MONTHS.indexOf(month) === -1) return;
+    var monthKey = FcstPeriods_formatMonthKey_(date);
+    monthKeyMap[monthKey] = true;
 
-    const userName = String(row[3] || '').trim();
-    if (!userName) return;
+    var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', '担当名'], 3)).trim();
+    if (!sourceName) return;
 
-    const user = users[userName] || {};
-    const member = membersByName[userName] || SfDataReader_createMember_(userName, user.group || '', user.dept || '', false);
-    const blockKey = 'M' + month;
-    const metric = member[blockKey];
-    const bucket = row[24] === 'New+Exp' ? 'newExp' : row[24] === 'Churn' ? 'churn' : null;
+    var user = SfDataReader_resolveUser_(context, sourceName, monthKey);
+    var member = membersByName[sourceName] || SfDataReader_createMember_(
+      sourceName,
+      user.displayName || sourceName,
+      user.group || '',
+      user.dept || '',
+      false
+    );
+    member.displayName = user.displayName || member.displayName || member.name;
+    member.group = user.group || member.group || '';
+    member.dept = user.dept || member.dept || '';
+    member.sortOrder = user.sortOrder || member.sortOrder || 0;
 
-    SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, row[38]);
-    metric.fcstMax += SfDataReader_toNumber_(row[40]);
-    SfDataReader_addBreakdownValue_(metric.confirmed, bucket, row[10]);
-    SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, row[37]);
-    SfDataReader_addBreakdownValue_(metric.received, bucket, row[53]);
-    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, row[54]);
-    SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, row[55]);
-    SfDataReader_addBreakdownValue_(metric.expense, bucket, row[56]);
+    var metric = SfDataReader_getOrCreateMonthMetric_(member, monthKey);
+    var typeValue = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['種別', '案件種別'], 24)).trim();
+    var bucket = typeValue === 'New+Exp' ? 'newExp' : typeValue === 'Churn' ? 'churn' : null;
 
-    if (SfDataReader_toBoolean_(row[32])) {
+    SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38));
+    metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)(換算値)', 'FCST(MAX)', 'FCST（MAX）'], 40));
+    SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10));
+    SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['Expected MRR', 'ExpectedMRR'], 37));
+    SfDataReader_addBreakdownValue_(metric.received, bucket, SfDataReader_valueByKeys_(row, headerMap, ['受領'], 53));
+    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理', '債権管理回収'], 54));
+    SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理Lite', '債権管理 Lite'], 55));
+    SfDataReader_addBreakdownValue_(metric.expense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['経費'], 56));
+
+    if (SfDataReader_toBoolean_(SfDataReader_valueByKeys_(row, headerMap, ['Key Deal フラグ', 'KeyDeal'], 32))) {
       metric.keyDeals.push({
-        company: SfDataReader_stripLegalForm_(String(row[25] || '').trim()),
-        monthlyMrr: SfDataReader_toNumber_(row[10]),
-        phase: String(row[30] || '').trim(),
-        fcst: SfDataReader_toNumber_(row[38]),
-        oppId: String(row[21] || '').trim(),
+        company: SfDataReader_stripLegalForm_(SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['取引先名', '会社名'], 25)).trim()),
+        monthlyMrr: SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10)),
+        phase: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['フェーズ'], 30)).trim(),
+        fcst: SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38)),
+        oppId: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['ID', '案件ID'], 21)).trim()
       });
     }
 
-    membersByName[userName] = member;
+    membersByName[sourceName] = member;
   });
 
-  const members = Object.keys(membersByName).map(function(name) {
-    const member = membersByName[name];
-    SfDataReader_applyTargets_(member, targets);
-    member.Q = SfDataReader_sumMetrics_([member.M5, member.M6, member.M7]);
-    member.sortOrder = users[name] ? users[name].sortOrder || 0 : 0;
+  Object.keys(context.targets || {}).forEach(function(key) {
+    var match = String(key).match(/\|(\d{6})$/);
+    if (!match) return;
+    monthKeyMap[match[1].slice(0, 4) + '-' + match[1].slice(4, 6)] = true;
+  });
+
+  var periodOptions = FcstPeriods_buildDefinitionsFromMonthKeys_(Object.keys(monthKeyMap));
+  var members = Object.keys(membersByName).map(function(sourceName) {
+    var member = membersByName[sourceName];
+    SfDataReader_applyTargets_(member, context.targets, periodOptions);
+    SfDataReader_buildPeriods_(member, periodOptions);
     return member;
   });
 
-  const groupTotals = SfDataReader_buildGroupTotals_(members, targets);
-  const overallTotal = SfDataReader_buildOverallTotal_(members, targets);
-  const sortedMembers = members.sort(function(a, b) {
-    return (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name, 'ja');
+  var groupTotals = SfDataReader_buildGroupTotals_(members, periodOptions);
+  var overallTotal = SfDataReader_buildOverallTotal_(members, periodOptions);
+  var sortedMembers = members.sort(function(a, b) {
+    return (a.sortOrder || 0) - (b.sortOrder || 0) || (a.displayName || a.name).localeCompare((b.displayName || b.name), 'ja');
   });
-  const sortedGroupTotals = groupTotals.sort(function(a, b) {
-    return a.name.localeCompare(b.name, 'ja');
+  var sortedGroupTotals = groupTotals.sort(function(a, b) {
+    return (a.displayName || a.name).localeCompare((b.displayName || b.name), 'ja');
   });
 
   return {
-    lastUpdated: SfDataReader_extractLastUpdated_(sheet.getRange(1, 1).getDisplayValue()),
-    members: overallTotal ? [overallTotal].concat(sortedGroupTotals, sortedMembers).map(SfDataReader_finalizeMember_) : sortedGroupTotals.concat(sortedMembers).map(SfDataReader_finalizeMember_),
+    lastUpdated: SfDataReader_extractLastUpdated_(sheet.getRange(1, 1)),
+    periodOptions: periodOptions,
+    members: (overallTotal ? [overallTotal].concat(sortedGroupTotals, sortedMembers) : sortedGroupTotals.concat(sortedMembers))
+      .map(function(member) {
+        return SfDataReader_finalizeMember_(member, periodOptions);
+      })
   };
 }
 
-function SfDataReader_getSheet_() {
-  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SF_DATA_SHEET_NAME);
-  if (!sheet) throw new Error('SFデータ更新シートが見つかりません');
-  return sheet;
+function SfDataReader_normalizeContext_(contextOrUsers, legacyTargets) {
+  if (legacyTargets !== undefined) {
+    return {
+      users: contextOrUsers || {},
+      monthlyUsers: {},
+      targets: SfDataReader_normalizeLegacyTargets_(legacyTargets)
+    };
+  }
+  var context = contextOrUsers || {};
+  return {
+    users: context.users || {},
+    monthlyUsers: context.monthlyUsers || {},
+    targets: context.targets || {}
+  };
+}
+
+function SfDataReader_normalizeLegacyTargets_(targets) {
+  var normalized = {};
+  Object.keys(targets || {}).forEach(function(key) {
+    normalized[key] = SfDataReader_toBreakdown_(targets[key]);
+  });
+  return normalized;
+}
+
+function SfDataReader_resolveUser_(context, sourceName, monthKey) {
+  var monthly = (context.monthlyUsers || {})[sourceName + '|' + monthKey];
+  if (monthly) return monthly;
+  return (context.users || {})[sourceName] || {};
+}
+
+function SfDataReader_getSheet_(deptKey) {
+  return getSfDataSheet_(deptKey);
+}
+
+function SfDataReader_buildHeaderMap_(headers) {
+  var map = {};
+  (headers || []).forEach(function(header, idx) {
+    var raw = String(header || '').trim();
+    if (!raw) return;
+    map[raw] = idx;
+    map[SfDataReader_normalize_(raw)] = idx;
+  });
+  return map;
+}
+
+function SfDataReader_valueByKeys_(row, headerMap, keys, fallbackIndex) {
+  for (var i = 0; i < (keys || []).length; i++) {
+    var key = keys[i];
+    var normalized = SfDataReader_normalize_(key);
+    if (headerMap.hasOwnProperty(key)) return row[headerMap[key]];
+    if (headerMap.hasOwnProperty(normalized)) return row[headerMap[normalized]];
+  }
+  if (typeof fallbackIndex === 'number' && fallbackIndex >= 0 && fallbackIndex < row.length) {
+    return row[fallbackIndex];
+  }
+  return '';
+}
+
+function SfDataReader_normalize_(text) {
+  return String(text || '')
+    .replace(/\s+/g, '')
+    .replace(/[()（）]/g, '')
+    .toLowerCase();
 }
 
 function SfDataReader_parseDate_(value) {
   if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value)) {
     return new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
-
-  const text = String(value || '').trim();
+  var text = String(value || '').trim();
   if (!text || !/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-
-  const date = new Date(text + 'T00:00:00');
+  var date = new Date(text + 'T00:00:00');
   if (isNaN(date)) return null;
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function SfDataReader_createMember_(name, group, dept, isTotal) {
+function SfDataReader_formatCell_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value)) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function SfDataReader_createMember_(name, displayName, group, dept, isTotal) {
   return {
     name: name,
+    displayName: displayName || name,
     group: group,
     dept: dept,
     isTotal: isTotal,
     sortOrder: 0,
-    Q: SfDataReader_createMetric_(),
-    M5: SfDataReader_createMetric_(),
-    M6: SfDataReader_createMetric_(),
-    M7: SfDataReader_createMetric_(),
+    monthMap: {}
   };
+}
+
+function SfDataReader_getOrCreateMonthMetric_(member, monthKey) {
+  if (!member.monthMap[monthKey]) member.monthMap[monthKey] = SfDataReader_createMetric_();
+  return member.monthMap[monthKey];
 }
 
 function SfDataReader_createMetric_() {
   return {
-    target: 0,
+    target: SfDataReader_createBreakdown_(),
     fcstCommit: SfDataReader_createBreakdown_(),
     fcstMax: 0,
     confirmed: SfDataReader_createBreakdown_(),
@@ -111,7 +207,7 @@ function SfDataReader_createMetric_() {
     debtMgmt: SfDataReader_createBreakdown_(),
     debtMgmtLite: SfDataReader_createBreakdown_(),
     expense: SfDataReader_createBreakdown_(),
-    keyDeals: [],
+    keyDeals: []
   };
 }
 
@@ -120,63 +216,78 @@ function SfDataReader_createBreakdown_() {
 }
 
 function SfDataReader_addBreakdownValue_(breakdown, bucket, value) {
-  const amount = SfDataReader_toNumber_(value);
+  var amount = SfDataReader_toNumber_(value);
   breakdown.net += amount;
   if (bucket) breakdown[bucket] += amount;
 }
 
-function SfDataReader_buildGroupTotals_(members, targets) {
-  const totals = {};
+function SfDataReader_applyTargets_(member, targets, periodOptions) {
+  (periodOptions || []).forEach(function(option) {
+    (option.months || []).forEach(function(monthKey) {
+      var ym = monthKey.replace('-', '');
+      var metric = SfDataReader_getOrCreateMonthMetric_(member, monthKey);
+      metric.target = SfDataReader_toBreakdown_(targets[member.name + '|' + ym]);
+    });
+  });
+}
+
+function SfDataReader_buildGroupTotals_(members, periodOptions) {
+  var totals = {};
 
   members.forEach(function(member) {
-    const key = member.group || '';
+    var key = member.group || '';
     if (!key) return;
-
     if (!totals[key]) {
-      totals[key] = SfDataReader_createMember_(key + '合計', key, member.dept || '', true);
+      totals[key] = SfDataReader_createMember_(key + 'グループ', key + 'グループ', key, member.dept || '', true);
     }
-
-    totals[key].M5 = SfDataReader_sumMetrics_([totals[key].M5, member.M5]);
-    totals[key].M6 = SfDataReader_sumMetrics_([totals[key].M6, member.M6]);
-    totals[key].M7 = SfDataReader_sumMetrics_([totals[key].M7, member.M7]);
+    Object.keys(member.monthMap || {}).forEach(function(monthKey) {
+      totals[key].monthMap[monthKey] = SfDataReader_sumMetrics_([
+        totals[key].monthMap[monthKey] || SfDataReader_createMetric_(),
+        member.monthMap[monthKey]
+      ]);
+    });
   });
 
   return Object.keys(totals).map(function(key) {
-    const member = totals[key];
-    SfDataReader_applyTargets_(member, targets);
-    member.Q = SfDataReader_sumMetrics_([member.M5, member.M6, member.M7]);
+    var member = totals[key];
+    SfDataReader_buildPeriods_(member, periodOptions);
     return member;
   });
 }
 
-function SfDataReader_buildOverallTotal_(members, targets) {
+function SfDataReader_buildOverallTotal_(members, periodOptions) {
   if (!members.length) return null;
-
-  const total = SfDataReader_createMember_('BOAM合計', 'BOAM', '', true);
+  var total = SfDataReader_createMember_('部全体', '部全体', '部全体', '', true);
   members.forEach(function(member) {
-    total.M5 = SfDataReader_sumMetrics_([total.M5, member.M5]);
-    total.M6 = SfDataReader_sumMetrics_([total.M6, member.M6]);
-    total.M7 = SfDataReader_sumMetrics_([total.M7, member.M7]);
+    Object.keys(member.monthMap || {}).forEach(function(monthKey) {
+      total.monthMap[monthKey] = SfDataReader_sumMetrics_([
+        total.monthMap[monthKey] || SfDataReader_createMetric_(),
+        member.monthMap[monthKey]
+      ]);
+    });
   });
-
-  SfDataReader_applyTargets_(total, targets);
-  total.Q = SfDataReader_sumMetrics_([total.M5, total.M6, total.M7]);
+  SfDataReader_buildPeriods_(total, periodOptions);
   return total;
 }
 
-function SfDataReader_applyTargets_(member, targets) {
-  FCST_TARGET_MONTHS.forEach(function(month) {
-    const blockKey = 'M' + month;
-    const ym = String(FCST_TARGET_YEAR) + String(month).padStart(2, '0');
-    const nameKey = member.name + '|' + ym;
-    const groupKey = member.group + '|' + ym;
-    member[blockKey].target = targets.hasOwnProperty(nameKey) ? targets[nameKey] : targets[groupKey] || 0;
+function SfDataReader_buildPeriods_(member, periodOptions) {
+  (periodOptions || []).forEach(function(option) {
+    var months = option.months || [];
+    months.forEach(function(monthKey) {
+      member[monthKey] = member.monthMap[monthKey] || SfDataReader_createMetric_();
+    });
+    member[option.key] = SfDataReader_sumMetrics_(months.map(function(monthKey) {
+      return member.monthMap[monthKey] || SfDataReader_createMetric_();
+    }));
   });
 }
 
 function SfDataReader_sumMetrics_(metrics) {
-  return metrics.reduce(function(sum, metric) {
-    sum.target += metric.target || 0;
+  return (metrics || []).reduce(function(sum, metric) {
+    metric = metric || SfDataReader_createMetric_();
+    sum.target.net += (metric.target && metric.target.net) || 0;
+    sum.target.newExp += (metric.target && metric.target.newExp) || 0;
+    sum.target.churn += (metric.target && metric.target.churn) || 0;
     sum.fcstCommit.net += metric.fcstCommit.net || 0;
     sum.fcstCommit.newExp += metric.fcstCommit.newExp || 0;
     sum.fcstCommit.churn += metric.fcstCommit.churn || 0;
@@ -204,57 +315,78 @@ function SfDataReader_sumMetrics_(metrics) {
   }, SfDataReader_createMetric_());
 }
 
-function SfDataReader_finalizeMember_(member) {
-  member.M5 = SfDataReader_finalizeMetric_(member.M5);
-  member.M6 = SfDataReader_finalizeMetric_(member.M6);
-  member.M7 = SfDataReader_finalizeMetric_(member.M7);
-  member.Q = SfDataReader_finalizeMetric_(member.Q);
+function SfDataReader_finalizeMember_(member, periodOptions) {
+  (periodOptions || []).forEach(function(option) {
+    (option.months || []).forEach(function(monthKey) {
+      member[monthKey] = SfDataReader_finalizeMetric_(member[monthKey] || SfDataReader_createMetric_());
+    });
+    member[option.key] = SfDataReader_finalizeMetric_(member[option.key] || SfDataReader_createMetric_());
+  });
   delete member.sortOrder;
+  delete member.monthMap;
   return member;
 }
 
 function SfDataReader_finalizeMetric_(metric) {
-  function finalizeBreakdown(b) {
-    return { net: b.net, newExp: b.newExp, churn: b.churn };
+  function finalizeBreakdown(breakdown) {
+    return {
+      net: (breakdown && breakdown.net) || 0,
+      newExp: (breakdown && breakdown.newExp) || 0,
+      churn: (breakdown && breakdown.churn) || 0
+    };
   }
   return {
-    target: metric.target,
+    target: finalizeBreakdown(metric.target),
     fcstCommit: finalizeBreakdown(metric.fcstCommit),
-    fcstMax: metric.fcstMax,
+    fcstMax: metric.fcstMax || 0,
     confirmed: finalizeBreakdown(metric.confirmed),
     expectedMrr: finalizeBreakdown(metric.expectedMrr),
     received: finalizeBreakdown(metric.received),
     debtMgmt: finalizeBreakdown(metric.debtMgmt),
     debtMgmtLite: finalizeBreakdown(metric.debtMgmtLite),
     expense: finalizeBreakdown(metric.expense),
-    keyDeals: SfDataReader_unique_(metric.keyDeals.map(function(kd) {
-      return JSON.stringify(kd);
-    })).map(function(s) { return JSON.parse(s); }),
+    keyDeals: SfDataReader_unique_((metric.keyDeals || []).map(function(keyDeal) {
+      return JSON.stringify(keyDeal);
+    })).map(function(text) {
+      return JSON.parse(text);
+    })
+  };
+}
+
+function SfDataReader_toBreakdown_(value) {
+  if (!value && value !== 0) return SfDataReader_createBreakdown_();
+  if (typeof value === 'number') {
+    return { net: value, newExp: 0, churn: 0 };
+  }
+  return {
+    net: SfDataReader_toNumber_(value.net),
+    newExp: SfDataReader_toNumber_(value.newExp),
+    churn: SfDataReader_toNumber_(value.churn)
   };
 }
 
 function SfDataReader_unique_(values) {
-  const map = {};
-  return values.filter(function(value) {
+  var map = {};
+  return (values || []).filter(function(value) {
     if (!value || map[value]) return false;
     map[value] = true;
     return true;
   });
 }
 
-function SfDataReader_extractLastUpdated_(title) {
-  const text = String(title || '').trim();
-  const match = text.match(/\d{4}[\/-]\d{1,2}[\/-]\d{1,2}/);
-  if (!match) {
-    return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
-  }
-
-  const normalized = match[0].replace(/\//g, '-');
-  const date = new Date(normalized + 'T00:00:00');
-  if (isNaN(date)) {
-    return Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
-  }
-  return Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+function SfDataReader_extractLastUpdated_(cellOrText) {
+  var formula = cellOrText && typeof cellOrText.getFormula === 'function' ? String(cellOrText.getFormula() || '') : '';
+  var display = cellOrText && typeof cellOrText.getDisplayValue === 'function'
+    ? String(cellOrText.getDisplayValue() || '')
+    : String(cellOrText || '');
+  var text = formula || display;
+  var match = text.match(/(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s+(\d{1,2}:\d{2})(?::\d{2})?/);
+  if (!match) return '';
+  var normalizedDate = match[1].replace(/\//g, '-');
+  var normalizedTime = match[2];
+  var date = new Date(normalizedDate + 'T' + normalizedTime + ':00');
+  if (isNaN(date)) return '';
+  return Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
 }
 
 function SfDataReader_toNumber_(value) {
@@ -269,15 +401,13 @@ function SfDataReader_toBoolean_(value) {
 function SfDataReader_stripLegalForm_(name) {
   return String(name || '')
     .replace(/株式会社/g, '')
-    .replace(/合同会社/g, '')
     .replace(/有限会社/g, '')
-    .replace(/合名会社/g, '')
-    .replace(/合資会社/g, '')
+    .replace(/合同会社/g, '')
     .replace(/一般社団法人/g, '')
     .replace(/一般財団法人/g, '')
     .replace(/公益社団法人/g, '')
     .replace(/公益財団法人/g, '')
-    .replace(/[（(](株|有|同|資|名)[)）]/g, '')
+    .replace(/[()（）]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
