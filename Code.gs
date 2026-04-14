@@ -22,11 +22,7 @@ function doGet(e) {
 
   var initData = null;
   try {
-    initData = CacheLayer_read(deptKey, 'initData');
-    if (!initData) {
-      initData = buildInitData_(deptKey);
-      CacheLayer_write(deptKey, 'initData', initData);
-    }
+    initData = AppDataCache_getInitData(deptKey);
   } catch(err) {
     initData = null;
   }
@@ -226,12 +222,12 @@ function setupOppSnapshotTrigger(deptKey) { try { return OppListSnapshot_setupWe
 function setupOppListSnapshotTrigger() { try { return OppListSnapshot_setupWeeklyTrigger(); } catch (e) { return { error: e.message }; } }
 
 function buildInitData_(deptKey) {
-  return AggregatedCache_refresh(deptKey);
+  return AppDataCache_refreshInitData(deptKey);
 }
 
 function getInitData(deptKey) {
   try {
-    var result = buildInitData_(deptKey);
+    var result = AppDataCache_getInitData(deptKey);
     if (!result) {
       return { error: 'データが見つかりません。スプレッドシートのデータを確認してください。' };
     }
@@ -243,7 +239,7 @@ function getInitData(deptKey) {
 
 function refreshFromSpreadsheet(deptKey) {
   try {
-    var data = AggregatedCache_refresh(deptKey);
+    var data = AppDataCache_refreshInitData(deptKey);
     return { data: data };
   } catch (e) {
     return { error: e.message };
@@ -273,7 +269,7 @@ function refreshSfDataAndGetInitData(deptKey) {
     }
 
     if (latestLastUpdated && latestLastUpdated !== previousLastUpdated) {
-      result = { data: buildInitData_(deptKey) };
+      result = { data: AppDataCache_refreshInitData(deptKey) };
     } else {
       result = before;
       result.refreshTimedOut = true;
@@ -299,15 +295,7 @@ function refreshSfDataAndGetInitData(deptKey) {
 
 function getOpportunities(deptKey) {
   try {
-    var result = OppListReader_getLiveRows(deptKey);
-    result.snapshotDates = OppListSnapshot_getSnapshotDates(deptKey);
-    result.previousRows = result.snapshotDates.length
-      ? OppListSnapshot_getByDate(deptKey, result.snapshotDates[0]).rows
-      : [];
-    result.latestSnapshotData = result.snapshotDates.length
-      ? OppListSnapshot_getByDate(deptKey, result.snapshotDates[0])
-      : null;
-    return result;
+    return AppDataCache_getOpportunities(deptKey);
   } catch (e) {
     return { error: e.message };
   }
@@ -353,7 +341,7 @@ function refreshSfDataAndGetOpportunities(deptKey) {
 function createSnapshot(deptKey) {
   try {
     if (!deptKey) return runFcstSnapshotForAllDepts();
-    var masterContext = MonthlyMasterReader_getContext(deptKey);
+    var masterContext = AssignmentMaster_getContext(deptKey);
     var result = SfDataReader_getAggregated(deptKey, masterContext);
     var fcstState = FcstAdjusted_getState(deptKey);
     var fcstAdj = fcstState.adjusted;

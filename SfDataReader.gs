@@ -1,5 +1,5 @@
 function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
-  var context = SfDataReader_normalizeContext_(contextOrUsers, legacyTargets);
+  var context = SfDataReader_normalizeContext_(deptKey, contextOrUsers, legacyTargets);
   var sheet = SfDataReader_getSheet_(deptKey);
   if (!sheet) {
     return { lastUpdated: '', periodOptions: [], members: [] };
@@ -34,7 +34,9 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     );
     member.displayName = user.displayName || member.displayName || member.name;
     member.group = user.group || member.group || '';
+    member.groupCode = user.groupCode || member.groupCode || member.group || '';
     member.dept = user.dept || member.dept || '';
+    member.totalKind = SHARED_TOTAL_KIND.INDIVIDUAL;
     member.sortOrder = user.sortOrder || member.sortOrder || 0;
 
     var metric = SfDataReader_getOrCreateMonthMetric_(member, monthKey);
@@ -42,6 +44,7 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     var bucket = typeValue === 'New+Exp' ? 'newExp' : typeValue === 'Churn' ? 'churn' : null;
 
     SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38));
+    metric.fcstMin += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MIN)(換算値)', 'FCST(MIN)', 'FCST（MIN）'], 39));
     metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)(換算値)', 'FCST(MAX)', 'FCST（MAX）'], 40));
     SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10));
     SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['Expected MRR', 'ExpectedMRR'], 37));
@@ -78,7 +81,7 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
   });
 
   var groupTotals = SfDataReader_buildGroupTotals_(members, periodOptions);
-  var overallTotal = SfDataReader_buildOverallTotal_(members, periodOptions);
+  var overallTotal = SfDataReader_buildOverallTotal_(members, periodOptions, deptKey);
   var sortedMembers = members.sort(function(a, b) {
     return (a.sortOrder || 0) - (b.sortOrder || 0) || (a.displayName || a.name).localeCompare((b.displayName || b.name), 'ja');
   });
@@ -96,20 +99,15 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
   };
 }
 
-function SfDataReader_normalizeContext_(contextOrUsers, legacyTargets) {
+function SfDataReader_normalizeContext_(deptKey, contextOrUsers, legacyTargets) {
   if (legacyTargets !== undefined) {
     return {
-      users: contextOrUsers || {},
+      users: AssignmentMaster_normalizeUserMap_(deptKey, contextOrUsers || {}),
       monthlyUsers: {},
       targets: SfDataReader_normalizeLegacyTargets_(legacyTargets)
     };
   }
-  var context = contextOrUsers || {};
-  return {
-    users: context.users || {},
-    monthlyUsers: context.monthlyUsers || {},
-    targets: context.targets || {}
-  };
+  return AssignmentMaster_normalizeContext_(deptKey, contextOrUsers || {});
 }
 
 function SfDataReader_normalizeLegacyTargets_(targets) {
@@ -200,6 +198,7 @@ function SfDataReader_createMetric_() {
   return {
     target: SfDataReader_createBreakdown_(),
     fcstCommit: SfDataReader_createBreakdown_(),
+    fcstMin: 0,
     fcstMax: 0,
     confirmed: SfDataReader_createBreakdown_(),
     expectedMrr: SfDataReader_createBreakdown_(),
@@ -235,10 +234,12 @@ function SfDataReader_buildGroupTotals_(members, periodOptions) {
   var totals = {};
 
   members.forEach(function(member) {
-    var key = member.group || '';
+    var key = member.groupCode || member.group || '';
     if (!key) return;
     if (!totals[key]) {
-      totals[key] = SfDataReader_createMember_(key + 'グループ', key + 'グループ', key, member.dept || '', true);
+      totals[key] = SfDataReader_createMember_(key + 'グループ', member.group || key, member.group || key, member.dept || '', true);
+      totals[key].groupCode = key;
+      totals[key].totalKind = SHARED_TOTAL_KIND.GROUP;
     }
     Object.keys(member.monthMap || {}).forEach(function(monthKey) {
       totals[key].monthMap[monthKey] = SfDataReader_sumMetrics_([
@@ -255,9 +256,11 @@ function SfDataReader_buildGroupTotals_(members, periodOptions) {
   });
 }
 
-function SfDataReader_buildOverallTotal_(members, periodOptions) {
+function SfDataReader_buildOverallTotal_(members, periodOptions, deptKey) {
   if (!members.length) return null;
-  var total = SfDataReader_createMember_('部全体', '部全体', '部全体', '', true);
+  var total = SfDataReader_createMember_(SHARED_ALL_GROUP_LABEL, SHARED_ALL_GROUP_LABEL, SHARED_ALL_GROUP_LABEL, deptKey || '', true);
+  total.groupCode = String(deptKey || '');
+  total.totalKind = SHARED_TOTAL_KIND.DEPARTMENT;
   members.forEach(function(member) {
     Object.keys(member.monthMap || {}).forEach(function(monthKey) {
       total.monthMap[monthKey] = SfDataReader_sumMetrics_([
@@ -291,6 +294,7 @@ function SfDataReader_sumMetrics_(metrics) {
     sum.fcstCommit.net += metric.fcstCommit.net || 0;
     sum.fcstCommit.newExp += metric.fcstCommit.newExp || 0;
     sum.fcstCommit.churn += metric.fcstCommit.churn || 0;
+    sum.fcstMin += metric.fcstMin || 0;
     sum.fcstMax += metric.fcstMax || 0;
     sum.confirmed.net += metric.confirmed.net || 0;
     sum.confirmed.newExp += metric.confirmed.newExp || 0;
@@ -338,6 +342,7 @@ function SfDataReader_finalizeMetric_(metric) {
   return {
     target: finalizeBreakdown(metric.target),
     fcstCommit: finalizeBreakdown(metric.fcstCommit),
+    fcstMin: metric.fcstMin || 0,
     fcstMax: metric.fcstMax || 0,
     confirmed: finalizeBreakdown(metric.confirmed),
     expectedMrr: finalizeBreakdown(metric.expectedMrr),

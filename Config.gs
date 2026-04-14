@@ -57,6 +57,20 @@ const DEPT_CONFIG = {
   CO:      { label: 'CO',     division: 'CO', sfSheet: SF_DATA_SHEET_CO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: false } }
 };
 
+function getDeptConfig_(deptKey) {
+  return deptKey && DEPT_CONFIG[deptKey] ? DEPT_CONFIG[deptKey] : null;
+}
+
+function isFeatureEnabled_(deptKey, featureKey) {
+  var cfg = getDeptConfig_(deptKey);
+  if (!cfg || !cfg.features) return false;
+  return cfg.features[featureKey] !== false;
+}
+
+function isProposalProductsEnabled_(deptKey) {
+  return isFeatureEnabled_(deptKey, 'proposalProducts');
+}
+
 function getSharedSheet(sheetName) {
   return SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(sheetName);
 }

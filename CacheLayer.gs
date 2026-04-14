@@ -1,15 +1,17 @@
 var CACHE_TTL = 3600;
 var CACHE_PREFIX = 'fcst:';
 
-function CacheLayer_read(deptKey, dataKey) {
+function CacheLayer_read(deptKey, dataKey, options) {
+  var opts = options || {};
   var cache = CacheService.getScriptCache();
-  var key = CACHE_PREFIX + deptKey + ':' + dataKey;
+  var key = CacheLayer_buildKey_(deptKey, dataKey);
   var hit = cache.get(key);
   if (hit) {
     try { return JSON.parse(hit); } catch(e) {}
   }
   var chunked = CacheLayer_readChunked_(cache, key);
   if (chunked) return chunked;
+  if (opts.skipSharedSheet) return null;
   var ssData = AggregatedCache_read(deptKey);
   if (ssData && ssData[dataKey] !== undefined) {
     try {
@@ -25,9 +27,10 @@ function CacheLayer_read(deptKey, dataKey) {
   return null;
 }
 
-function CacheLayer_write(deptKey, dataKey, value) {
+function CacheLayer_write(deptKey, dataKey, value, options) {
+  var opts = options || {};
   var cache = CacheService.getScriptCache();
-  var key = CACHE_PREFIX + deptKey + ':' + dataKey;
+  var key = CacheLayer_buildKey_(deptKey, dataKey);
   try {
     var json = JSON.stringify(value);
     if (json.length <= 100000) {
@@ -36,7 +39,12 @@ function CacheLayer_write(deptKey, dataKey, value) {
       CacheLayer_writeChunked_(cache, key, json);
     }
   } catch(e) {}
+  if (opts.persistToSheet === false) return;
   try { AggregatedCache_writeKey(deptKey, dataKey, value); } catch(e) {}
+}
+
+function CacheLayer_buildKey_(deptKey, dataKey) {
+  return CACHE_PREFIX + deptKey + ':' + dataKey;
 }
 
 function CacheLayer_writeChunked_(cache, baseKey, json) {
@@ -67,6 +75,6 @@ function CacheLayer_invalidate(deptKey) {
   var keys = ['initData','members','fcstData','oppList','targets',
     'adjustments','snapshots','notes','sfLastUpdated'];
   cache.removeAll(keys.map(function(k) {
-    return CACHE_PREFIX + deptKey + ':' + k;
+    return CacheLayer_buildKey_(deptKey, k);
   }));
 }

@@ -82,7 +82,7 @@ function AggregatedCache_writeKey(deptKey, dataKey, value) {
 
 function AggregatedCache_refresh(deptKey) {
   try {
-    var context = MonthlyMasterReader_getContext(deptKey);
+    var context = AssignmentMaster_getContext(deptKey);
     var result = SfDataReader_getAggregated(deptKey, context);
     var fcstState = FcstAdjusted_getState(deptKey);
     result.notes = fcstState.notes;
@@ -95,7 +95,7 @@ function AggregatedCache_refresh(deptKey) {
       : null;
     result.sfLastUpdated = result.lastUpdated || AggregatedCache_getSfLastUpdated_(deptKey);
 
-    if (!DEPT_CONFIG[deptKey].features.proposalProducts) {
+    if (!isProposalProductsEnabled_(deptKey)) {
       AggregatedCache_stripProposalProductFields_(result);
     }
 

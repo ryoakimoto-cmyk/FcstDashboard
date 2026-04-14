@@ -61,7 +61,7 @@
     </div>
 
     <div class="dept-controls opp-filter-grid">
-      <label>サブオーナー</label>
+      <label id="opp-owner-label">案件担当</label>
       <select id="opp-owner-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
@@ -69,7 +69,7 @@
       <select id="opp-forecast-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
-      <label>予定日 / 受注日</label>
+      <label>予定日 / 確定日</label>
       <select id="opp-date-select" onchange="App.renderOpps()">
         <option value="all">すべて</option>
       </select>
@@ -98,12 +98,12 @@
             <th class="opp-col-month">完了予定月</th>
             <th class="opp-col-dept">担当部署</th>
             <th class="opp-col-type">種別</th>
-            <th class="opp-col-owner">サブオーナー</th>
+            <th class="opp-col-owner" id="opp-owner-header">案件担当</th>
             <th class="opp-col-phase">フェーズ</th>
             <th class="opp-col-forecast">フォーキャスト</th>
-            <th class="opp-col-date">予定日 / 受注日</th>
+            <th class="opp-col-date">予定日 / 確定日</th>
             <th class="opp-name-header">案件名</th>
-            <th class="opp-num-header">按分率(%)</th>
+            <th class="opp-num-header">計上割合 (%)</th>
             <th class="opp-num-header">MRR</th>
             <th class="opp-num-header">初期費用</th>
             <th class="opp-col-keydeal">Key Deal</th>
@@ -112,12 +112,12 @@
             <th class="opp-num-header" data-opp-diff-field="fcstMax" data-base-label="FCST(MAX)">FCST(MAX)</th>
             <th class="opp-num-header" data-opp-diff-field="received" data-base-label="受領" data-feature="proposalProducts">受領</th>
             <th class="opp-num-header" data-opp-diff-field="debtMgmt" data-base-label="債権管理" data-feature="proposalProducts">債権管理</th>
-            <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理Lite" data-feature="proposalProducts">債権管理Lite</th>
+            <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理 Lite" data-feature="proposalProducts">債権管理 Lite</th>
             <th class="opp-num-header" data-opp-diff-field="expense" data-base-label="経費" data-feature="proposalProducts">経費</th>
             <th class="opp-col-comment">FCSTコメント</th>
-            <th class="opp-col-firstmeeting">初回MTG日</th>
+            <th class="opp-col-firstmeeting">初回商談日</th>
             <th class="opp-col-summary">案件概要</th>
-            <th class="opp-col-summary">オプション商材</th>
+            <th class="opp-col-summary">オプション機能</th>
             <th class="opp-col-summary">施策</th>
           </tr>
         </thead>
