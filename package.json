@@ -1,0 +1,8 @@
+{
+  "name": "fcst-dashboard-shared-validation",
+  "private": true,
+  "scripts": {
+    "validate:syntax": "node scripts/validate-syntax.js",
+    "validate:critical": "node scripts/validate-critical-flows.js"
+  }
+}

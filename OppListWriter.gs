@@ -1,9 +1,11 @@
-function OppListWriter_saveDrafts(changes) {
+function OppListWriter_saveDrafts(deptKey, changes) {
   var list = Array.isArray(changes) ? changes : [];
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
   var exportRes = OppListWriter_upsertExportWaiting_(ss, list);
-  var proposalRes = OppListWriter_upsertProposalExportWaiting_(ss, list);
+  var proposalRes = DEPT_CONFIG[deptKey].features.proposalProducts
+    ? OppListWriter_upsertProposalExportWaiting_(ss, list)
+    : { newCount: 0, updatedCount: 0 };
 
   return {
     success: true,
@@ -12,9 +14,26 @@ function OppListWriter_saveDrafts(changes) {
   };
 }
 
+function OppListWriter_saveOppSfValue(deptKey, p) {
+  var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
+  if (!sheet) return { error: EXPORT_WAITING_SHEET_NAME + ' sheet not found' };
+
+  var now = new Date();
+  var lastColumn = Math.max(sheet.getLastColumn(), 6);
+  var row = Array(lastColumn).fill('');
+  row[0] = now;
+  row[1] = p && p.oppId ? p.oppId : '';
+  row[2] = deptKey || '';
+  row[3] = p && p.fieldName ? p.fieldName : '';
+  row[4] = p && p.value !== undefined ? p.value : '';
+  row[5] = 'sf_field_update';
+  sheet.appendRow(row);
+  return { status: 'ok' };
+}
+
 function OppListWriter_upsertExportWaiting_(ss, changes) {
-  var sheet = ss.getSheetByName('Export待機');
-  if (!sheet) throw new Error('Export待機シートが見つかりません');
+  var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
+  if (!sheet) return { newCount: 0, updatedCount: 0, error: EXPORT_WAITING_SHEET_NAME + ' sheet not found' };
 
   var startRow = 2;
   var colCount = 8;
@@ -72,8 +91,8 @@ function OppListWriter_upsertExportWaiting_(ss, changes) {
 }
 
 function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
-  var sheet = ss.getSheetByName('Export待機_提案商品');
-  if (!sheet) throw new Error('Export待機_提案商品シートが見つかりません');
+  var sheet = getSharedSheet(EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME);
+  if (!sheet) return { newCount: 0, updatedCount: 0, error: EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME + ' sheet not found' };
 
   var startRow = 2;
   var colCount = 6;
@@ -90,7 +109,7 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
   var modules = [
     { field: 'received', proposalKey: 'received', moduleName: 'AP' },
     { field: 'debtMgmt', proposalKey: 'debtMgmt', moduleName: 'AR' },
-    { field: 'debtMgmtLite', proposalKey: 'debtMgmtLite', moduleName: '債権管理 Lite' },
+    { field: 'debtMgmtLite', proposalKey: 'debtMgmtLite', moduleName: '債権管理Lite' },
     { field: 'expense', proposalKey: 'expense', moduleName: 'EX' }
   ];
 
@@ -144,4 +163,51 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
 function OppListWriter_toNumberOrBlank_(value) {
   if (value === '' || value === null || value === undefined) return '';
   return Number(value) || 0;
+}
+
+function saveDiffOppList(deptKey, dirtyRows, userEmail, timestamp) {
+  if (!dirtyRows || dirtyRows.length === 0) return { status: 'no_changes' };
+  var lock = LockService.getSpreadsheetLock();
+  lock.waitLock(10000);
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    appendDiffToExportWaiting_(ss, dirtyRows, userEmail, timestamp);
+    appendToChangeLog_(ss, dirtyRows, userEmail, timestamp);
+    return { status: 'ok', savedRows: dirtyRows.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function appendDiffToExportWaiting_(ss, dirtyRows, userEmail, timestamp) {
+  var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
+  if (!sheet) return;
+  var rows = [];
+  dirtyRows.forEach(function(dr) {
+    Object.keys(dr.changes).forEach(function(col) {
+      var ch = dr.changes[col];
+      rows.push([timestamp, userEmail, dr.rowKey, col, ch.old, ch.new]);
+    });
+  });
+  if (rows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+  }
+}
+
+function appendToChangeLog_(ss, dirtyRows, userEmail, timestamp) {
+  var sheet = getSharedSheet(CHANGE_LOG_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CHANGE_LOG_SHEET_NAME);
+    sheet.appendRow(['timestamp', 'user_email', 'row_key', 'column', 'old_value', 'new_value']);
+  }
+  var rows = [];
+  dirtyRows.forEach(function(dr) {
+    Object.keys(dr.changes).forEach(function(col) {
+      var ch = dr.changes[col];
+      rows.push([timestamp, userEmail, dr.rowKey, col, ch.old, ch.new]);
+    });
+  });
+  if (rows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 6).setValues(rows);
+  }
 }

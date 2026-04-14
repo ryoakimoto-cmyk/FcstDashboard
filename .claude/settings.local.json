@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(clasp push:*)",
+      "Bash(clasp deploy:*)",
+      "Bash(clasp deployments:*)"
+    ]
+  }
+}
