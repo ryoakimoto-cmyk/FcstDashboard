@@ -2,7 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const acorn = require('acorn');
 
-const root = path.resolve(__dirname, '..');
+function resolveRoot() {
+  const cliRoot = process.argv[2];
+  const envRoot = process.env.VALIDATE_SYNTAX_ROOT || process.env.VALIDATE_ROOT;
+  const candidate = cliRoot || envRoot;
+  return candidate ? path.resolve(candidate) : path.resolve(__dirname, '..');
+}
+
+const root = resolveRoot();
 const files = fs.readdirSync(root)
   .filter((name) => name.endsWith('.gs'))
   .concat(['js.html'])
