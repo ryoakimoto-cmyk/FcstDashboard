@@ -1,4 +1,7 @@
 function doGet(e) {
+  if (e && e.parameter && e.parameter.app === 'mrr') {
+    return mrrDashboard_doGet_();
+  }
   var deptKey = (e && e.parameter && e.parameter.dept) || null;
   var email = Session.getActiveUser().getEmail();
   var userDefaultDept = UserReader_getUserDefaultDept(email) || null;
