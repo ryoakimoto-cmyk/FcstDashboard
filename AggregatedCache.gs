@@ -143,10 +143,10 @@ function AggregatedCache_runScheduledUpdate() {
   var isBusinessHours = (hour >= 9 && hour < 19);
   if (!isBusinessHours) {
     var lastRun = CacheService.getScriptCache().get('lastScheduledUpdate');
-    if (lastRun && (Date.now() - parseInt(lastRun)) < 3600000) return;
+    if (lastRun && (Date.now() - parseInt(lastRun, 10)) < 3600000) return;
   }
   Object.keys(DEPT_CONFIG).forEach(function(dk) {
-    AggregatedCache_refresh(dk);
+    AppDataCache_warmDept_(dk);
   });
   CacheService.getScriptCache().put('lastScheduledUpdate', String(Date.now()), 7200);
 }
@@ -158,7 +158,7 @@ function AggregatedCache_setupTrigger() {
     }
   });
   ScriptApp.newTrigger('AggregatedCache_runScheduledUpdate')
-    .timeBased().everyMinutes(15).create();
+    .timeBased().everyMinutes(5).create();
 }
 
 function AggregatedCache_getSheet_(deptKey) {
