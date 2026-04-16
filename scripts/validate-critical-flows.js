@@ -13,6 +13,13 @@ function assertIncludes(haystack, needle, message) {
   }
 }
 
+function assertCount(haystack, needle, expected, message) {
+  const actual = haystack.split(needle).length - 1;
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${expected}, got ${actual} for "${needle}"`);
+  }
+}
+
 const cacheLayer = read('CacheLayer.gs');
 assertIncludes(cacheLayer, "var CACHE_PREFIX = 'fcst:';", 'cache prefix changed');
 assertIncludes(cacheLayer, 'var CACHE_TTL_DEFAULT_SECONDS = 300;', 'shared cache default TTL must stay at 5 minutes');
@@ -65,6 +72,17 @@ const client = read('js.html');
 });
 assertIncludes(client, 'TTL: 300000,', 'client cache TTL must stay at 5 minutes');
 assertIncludes(client, 'ClientCache.shouldRevalidate(cached)', 'client should only revalidate stale caches');
+assertIncludes(client, 'App.refreshInitDataSilently_({ data: _embeddedInitData });', 'embedded init data must refresh in background');
+assertIncludes(client, 'App.refreshInitDataSilently_(cached);', 'cached init data must refresh in background');
 assertIncludes(client, 'function getSharedQuarterDefinitions_(periodOptions)', 'shared quarter definitions missing');
+assertCount(client, 'function isDepartmentTotalMember_(member)', 1, 'duplicate department total helper');
+assertCount(client, 'function isGroupTotalMember_(member)', 1, 'duplicate group total helper');
+assertCount(client, 'function getMemberGroupLabel_(member)', 1, 'duplicate group label helper');
+assertCount(client, 'function displayMemberName(member)', 1, 'duplicate member display helper');
+
+const mrr = read('mrr-index.html');
+['MRR進捗ダッシュボード', '読込中...', '全部署', 'getMrrDashboardData();'].forEach((token) => {
+  assertIncludes(mrr, token, 'MRR template markers missing');
+});
 
 console.log('critical flow checks passed');

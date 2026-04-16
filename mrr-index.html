@@ -3,176 +3,452 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MRR騾ｲ謐励ム繝・す繝･繝懊・繝・/title>
+<title>MRR進捗ダッシュボード</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; background: #f5f7fa; color: #333; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-
-  .header { background: #fff; padding: 12px 24px; box-shadow: 0 1px 3px rgba(0,0,0,.1); display: flex; align-items: center; gap: 0; flex-shrink: 0; }
-  .header-left { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-  .header-right { display: flex; align-items: center; gap: 16px; margin-left: auto; }
-  .header h1 { font-size: 20px; color: #1a73e8; }
-
-  .tabs { display: flex; gap: 4px; }
-  .tab { padding: 6px 16px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; font-size: 14px; }
-  .tab.active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
-
-  .selector { display: flex; align-items: center; gap: 8px; }
-  .selector label { font-size: 13px; font-weight: 600; }
-  .selector select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
-
-  .container { max-width: 1400px; width: 100%; margin: 0 auto; padding: 24px; flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-
-  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; flex-shrink: 0; }
-  .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-  .card .label { font-size: 12px; color: #888; margin-bottom: 4px; }
-  .card .value { font-size: 28px; font-weight: 700; }
-  .card .sub { font-size: 12px; margin-top: 4px; }
-  .val-pos { color: #333; }
-  .val-neg { color: #ea4335; }
-
-  .chart-wrap { background: #fff; border-radius: 8px; padding: 24px; box-shadow: 0 2px 6px rgba(0,0,0,.08); margin-bottom: 20px; flex-shrink: 0; }
-  canvas { max-height: 520px; }
-
-  #filterChip { flex-shrink: 0; }
-  #dealArea { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-  .deal-scroll { flex: 1; min-height: 0; overflow-y: auto; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-  .deal-scroll .deal-table { box-shadow: none; border-radius: 0; }
-  .deal-scroll thead th { position: sticky; top: 0; z-index: 1; }
-  .deal-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-  .deal-table th { background: #f0f3f8; padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #ddd; }
-  .deal-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #eee; }
-  .deal-table tr.pos { background: #f0faf3; }
-  .deal-table tr.neg { background: #fff5f5; }
-
-  .no-deals { padding: 24px; text-align: center; color: #999; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
-
-  #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; font-size: 16px; color: #1a73e8; z-index: 100; }
-
-  .week-nav { display: flex; align-items: center; gap: 4px; }
-  .week-btn { padding: 4px 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; font-size: 16px; line-height: 1; }
-  .week-btn:hover { background: #f0f0f0; }
-  .week-label { min-width: 80px; text-align: center; font-size: 14px; font-weight: 600; }
-
-  @media (max-width: 700px) {
-    .cards { grid-template-columns: repeat(2, 1fr); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
+    background: #f4f7fb;
+    color: #1f2937;
+  }
+  .app-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 24px;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header-left,
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .header h1 {
+    margin: 0;
+    font-size: 20px;
+    color: #1a73e8;
+  }
+  .tabs {
+    display: inline-flex;
+    gap: 6px;
+    padding: 4px;
+    border-radius: 999px;
+    background: #eef2ff;
+  }
+  .tab {
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
+    color: #475569;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tab.active {
+    background: #1a73e8;
+    color: #ffffff;
+  }
+  .selector,
+  .week-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .selector label,
+  .week-label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .selector select {
+    min-width: 160px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    font-size: 13px;
+  }
+  .week-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .week-btn:hover,
+  .selector select:hover,
+  .tab:hover {
+    opacity: 0.9;
+  }
+  .week-label {
+    min-width: 88px;
+    text-align: center;
+  }
+  .content {
+    width: min(1440px, calc(100vw - 32px));
+    margin: 0 auto;
+    padding: 24px 0 32px;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .card {
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  .card-label {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 6px;
+  }
+  .card-value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .card-sub {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .val-pos { color: #15803d; }
+  .val-neg { color: #dc2626; }
+  .val-neutral { color: #1f2937; }
+  .panel {
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  .chart-panel {
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .chart-panel canvas {
+    max-height: 520px;
+  }
+  .filter-chip {
+    min-height: 24px;
+    margin-bottom: 12px;
+  }
+  .filter-chip-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: #e8f0fe;
+    color: #1a73e8;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .filter-chip-clear {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .deal-panel {
+    overflow: hidden;
+  }
+  .deal-scroll {
+    overflow: auto;
+  }
+  .deal-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .deal-table th,
+  .deal-table td {
+    padding: 10px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .deal-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f8fafc;
+    color: #334155;
+  }
+  .deal-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+  .deal-table tr.pos {
+    background: #f0fdf4;
+  }
+  .deal-table tr.neg {
+    background: #fef2f2;
+  }
+  .no-deals,
+  .loading {
+    padding: 48px 24px;
+    text-align: center;
+    color: #64748b;
+  }
+  .loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.88);
+    font-size: 16px;
+    color: #1a73e8;
+    z-index: 100;
+  }
+  .loading.hidden {
+    display: none;
+  }
+  @media (max-width: 960px) {
+    .cards {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 720px) {
+    .header {
+      padding: 14px 16px;
+      align-items: flex-start;
+    }
+    .content {
+      width: calc(100vw - 20px);
+      padding-top: 16px;
+    }
+    .cards {
+      grid-template-columns: 1fr;
+    }
+    .deal-table th,
+    .deal-table td {
+      font-size: 12px;
+      padding: 8px 10px;
+    }
   }
 </style>
 </head>
 <body>
+<div class="app-shell">
+  <div id="loading" class="loading">読込中...</div>
 
-<div id="loading">繝・・繧ｿ繧定ｪｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
+  <header class="header">
+    <div class="header-left">
+      <h1>MRR進捗ダッシュボード</h1>
+      <div class="tabs">
+        <button type="button" class="tab active" data-view="weekly" onclick="switchView('weekly')">週次</button>
+        <button type="button" class="tab" data-view="dept" onclick="switchView('dept')">部署別</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="selector" id="deptSelector">
+        <label for="deptSelect">部署</label>
+        <select id="deptSelect" onchange="chartFilter = null; render();"></select>
+      </div>
+      <div class="week-nav" id="weekSelector" style="display:none;">
+        <button type="button" class="week-btn" onclick="moveWeek(-1)" aria-label="前の週">←</button>
+        <span id="weekLabel" class="week-label"></span>
+        <button type="button" class="week-btn" onclick="moveWeek(1)" aria-label="次の週">→</button>
+      </div>
+    </div>
+  </header>
 
-<div class="header">
-  <div class="header-left">
-    <h1>MRR騾ｲ謐励ム繝・す繝･繝懊・繝・/h1>
-    <div class="tabs">
-      <div class="tab active" data-view="weekly" onclick="switchView('weekly')">騾ｱ蛻･</div>
-      <div class="tab" data-view="dept" onclick="switchView('dept')">驛ｨ鄂ｲ蛻･</div>
-    </div>
-  </div>
-  <div class="header-right">
-    <div class="selector" id="deptSelector">
-      <label>驛ｨ鄂ｲ:</label>
-      <select id="deptSelect" onchange="chartFilter=null;render()"></select>
-    </div>
-    <div class="week-nav" id="weekSelector" style="display:none;">
-      <button class="week-btn" onclick="moveWeek(-1)">&#8592;</button>
-      <span id="weekLabel" class="week-label"></span>
-      <button class="week-btn" onclick="moveWeek(1)">&#8594;</button>
-    </div>
-  </div>
-</div>
-
-<div class="container">
-  <div class="cards" id="cards"></div>
-  <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
-  <div id="filterChip"></div>
-  <div id="dealArea"></div>
+  <main class="content">
+    <section class="cards" id="cards"></section>
+    <section class="panel chart-panel">
+      <canvas id="mainChart"></canvas>
+    </section>
+    <div id="filterChip" class="filter-chip"></div>
+    <section class="panel deal-panel" id="dealArea"></section>
+  </main>
 </div>
 
 <script>
+var ALL_DEPTS_LABEL = '全部署';
 var D = null;
-var currentView = 'weekly';
 var chart = null;
-var dealSortKey = null;
+var currentView = 'weekly';
+var currentWeekIdx = 0;
+var chartFilter = null;
+var dealSortKey = '';
 var dealSortAsc = true;
-var chartFilter = null; // { type: 'week'|'dept', value: string }
-var currentWeekIdx = 0; // index into D.weeks, set to last after data loads
 
-// --- Boot: fetch data from GAS backend ---
-google.script.run
-  .withSuccessHandler(function(result) {
-    D = result;
-    var deptSel = document.getElementById('deptSelect');
-    ['SS莠区･ｭ驛ｨ'].concat(D.depts).forEach(function(d) {
-      var o = document.createElement('option');
-      o.value = d; o.textContent = d;
-      deptSel.appendChild(o);
-    });
-    currentWeekIdx = D.weeks.length - 1;
-    updateWeekLabel();
-    document.getElementById('loading').style.display = 'none';
-    render();
-  })
-  .withFailureHandler(function(err) {
-    document.getElementById('loading').textContent = '繧ｨ繝ｩ繝ｼ: ' + err.message;
-  })
-  .getMrrDashboardData();
-
-// --- Helpers ---
-function fmt(v) {
-  return (v < 0 ? '-' : '') + Math.abs(v).toLocaleString('ja-JP');
+function emptyMetric_() {
+  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0, keyDeal: '' };
 }
-function cls(v) { return v < 0 ? 'val-neg' : 'val-pos'; }
+
+function showLoading_(message) {
+  var el = document.getElementById('loading');
+  if (!el) return;
+  el.textContent = message || '読込中...';
+  el.classList.remove('hidden');
+}
+
+function hideLoading_() {
+  var el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('hidden');
+}
+
+function fmt(v) {
+  var num = Number(v) || 0;
+  return (num < 0 ? '-' : '') + Math.abs(num).toLocaleString('ja-JP');
+}
+
+function valClass_(v) {
+  var num = Number(v) || 0;
+  if (num > 0) return 'val-pos';
+  if (num < 0) return 'val-neg';
+  return 'val-neutral';
+}
+
+function getWeekMap_(week) {
+  return (D && D.data && D.data[week]) || {};
+}
 
 function getDeptData(week, dept) {
-  if (dept === 'SS莠区･ｭ驛ｨ') return D.data[week]['SS'];
-  return D.data[week][dept];
+  var rows = getWeekMap_(week);
+  if (dept === ALL_DEPTS_LABEL) {
+    return rows.SS || emptyMetric_();
+  }
+  return rows[dept] || emptyMetric_();
+}
+
+function normalizeResult_(result) {
+  return {
+    weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
+    depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
+    data: result && result.data ? result.data : {}
+  };
+}
+
+function bootstrap_() {
+  showLoading_('読込中...');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      D = normalizeResult_(result || {});
+      buildDeptOptions_();
+      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+      updateWeekLabel();
+      hideLoading_();
+      render();
+    })
+    .withFailureHandler(function(err) {
+      showLoading_('エラー: ' + getErrorMessage_(err));
+    })
+    .getMrrDashboardData();
+}
+
+function getErrorMessage_(err) {
+  if (!err) return 'Unknown error';
+  return err.message || err.toString() || 'Unknown error';
+}
+
+function buildDeptOptions_() {
+  var select = document.getElementById('deptSelect');
+  if (!select) return;
+  select.innerHTML = '';
+  [ALL_DEPTS_LABEL].concat(D.depts || []).forEach(function(dept) {
+    var option = document.createElement('option');
+    option.value = dept;
+    option.textContent = dept;
+    select.appendChild(option);
+  });
+}
+
+function getSelectedDept_() {
+  var select = document.getElementById('deptSelect');
+  return select && select.value ? select.value : ALL_DEPTS_LABEL;
+}
+
+function getSelectedWeek_() {
+  if (!D || !D.weeks || !D.weeks.length) return '';
+  return D.weeks[currentWeekIdx] || '';
 }
 
 function updateWeekLabel() {
-  if (!D) return;
-  var el = document.getElementById('weekLabel');
-  if (el) el.textContent = D.weeks[currentWeekIdx];
+  var label = document.getElementById('weekLabel');
+  if (!label) return;
+  label.textContent = getSelectedWeek_() || '-';
 }
 
-function moveWeek(dir) {
-  if (!D) return;
-  currentWeekIdx = Math.max(0, Math.min(D.weeks.length - 1, currentWeekIdx + dir));
+function moveWeek(direction) {
+  if (!D || !D.weeks || !D.weeks.length) return;
+  currentWeekIdx = Math.max(0, Math.min(D.weeks.length - 1, currentWeekIdx + direction));
   chartFilter = null;
   updateWeekLabel();
   render();
 }
 
-function getSelectedWeek() {
-  return D ? D.weeks[currentWeekIdx] : null;
-}
-
-function switchView(v) {
-  currentView = v;
+function switchView(view) {
+  currentView = view;
   chartFilter = null;
-  document.querySelectorAll('.tab').forEach(function(t) {
-    t.classList.toggle('active', t.dataset.view === v);
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.view === view);
   });
-  document.getElementById('deptSelector').style.display = v === 'weekly' ? '' : 'none';
-  document.getElementById('weekSelector').style.display = v === 'dept' ? '' : 'none';
+  document.getElementById('deptSelector').style.display = view === 'weekly' ? '' : 'none';
+  document.getElementById('weekSelector').style.display = view === 'dept' ? '' : 'none';
   render();
 }
 
-function parseDeals(text) {
-  if (!text) return [];
-  var lines = text.split('\n').filter(function(l) { return l.trim(); });
-  return lines.map(function(line) {
-    var clean = line.replace(/^繝ｻ/, '').trim();
-    var m = clean.match(/^(.+?)\s+(-?\d+)荳Ⅸs*\/\s*(.+?)\s*\/\s*(-?\d+)荳・Κ繝・/);
-    if (m) return { company: m[1], mrr: parseInt(m[2]) * 10000, phase: m[3].trim(), yomi: parseInt(m[4]) * 10000 };
-    return { company: clean, mrr: 0, phase: '-', yomi: 0 };
-  });
+function parseAmountPart_(text) {
+  var source = String(text || '').trim();
+  var match = source.match(/^(.*?)(?:\s+(-?[0-9,]+))(?:万|万円)?$/);
+  if (!match) {
+    return { label: source, amount: 0 };
+  }
+  return {
+    label: match[1].trim(),
+    amount: (parseInt(match[2].replace(/,/g, ''), 10) || 0) * 10000
+  };
 }
 
-// --- Render ---
+function parseTrailingAmount_(text) {
+  var source = String(text || '').trim();
+  var match = source.match(/(-?[0-9,]+)/);
+  return match ? (parseInt(match[1].replace(/,/g, ''), 10) || 0) * 10000 : 0;
+}
+
+function parseDeals(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map(function(line) { return line.trim(); })
+    .filter(function(line) { return !!line; })
+    .map(function(line) {
+      var clean = line.replace(/^[・•●]/, '').trim();
+      var parts = clean.split('/').map(function(part) { return part.trim(); });
+      var main = parseAmountPart_(parts[0] || clean);
+      return {
+        company: main.label || clean,
+        mrr: main.amount,
+        phase: parts[1] || '-',
+        yomi: parseTrailingAmount_(parts[2] || ''),
+      };
+    });
+}
+
 function render() {
   if (!D) return;
   renderCards();
@@ -182,240 +458,320 @@ function render() {
 
 function renderCards() {
   var area = document.getElementById('cards');
-  var target, actual, fcst;
-  var deptSel = document.getElementById('deptSelect');
-  if (currentView === 'weekly') {
-    var dept = deptSel.value;
-    var lastWeek = D.weeks[D.weeks.length - 1];
-    var d = getDeptData(lastWeek, dept);
-    target = d.target; actual = d.actual; fcst = d.fcst;
-  } else {
-    var week = getSelectedWeek();
-    var d2 = D.data[week]['SS'];
-    target = d2.target; actual = d2.actual; fcst = d2.fcst;
+  if (!area) return;
+
+  if (!D.weeks.length) {
+    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">データなし</div></div>';
+    return;
   }
-  var diffA = actual - target;
-  var diffF = fcst - target;
-  var rate = target !== 0 ? ((actual / target) * 100).toFixed(1) : '-';
-  area.innerHTML =
-    '<div class="card"><div class="label">逶ｮ讓・/div><div class="value">' + fmt(target) + '</div></div>' +
-    '<div class="card"><div class="label">螳溽ｸｾ</div><div class="value ' + cls(actual) + '">' + fmt(actual) + '</div>' +
-    '<div class="sub ' + cls(diffA) + '">vs 逶ｮ讓・ ' + (diffA >= 0 ? '+' : '') + fmt(diffA) + '</div></div>' +
-    '<div class="card"><div class="label">FCST</div><div class="value ' + cls(fcst) + '">' + fmt(fcst) + '</div>' +
-    '<div class="sub ' + cls(diffF) + '">vs 逶ｮ讓・ ' + (diffF >= 0 ? '+' : '') + fmt(diffF) + '</div></div>' +
-    '<div class="card"><div class="label">驕疲・邇・/div><div class="value ' + (rate !== '-' && parseFloat(rate) < 0 ? 'val-neg' : 'val-pos') + '">' + rate + '%</div></div>';
+
+  var data;
+  if (currentView === 'weekly') {
+    data = getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_());
+  } else {
+    data = getDeptData(getSelectedWeek_(), ALL_DEPTS_LABEL);
+  }
+
+  var target = Number(data.target) || 0;
+  var actual = Number(data.actual) || 0;
+  var fcst = Number(data.fcst) || 0;
+  var expected = Number(data.expectedMrr) || 0;
+  var diffActual = actual - target;
+  var diffFcst = fcst - target;
+  var rate = target ? ((actual / target) * 100).toFixed(1) + '%' : '-';
+
+  area.innerHTML = [
+    buildCardHtml_('目標', fmt(target), ''),
+    buildCardHtml_('実績', fmt(actual), 'vs 目標 ' + (diffActual >= 0 ? '+' : '') + fmt(diffActual), valClass_(actual), valClass_(diffActual)),
+    buildCardHtml_('期待MRR', fmt(expected), '', valClass_(expected)),
+    buildCardHtml_('FCST', fmt(fcst), 'vs 目標 ' + (diffFcst >= 0 ? '+' : '') + fmt(diffFcst), valClass_(fcst), valClass_(diffFcst)),
+    buildCardHtml_('達成率', rate, '', rate !== '-' && parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral')
+  ].join('');
 }
 
-function makeTargetTickPlugin(pluginId, targetsArr) {
+function buildCardHtml_(label, value, sub, valueClass, subClass) {
+  return (
+    '<div class="card">' +
+      '<div class="card-label">' + escapeHtml_(label) + '</div>' +
+      '<div class="card-value ' + escapeHtml_(valueClass || 'val-neutral') + '">' + escapeHtml_(value) + '</div>' +
+      (sub ? '<div class="card-sub ' + escapeHtml_(subClass || 'val-neutral') + '">' + escapeHtml_(sub) + '</div>' : '') +
+    '</div>'
+  );
+}
+
+function makeTargetTickPlugin_(pluginId, targets) {
   return {
     id: pluginId,
-    afterDatasetsDraw: function(ch) {
-      var cctx = ch.ctx;
-      var barMetas = ch.data.datasets
-        .map(function(_, idx) { return ch.getDatasetMeta(idx); })
+    afterDatasetsDraw: function(chartInstance) {
+      var bars = chartInstance.data.datasets
+        .map(function(_, idx) { return chartInstance.getDatasetMeta(idx); })
         .filter(function(meta) { return meta.type === 'bar'; });
-      if (!barMetas.length) return;
-      cctx.save();
-      cctx.strokeStyle = '#ea4335';
-      cctx.lineWidth = 3;
-      cctx.setLineDash([]);
-      targetsArr.forEach(function(val, i) {
-        var y = ch.scales.y.getPixelForValue(val);
-        var bandHalf = ch.scales.x.width / (ch.data.labels.length * 2);
-        var centerX  = ch.scales.x.getPixelForValue(i);
-        var left  = centerX - bandHalf;
-        var right = centerX + bandHalf;
-        cctx.beginPath();
-        cctx.moveTo(left, y);
-        cctx.lineTo(right, y);
-        cctx.stroke();
+      if (!bars.length || !targets.length) return;
+      var ctx = chartInstance.ctx;
+      ctx.save();
+      ctx.strokeStyle = '#ea4335';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([]);
+      targets.forEach(function(value, index) {
+        var y = chartInstance.scales.y.getPixelForValue(value);
+        var centerX = chartInstance.scales.x.getPixelForValue(index);
+        var bandHalf = chartInstance.scales.x.width / (chartInstance.data.labels.length * 2);
+        ctx.beginPath();
+        ctx.moveTo(centerX - bandHalf, y);
+        ctx.lineTo(centerX + bandHalf, y);
+        ctx.stroke();
       });
-      cctx.restore();
+      ctx.restore();
+    }
+  };
+}
+
+function buildChartOptions_() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' }
+    },
+    onHover: function(evt, elements) {
+      if (evt && evt.native && evt.native.target) {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      }
+    },
+    scales: {
+      y: {
+        ticks: {
+          callback: function(value) {
+            return Number(value).toLocaleString('ja-JP');
+          }
+        }
+      }
     }
   };
 }
 
 function renderChart() {
+  var canvas = document.getElementById('mainChart');
+  if (!canvas || !D || !D.weeks.length) return;
   if (chart) chart.destroy();
-  var ctx = document.getElementById('mainChart').getContext('2d');
-  var deptSel = document.getElementById('deptSelect');
+  var ctx = canvas.getContext('2d');
+  var options = buildChartOptions_();
 
   if (currentView === 'weekly') {
-    var dept = deptSel.value;
-    var actuals  = D.weeks.map(function(w) { return getDeptData(w, dept).actual; });
-    var expected = D.weeks.map(function(w) { return getDeptData(w, dept).expectedMrr; });
-    var fcsts    = D.weeks.map(function(w) { return getDeptData(w, dept).fcst; });
-    var tgt      = getDeptData(D.weeks[0], dept).target;
-    var targets  = D.weeks.map(function() { return tgt; });
-
+    var dept = getSelectedDept_();
+    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
     chart = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: D.weeks,
         datasets: [
-          { label: '逶ｮ讓・,    data: targets, type: 'line', borderColor: '#ea4335', backgroundColor: 'transparent', borderWidth: 2, borderDash: [8,4], pointRadius: 0, tension: 0 },
-          { label: '螳溽ｸｾ',    data: actuals,  backgroundColor: 'rgba(26,115,232,0.7)',  borderColor: '#1a73e8', borderWidth: 1 },
-          { label: '譛溷ｾ・RR', data: expected, backgroundColor: 'rgba(52,168,83,0.7)',   borderColor: '#34a853', borderWidth: 1 },
-          { label: 'FCST',   data: fcsts,    backgroundColor: 'rgba(251,188,4,0.7)',   borderColor: '#fbbc04', borderWidth: 1 }
+          {
+            label: '目標',
+            data: rows.map(function(row) { return row.target || 0; }),
+            type: 'line',
+            borderColor: '#ea4335',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointRadius: 0,
+            tension: 0
+          },
+          {
+            label: '実績',
+            data: rows.map(function(row) { return row.actual || 0; }),
+            backgroundColor: 'rgba(26,115,232,0.72)',
+            borderColor: '#1a73e8',
+            borderWidth: 1
+          },
+          {
+            label: '期待MRR',
+            data: rows.map(function(row) { return row.expectedMrr || 0; }),
+            backgroundColor: 'rgba(52,168,83,0.72)',
+            borderColor: '#34a853',
+            borderWidth: 1
+          },
+          {
+            label: 'FCST',
+            data: rows.map(function(row) { return row.fcst || 0; }),
+            backgroundColor: 'rgba(251,188,4,0.72)',
+            borderColor: '#fbbc04',
+            borderWidth: 1
+          }
         ]
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        onClick: function(evt, elements) {
-          if (!elements.length) { chartFilter = null; renderDeals(); return; }
-          var idx = elements[0].index;
-          var label = D.weeks[idx];
-          if (chartFilter && chartFilter.value === label) {
+      options: Object.assign(options, {
+        onClick: function(_, elements) {
+          if (!elements.length) {
             chartFilter = null;
           } else {
-            chartFilter = { type: 'week', value: label };
+            var label = D.weeks[elements[0].index];
+            chartFilter = chartFilter && chartFilter.type === 'week' && chartFilter.value === label
+              ? null
+              : { type: 'week', value: label };
           }
           renderDeals();
-        },
-        onHover: function(evt, elements) {
-          evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-        },
-        scales: { y: { ticks: { callback: function(v) { return v.toLocaleString('ja-JP'); } } } }
-      }
+        }
+      })
     });
-  } else {
-    var week = getSelectedWeek();
-    var targets2  = D.depts.map(function(d) { return D.data[week][d].target; });
-    var actuals2  = D.depts.map(function(d) { return D.data[week][d].actual; });
-    var expected2 = D.depts.map(function(d) { return D.data[week][d].expectedMrr; });
-    var fcsts2    = D.depts.map(function(d) { return D.data[week][d].fcst; });
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: D.depts,
-        datasets: [
-          { label: '目標', data: [], borderColor: '#ea4335', backgroundColor: 'transparent', type: 'line', borderWidth: 3, pointRadius: 0 },
-          { label: '螳溽ｸｾ',    data: actuals2,  backgroundColor: 'rgba(26,115,232,0.7)', borderColor: '#1a73e8', borderWidth: 1 },
-          { label: '譛溷ｾ・RR', data: expected2, backgroundColor: 'rgba(52,168,83,0.7)',  borderColor: '#34a853', borderWidth: 1 },
-          { label: 'FCST',   data: fcsts2,    backgroundColor: 'rgba(251,188,4,0.7)',  borderColor: '#fbbc04', borderWidth: 1 }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        onClick: function(evt, elements) {
-          if (!elements.length) { chartFilter = null; renderDeals(); return; }
-          var idx = elements[0].index;
-          var label = D.depts[idx];
-          if (chartFilter && chartFilter.value === label) {
-            chartFilter = null;
-          } else {
-            chartFilter = { type: 'dept', value: label };
-          }
-          renderDeals();
-        },
-        onHover: function(evt, elements) {
-          evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-        },
-        scales: { y: { ticks: { callback: function(v) { return v.toLocaleString('ja-JP'); } } } }
-      },
-      plugins: [makeTargetTickPlugin('targetTicks', targets2)]
-    });
+    return;
   }
+
+  var week = getSelectedWeek_();
+  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: D.depts,
+      datasets: [
+        {
+          label: '目標',
+          data: targets,
+          type: 'line',
+          borderColor: '#ea4335',
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          pointRadius: 0
+        },
+        {
+          label: '実績',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).actual || 0; }),
+          backgroundColor: 'rgba(26,115,232,0.72)',
+          borderColor: '#1a73e8',
+          borderWidth: 1
+        },
+        {
+          label: '期待MRR',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).expectedMrr || 0; }),
+          backgroundColor: 'rgba(52,168,83,0.72)',
+          borderColor: '#34a853',
+          borderWidth: 1
+        },
+        {
+          label: 'FCST',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).fcst || 0; }),
+          backgroundColor: 'rgba(251,188,4,0.72)',
+          borderColor: '#fbbc04',
+          borderWidth: 1
+        }
+      ]
+    },
+    options: Object.assign(options, {
+      onClick: function(_, elements) {
+        if (!elements.length) {
+          chartFilter = null;
+        } else {
+          var label = D.depts[elements[0].index];
+          chartFilter = chartFilter && chartFilter.type === 'dept' && chartFilter.value === label
+            ? null
+            : { type: 'dept', value: label };
+        }
+        renderDeals();
+      }
+    }),
+    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
+  });
 }
 
 function renderDeals() {
   var area = document.getElementById('dealArea');
-  var deptSel = document.getElementById('deptSelect');
-  var deals = [];
+  if (!area) return;
+  renderFilterChip_();
 
-  // Render filter chip
-  var chipArea = document.getElementById('filterChip');
-  if (chartFilter) {
-    chipArea.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;background:#e8f0fe;color:#1a73e8;padding:4px 10px;border-radius:12px;font-size:12px;margin-bottom:10px;">' +
-      '繝輔ぅ繝ｫ繧ｿ繝ｼ荳ｭ: ' + chartFilter.value +
-      ' <span style="cursor:pointer;font-weight:bold;" onclick="chartFilter=null;renderDeals()">ﾃ・/span></span>';
-  } else {
-    chipArea.innerHTML = '';
-  }
-
-  if (currentView === 'weekly') {
-    var dept = deptSel.value;
-    var lastWeek = D.weeks[D.weeks.length - 1];
-    if (dept === 'SS莠区･ｭ驛ｨ') {
-      D.depts.forEach(function(d) {
-        parseDeals(D.data[lastWeek][d].keyDeal).forEach(function(deal) {
-          deals.push(Object.assign({ dept: d }, deal));
-        });
-      });
-    } else {
-      parseDeals(D.data[lastWeek][dept].keyDeal).forEach(function(deal) {
-        deals.push(Object.assign({ dept: dept }, deal));
-      });
-    }
-  } else {
-    var week = getSelectedWeek();
-    D.depts.forEach(function(d) {
-      parseDeals(D.data[week][d].keyDeal).forEach(function(deal) {
-        deals.push(Object.assign({ dept: d }, deal));
-      });
-    });
-  }
-
-  // Apply chart filter
-  if (chartFilter) {
-    if (chartFilter.type === 'week') {
-      deals = [];
-      var fw = chartFilter.value;
-      if (currentView === 'weekly') {
-        var deptSel2 = document.getElementById('deptSelect');
-        var fd = deptSel2.value;
-        if (fd === 'SS莠区･ｭ驛ｨ') {
-          D.depts.forEach(function(d) {
-            parseDeals(D.data[fw][d].keyDeal).forEach(function(deal) {
-              deals.push(Object.assign({ dept: d }, deal));
-            });
-          });
-        } else {
-          parseDeals(D.data[fw][fd].keyDeal).forEach(function(deal) {
-            deals.push(Object.assign({ dept: fd }, deal));
-          });
-        }
-      }
-    } else if (chartFilter.type === 'dept') {
-      deals = deals.filter(function(deal) { return deal.dept === chartFilter.value; });
-    }
-  }
-
-  if (deals.length === 0) {
-    area.innerHTML = '<div class="no-deals">Key Deal 繝・・繧ｿ縺ｪ縺・/div>';
+  var deals = collectDeals_();
+  if (!deals.length) {
+    area.innerHTML = '<div class="no-deals">Key Deal はありません</div>';
     return;
   }
 
-  function thBtn(key, label) {
-    var ind = dealSortKey === key ? (dealSortAsc ? ' 笆ｲ' : ' 笆ｼ') : '';
-    return '<th style="cursor:pointer;user-select:none;" onclick="setSortKey(\'' + key + '\')">' + label + ind + '</th>';
-  }
-  // Apply sort
   if (dealSortKey) {
-    deals.sort(function(a, b) {
-      var av = a[dealSortKey], bv = b[dealSortKey];
-      if (typeof av === 'string') av = av.toLowerCase();
-      if (typeof bv === 'string') bv = bv.toLowerCase();
-      if (av < bv) return dealSortAsc ? -1 : 1;
-      if (av > bv) return dealSortAsc ? 1 : -1;
+    deals.sort(function(left, right) {
+      var a = left[dealSortKey];
+      var b = right[dealSortKey];
+      if (typeof a === 'string') a = a.toLowerCase();
+      if (typeof b === 'string') b = b.toLowerCase();
+      if (a < b) return dealSortAsc ? -1 : 1;
+      if (a > b) return dealSortAsc ? 1 : -1;
       return 0;
     });
   }
-  var html = '<table class="deal-table"><thead><tr>' +
-    thBtn('dept', '驛ｨ鄂ｲ') + thBtn('company', '莨夂､ｾ蜷・) +
-    thBtn('mrr', 'MRR') + thBtn('phase', '繝輔ぉ繝ｼ繧ｺ') + thBtn('yomi', '繝ｨ繝・) +
+
+  var html = '<div class="deal-scroll"><table class="deal-table"><thead><tr>' +
+    sortTh_('dept', '部署') +
+    sortTh_('company', '会社名') +
+    sortTh_('mrr', 'MRR') +
+    sortTh_('phase', 'フェーズ') +
+    sortTh_('yomi', 'ヨミ') +
     '</tr></thead><tbody>';
-  deals.forEach(function(d) {
-    var rowCls = d.mrr > 0 ? 'pos' : d.mrr < 0 ? 'neg' : '';
-    html += '<tr class="' + rowCls + '"><td>' + d.dept + '</td><td>' + d.company + '</td>' +
-      '<td class="' + cls(d.mrr) + '">' + fmt(d.mrr) + '</td>' +
-      '<td>' + d.phase + '</td>' +
-      '<td class="' + cls(d.yomi) + '">' + fmt(d.yomi) + '</td></tr>';
+
+  deals.forEach(function(deal) {
+    var rowClass = deal.mrr > 0 ? 'pos' : (deal.mrr < 0 ? 'neg' : '');
+    html += '<tr class="' + rowClass + '">' +
+      '<td>' + escapeHtml_(deal.dept) + '</td>' +
+      '<td>' + escapeHtml_(deal.company) + '</td>' +
+      '<td class="' + valClass_(deal.mrr) + '">' + escapeHtml_(fmt(deal.mrr)) + '</td>' +
+      '<td>' + escapeHtml_(deal.phase) + '</td>' +
+      '<td class="' + valClass_(deal.yomi) + '">' + escapeHtml_(fmt(deal.yomi)) + '</td>' +
+      '</tr>';
   });
-  html += '</tbody></table>';
-  area.innerHTML = '<div class="deal-scroll">' + html + '</div>';
+  html += '</tbody></table></div>';
+  area.innerHTML = html;
+}
+
+function collectDeals_() {
+  if (!D || !D.weeks.length) return [];
+  var deals = [];
+  var week = currentView === 'weekly'
+    ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || D.weeks[D.weeks.length - 1])
+    : getSelectedWeek_();
+  var depts = [];
+
+  if (currentView === 'weekly') {
+    var selectedDept = getSelectedDept_();
+    depts = selectedDept === ALL_DEPTS_LABEL ? D.depts.slice() : [selectedDept];
+  } else {
+    depts = chartFilter && chartFilter.type === 'dept' && chartFilter.value
+      ? [chartFilter.value]
+      : D.depts.slice();
+  }
+
+  depts.forEach(function(dept) {
+    parseDeals(getDeptData(week, dept).keyDeal).forEach(function(deal) {
+      deals.push({
+        dept: dept,
+        company: deal.company,
+        mrr: deal.mrr,
+        phase: deal.phase,
+        yomi: deal.yomi
+      });
+    });
+  });
+
+  return deals;
+}
+
+function renderFilterChip_() {
+  var chip = document.getElementById('filterChip');
+  if (!chip) return;
+  if (!chartFilter) {
+    chip.innerHTML = '';
+    return;
+  }
+  chip.innerHTML =
+    '<span class="filter-chip-badge">' +
+      'フィルタ中: ' + escapeHtml_(chartFilter.value) +
+      '<button type="button" class="filter-chip-clear" onclick="clearChartFilter_()" aria-label="フィルタ解除">×</button>' +
+    '</span>';
+}
+
+function clearChartFilter_() {
+  chartFilter = null;
+  renderDeals();
+}
+
+function sortTh_(key, label) {
+  var indicator = '';
+  if (dealSortKey === key) indicator = dealSortAsc ? ' ▲' : ' ▼';
+  return '<th class="sortable" onclick="setSortKey(\'' + key + '\')">' + escapeHtml_(label + indicator) + '</th>';
 }
 
 function setSortKey(key) {
@@ -427,6 +783,17 @@ function setSortKey(key) {
   }
   renderDeals();
 }
+
+function escapeHtml_(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+bootstrap_();
 </script>
 </body>
 </html>

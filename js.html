@@ -477,13 +477,12 @@ const App = {
         App.renderDashboard(_embeddedInitData);
         App.embeddedDataUsed = true;
         ClientCache.set(_selectedDept, 'initData', _embeddedInitData, _embeddedInitData.sfLastUpdated);
+        App.refreshInitDataSilently_({ data: _embeddedInitData });
       } else {
         var cached = ClientCache.get(_selectedDept, 'initData');
         if (cached && cached.data) {
           App.renderDashboard(cached.data);
-          if (ClientCache.shouldRevalidate(cached)) {
-            App.refreshInitDataSilently_(cached);
-          }
+          App.refreshInitDataSilently_(cached);
         } else {
           App.showLoading(false);
           App.showSkeleton();
@@ -2758,35 +2757,9 @@ function renderOppDealLink_(opp) {
 function isDepartmentTotalMember_(member) {
   if (!member || !member.isTotal) return false;
   if (member.totalKind) return member.totalKind === 'department';
-  var group = String(member.group || '');
-  return group === '部全体' || group === 'BOAM' || (_selectedDept && group === _selectedDept);
-}
-
-function isGroupTotalMember_(member) {
-  if (!member || !member.isTotal) return false;
-  if (member.totalKind) return member.totalKind === 'group';
-  return !isDepartmentTotalMember_(member);
-}
-
-function getMemberGroupLabel_(member) {
-  if (!member) return '';
-  if (isDepartmentTotalMember_(member)) return '部全体';
-  return member.group || member.groupCode || '';
-}
-
-function displayMemberName(member) {
-  if (!member) return '';
-  if (isDepartmentTotalMember_(member)) return '部全体';
-  if (isGroupTotalMember_(member)) return getMemberGroupLabel_(member);
-  return member.displayName || member.name || '';
-}
-
-function isDepartmentTotalMember_(member) {
-  if (!member || !member.isTotal) return false;
-  if (member.totalKind) return member.totalKind === 'department';
   var group = String(member.group || member.groupCode || '');
   var deptKey = String((member && member.dept) || _selectedDept || '');
-  return group === '\u90e8\u5168\u4f53' || (!!deptKey && group === deptKey);
+  return group === '\u90e8\u5168\u4f53' || group === 'BOAM' || (!!deptKey && group === deptKey);
 }
 
 function isGroupTotalMember_(member) {
