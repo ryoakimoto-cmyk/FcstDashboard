@@ -23,19 +23,12 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  var initData = null;
-  try {
-    initData = AppDataCache_getInitData(deptKey);
-  } catch(err) {
-    initData = null;
-  }
-
   var tmpl = HtmlService.createTemplateFromFile('index');
   tmpl.selectedDept = deptKey;
   tmpl.deptConfigJson = deptConfigJson;
   tmpl.userDefaultDept = userDefaultDept || 'null';
   tmpl.userEmail = email;
-  tmpl.embeddedInitData = initData ? safeJsonForTemplate_(initData) : 'null';
+  tmpl.embeddedInitData = 'null';
   return tmpl.evaluate()
     .setTitle('FCST Dashboard - ' + DEPT_CONFIG[deptKey].label)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -58,6 +51,66 @@ function getUserDefaultDept_(email) {
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function debug_getInitData_BOCS() {
+  var data = AppDataCache_getInitData('BOCS');
+  return {
+    hasData: !!data,
+    topLevelKeys: Object.keys(data || {}),
+    membersCount: Array.isArray(data && data.members) ? data.members.length : 0,
+    periodOptionsCount: Array.isArray(data && data.periodOptions) ? data.periodOptions.length : 0,
+    lastUpdated: data && data.lastUpdated || '',
+    sfLastUpdated: data && data.sfLastUpdated || '',
+    firstMemberName: data && data.members && data.members[0] ? data.members[0].name : '',
+    firstMemberKeys: data && data.members && data.members[0] ? Object.keys(data.members[0]).slice(0, 20) : [],
+    firstPeriodOption: data && data.periodOptions && data.periodOptions[0] ? data.periodOptions[0] : null
+  };
+}
+
+function debug_getClientInitMeta_BOCS() {
+  var html = doGet({ parameter: { dept: 'BOCS' } }).getContent();
+  var match = html.match(/<script id="gas-embedded-init-data-json" type="application\/json">([\s\S]*?)<\/script>/);
+  var deptMatch = html.match(/<script id="gas-dept-config-json" type="application\/json">([\s\S]*?)<\/script>/);
+  var raw = match ? match[1] : '';
+  var deptRaw = deptMatch ? deptMatch[1] : '';
+  var parsed = null;
+  var parseError = '';
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    parseError = String(e && e.message ? e.message : e);
+  }
+  return {
+    htmlLength: html.length,
+    embeddedInitFound: !!match,
+    embeddedInitLength: raw.length,
+    embeddedInitHead: raw.slice(0, 240),
+    embeddedInitTail: raw.slice(Math.max(0, raw.length - 240)),
+    deptConfigFound: !!deptMatch,
+    deptConfigLength: deptRaw.length,
+    parseError: parseError,
+    parsedKeys: parsed ? Object.keys(parsed) : [],
+    parsedMembersCount: parsed && parsed.members ? parsed.members.length : 0,
+    parsedPeriodOptionsCount: parsed && parsed.periodOptions ? parsed.periodOptions.length : 0
+  };
+}
+
+function debug_getRenderedShellMeta() {
+  var html = doGet({ parameter: { dept: 'BOCS' } }).getContent();
+  return {
+    htmlLength: html.length,
+    hasMainContent: html.indexOf('id="main-content"') !== -1,
+    hasLoadingOverlay: html.indexOf('id="loading-overlay"') !== -1,
+    hasDeptConfigTag: html.indexOf('id="gas-dept-config-json"') !== -1,
+    hasEmbeddedInitTag: html.indexOf('id="gas-embedded-init-data-json"') !== -1,
+    hasSelectedDept: html.indexOf("var GAS_SELECTED_DEPT = 'BOCS';") !== -1,
+    hasInitPage: html.indexOf('function initPage_()') !== -1,
+    hasRenderDashboard: html.indexOf('App.renderDashboard = function(data)') !== -1,
+    hasBootError: html.indexOf('function renderBootError_(error)') !== -1,
+    headSnippet: html.slice(0, 400),
+    tailSnippet: html.slice(Math.max(0, html.length - 400))
+  };
 }
 
 function getCoefficientWebhookUrl_() {

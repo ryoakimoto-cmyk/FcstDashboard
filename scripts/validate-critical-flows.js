@@ -65,6 +65,7 @@ const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
 assertIncludes(code, 'AssignmentMaster_getContext', 'Code.gs must use shared assignment context');
+assertIncludes(code, "tmpl.embeddedInitData = 'null';", 'dept page must not embed init data directly');
 
 const client = read('js.html');
 ['isDepartmentTotalMember_', 'isGroupTotalMember_', 'getMemberGroupLabel_'].forEach((token) => {
@@ -79,6 +80,7 @@ assertCount(client, 'function isDepartmentTotalMember_(member)', 1, 'duplicate d
 assertCount(client, 'function isGroupTotalMember_(member)', 1, 'duplicate group total helper');
 assertCount(client, 'function getMemberGroupLabel_(member)', 1, 'duplicate group label helper');
 assertCount(client, 'function displayMemberName(member)', 1, 'duplicate member display helper');
+assertCount(client, 'function renderTopPage_()', 1, 'duplicate top page renderer');
 
 const mrr = read('mrr-index.html');
 ['MRR進捗ダッシュボード', '読込中...', '全部署', 'getMrrDashboardData();'].forEach((token) => {

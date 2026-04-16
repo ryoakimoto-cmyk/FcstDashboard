@@ -155,62 +155,6 @@ function initPage_() {
 }
 
 function renderTopPage_() {
-  document.getElementById('loading-overlay').style.display = 'none';
-  var main = document.querySelector('main') || document.querySelector('.main') || document.body;
-  // Hide existing dashboard UI
-  var dashboardEls = document.querySelectorAll('.tab-nav, .tab-bar, #view-fcst, #view-opps, #view-trend, .save-bar');
-  dashboardEls.forEach(function(el) { el.style.display = 'none'; });
-
-  // Build division groups
-  var divisions = {};
-  Object.keys(_deptConfig).forEach(function(key) {
-    var cfg = _deptConfig[key];
-    var div = cfg.division;
-    if (!divisions[div]) divisions[div] = [];
-    divisions[cfg.division].push({ key: key, label: cfg.label });
-  });
-
-  var html = '<div class="top-page">';
-  html += '<div class="top-page-header"><h1 class="top-page-title">FCST Dashboard</h1><p class="top-page-subtitle">部署を選択してください</p></div>';
-
-  var divOrder = [];
-  Object.keys(GAS_DEPT_CONFIG).forEach(function(k) {
-    var d = GAS_DEPT_CONFIG[k].division;
-    if (divOrder.indexOf(d) === -1) divOrder.push(d);
-  });
-  var DIVISION_LABELS = {
-    BO: 'Bill One事業部',
-    SS: 'Sansan事業部',
-    CO: 'CO事業部'
-  };
-
-  divOrder.forEach(function(divKey) {
-    if (!divisions[divKey]) return;
-    html += '<div class="division-section">';
-    html += '<div class="division-header">' + (DIVISION_LABELS[divKey] || divKey) + '</div>';
-    html += '<div class="dept-card-grid">';
-    divisions[divKey].forEach(function(dept) {
-      var isDefault = (_userDefaultDept === dept.key);
-      html += '<div class="dept-card' + (isDefault ? ' dept-card--default' : '') + '" onclick="window.location.href=window.location.pathname+\'?dept=' + dept.key + '\'">';
-      html += '<span class="dept-card-label">' + dept.label + '</span>';
-      if (isDefault) html += '<span class="dept-card-badge">あなたの部署</span>';
-      html += '</div>';
-    });
-    html += '</div></div>';
-  });
-  html += '</div>';
-
-  // Insert top page into DOM
-  var topPageContainer = document.createElement('div');
-  topPageContainer.innerHTML = html;
-  main.insertBefore(topPageContainer, main.firstChild);
-
-  // Update header title
-  var titleEl = document.querySelector('.header-title, h1.title, .logo, .header-logo');
-  if (titleEl) titleEl.textContent = 'FCST Dashboard';
-}
-
-function renderTopPage_() {
   var loadingOverlay = document.getElementById('loading-overlay');
   if (loadingOverlay) loadingOverlay.style.display = 'none';
 
@@ -460,12 +404,19 @@ const App = {
   refreshInitDataSilently_(cachedEntry) {
     google.script.run
       .withSuccessHandler(function(freshData) {
-        var normalizedFreshData = normalizeInitDataResponse_(freshData);
-        if (!normalizedFreshData || !_selectedDept) return;
-        ClientCache.set(_selectedDept, 'initData', normalizedFreshData, normalizedFreshData.sfLastUpdated);
-        if (!cachedEntry || !cachedEntry.data || !cachedEntry.data.sfLastUpdated || normalizedFreshData.sfLastUpdated !== cachedEntry.data.sfLastUpdated) {
-          App.renderDashboard(normalizedFreshData);
+        try {
+          var normalizedFreshData = normalizeInitDataResponse_(freshData);
+          if (!normalizedFreshData || !_selectedDept) return;
+          ClientCache.set(_selectedDept, 'initData', normalizedFreshData, normalizedFreshData.sfLastUpdated);
+          if (!cachedEntry || !cachedEntry.data || !cachedEntry.data.sfLastUpdated || normalizedFreshData.sfLastUpdated !== cachedEntry.data.sfLastUpdated) {
+            App.renderDashboard(normalizedFreshData);
+          }
+        } catch (error) {
+          renderBootError_(error);
         }
+      })
+      .withFailureHandler(function(error) {
+        renderBootError_(error);
       })
       .getInitData(_selectedDept);
   },
@@ -474,40 +425,56 @@ const App = {
     (function() {
       if (!_selectedDept) return;
       if (_embeddedInitData !== null && _embeddedInitData !== undefined) {
-        App.renderDashboard(_embeddedInitData);
-        App.embeddedDataUsed = true;
-        ClientCache.set(_selectedDept, 'initData', _embeddedInitData, _embeddedInitData.sfLastUpdated);
-        App.refreshInitDataSilently_({ data: _embeddedInitData });
+        try {
+          App.renderDashboard(_embeddedInitData);
+          App.embeddedDataUsed = true;
+          ClientCache.set(_selectedDept, 'initData', _embeddedInitData, _embeddedInitData.sfLastUpdated);
+          App.refreshInitDataSilently_({ data: _embeddedInitData });
+        } catch (error) {
+          renderBootError_(error);
+        }
       } else {
         var cached = ClientCache.get(_selectedDept, 'initData');
         if (cached && cached.data) {
-          App.renderDashboard(cached.data);
-          App.refreshInitDataSilently_(cached);
+          try {
+            App.renderDashboard(cached.data);
+            App.refreshInitDataSilently_(cached);
+          } catch (error) {
+            renderBootError_(error);
+          }
         } else {
           App.showLoading(false);
           App.showSkeleton();
           google.script.run
             .withSuccessHandler(function(data) {
-              var normalizedData = normalizeInitDataResponse_(data);
-              if (!normalizedData) {
-                App.LoadingState.showError('main-content',
-                  'データの取得に失敗しました。再読み込みまたはSF同期をお試しください。',
-                  function() { window.location.reload(); }
-                );
-                return;
-              }
-              App.renderDashboard(normalizedData);
-              if (normalizedData && _selectedDept) {
-                ClientCache.set(_selectedDept, 'initData', normalizedData, normalizedData.sfLastUpdated);
+              try {
+                var normalizedData = normalizeInitDataResponse_(data);
+                if (!normalizedData) {
+                  App.LoadingState.showError('main-content',
+                    'データの取得に失敗しました。再読み込みまたはSF同期をお試しください。',
+                    function() { window.location.reload(); }
+                  );
+                  return;
+                }
+                App.renderDashboard(normalizedData);
+                if (normalizedData && _selectedDept) {
+                  ClientCache.set(_selectedDept, 'initData', normalizedData, normalizedData.sfLastUpdated);
+                }
+              } catch (error) {
+                renderBootError_(error);
               }
             })
             .withFailureHandler(function(err) {
               App.LoadingState.showError('main-content', err, function() {
                 google.script.run.withSuccessHandler(function(data) {
-                  var normalizedData = normalizeInitDataResponse_(data);
-                  App.renderDashboard(normalizedData);
-                  if (normalizedData && _selectedDept) {
-                    ClientCache.set(_selectedDept, 'initData', normalizedData, normalizedData.sfLastUpdated);
+                  try {
+                    var normalizedData = normalizeInitDataResponse_(data);
+                    App.renderDashboard(normalizedData);
+                    if (normalizedData && _selectedDept) {
+                      ClientCache.set(_selectedDept, 'initData', normalizedData, normalizedData.sfLastUpdated);
+                    }
+                  } catch (error) {
+                    renderBootError_(error);
                   }
                 }).getInitData(_selectedDept);
               });
@@ -2466,20 +2433,28 @@ function normalizeInitDataResponse_(payload) {
 
 App.renderDashboard = function(data) {
   App.showLoading(false);
-  var normalizedData = normalizeInitDataResponse_(data);
-  if (normalizedData && normalizedData.error) {
-    App.LoadingState.showError('main-content', normalizedData.error);
-    return;
+  try {
+    var normalizedData = normalizeInitDataResponse_(data);
+    if (normalizedData && normalizedData.error) {
+      App.LoadingState.showError('main-content', normalizedData.error);
+      return;
+    }
+    App.applyFcstLatestData_({ data: normalizedData || {} });
+  } catch (error) {
+    renderBootError_(error);
   }
-  App.applyFcstLatestData_({ data: normalizedData || {} });
 };
 
 App.renderOppList = function(data) {
-  if (data && data.error) {
-    App.LoadingState.showError('main-content', data.error);
-    return;
+  try {
+    if (data && data.error) {
+      App.LoadingState.showError('main-content', data.error);
+      return;
+    }
+    App.applyOppLatestData_(data || {});
+  } catch (error) {
+    renderBootError_(error);
   }
-  App.applyOppLatestData_(data || {});
 };
 
 App.showSkeleton = function() {
