@@ -28,7 +28,7 @@ function doGet(e) {
   tmpl.deptConfigJson = deptConfigJson;
   tmpl.userDefaultDept = userDefaultDept || 'null';
   tmpl.userEmail = email;
-  tmpl.embeddedInitData = 'null';
+  tmpl.embeddedInitData = getEmbeddedInitDataForDept_(deptKey);
   return tmpl.evaluate()
     .setTitle('FCST Dashboard - ' + DEPT_CONFIG[deptKey].label)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -51,6 +51,26 @@ function getUserDefaultDept_(email) {
 
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function getEmbeddedInitDataForDept_(deptKey) {
+  var initData = null;
+  try {
+    initData = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
+  } catch (e) {
+    initData = null;
+  }
+  if (!initData) {
+    try {
+      initData = AppDataCache_getInitData(deptKey);
+    } catch (e) {
+      initData = null;
+    }
+  }
+  if (!initData) return 'null';
+
+  var json = safeJsonForTemplate_(initData);
+  return json.length <= 800000 ? json : 'null';
 }
 
 function debug_getInitData_BOCS() {

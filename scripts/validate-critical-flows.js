@@ -65,7 +65,9 @@ const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
 assertIncludes(code, 'AssignmentMaster_getContext', 'Code.gs must use shared assignment context');
-assertIncludes(code, "tmpl.embeddedInitData = 'null';", 'dept page must not embed init data directly');
+assertIncludes(code, 'function getEmbeddedInitDataForDept_(deptKey)', 'dept embedded init helper missing');
+assertIncludes(code, "tmpl.embeddedInitData = getEmbeddedInitDataForDept_(deptKey);", 'dept page must use embedded init helper');
+assertIncludes(code, 'return json.length <= 800000 ? json : \'null\';', 'embedded init size guard missing');
 
 const client = read('js.html');
 ['isDepartmentTotalMember_', 'isGroupTotalMember_', 'getMemberGroupLabel_'].forEach((token) => {
@@ -75,6 +77,8 @@ assertIncludes(client, 'TTL: 300000,', 'client cache TTL must stay at 5 minutes'
 assertIncludes(client, 'ClientCache.shouldRevalidate(cached)', 'client should only revalidate stale caches');
 assertIncludes(client, 'App.refreshInitDataSilently_({ data: _embeddedInitData });', 'embedded init data must refresh in background');
 assertIncludes(client, 'App.refreshInitDataSilently_(cached);', 'cached init data must refresh in background');
+assertIncludes(client, 'function startInitLoadTimeout_()', 'FCST init timeout helper missing');
+assertIncludes(client, 'clearInitLoadTimeout_();', 'FCST init timeout clear missing');
 assertIncludes(client, 'function getSharedQuarterDefinitions_(periodOptions)', 'shared quarter definitions missing');
 assertCount(client, 'function isDepartmentTotalMember_(member)', 1, 'duplicate department total helper');
 assertCount(client, 'function isGroupTotalMember_(member)', 1, 'duplicate group total helper');

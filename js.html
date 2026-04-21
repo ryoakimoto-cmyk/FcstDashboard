@@ -5,6 +5,7 @@ var _userDefaultDept = (typeof GAS_USER_DEFAULT_DEPT !== 'undefined' && GAS_USER
 var _userEmail = (typeof GAS_USER_EMAIL !== 'undefined' && GAS_USER_EMAIL !== 'null') ? GAS_USER_EMAIL : '';
 var _deptConfig = {};
 var _embeddedInitData = null;
+var _initLoadTimeoutId = null;
 
 function parseEmbeddedJson_(elementId, fallback) {
   var el = document.getElementById(elementId);
@@ -12,6 +13,24 @@ function parseEmbeddedJson_(elementId, fallback) {
   var raw = el.textContent || el.innerText || '';
   if (!raw || raw === 'null') return fallback;
   return JSON.parse(raw);
+}
+
+function clearInitLoadTimeout_() {
+  if (_initLoadTimeoutId) {
+    clearTimeout(_initLoadTimeoutId);
+    _initLoadTimeoutId = null;
+  }
+}
+
+function startInitLoadTimeout_() {
+  clearInitLoadTimeout_();
+  _initLoadTimeoutId = setTimeout(function() {
+    App.showLoading(false);
+    App.LoadingState.showError(
+      'main-content',
+      '初期データの取得がタイムアウトしました。再読み込みまたは時間を置いて再度お試しください。'
+    );
+  }, 15000);
 }
 
 var ClientCache = {
@@ -424,6 +443,7 @@ const App = {
   loadInitData_() {
     (function() {
       if (!_selectedDept) return;
+      startInitLoadTimeout_();
       if (_embeddedInitData !== null && _embeddedInitData !== undefined) {
         try {
           App.renderDashboard(_embeddedInitData);
@@ -465,6 +485,7 @@ const App = {
               }
             })
             .withFailureHandler(function(err) {
+              clearInitLoadTimeout_();
               App.LoadingState.showError('main-content', err, function() {
                 google.script.run.withSuccessHandler(function(data) {
                   try {
@@ -2432,6 +2453,7 @@ function normalizeInitDataResponse_(payload) {
 }
 
 App.renderDashboard = function(data) {
+  clearInitLoadTimeout_();
   App.showLoading(false);
   try {
     var normalizedData = normalizeInitDataResponse_(data);
@@ -2446,6 +2468,7 @@ App.renderDashboard = function(data) {
 };
 
 App.renderOppList = function(data) {
+  clearInitLoadTimeout_();
   try {
     if (data && data.error) {
       App.LoadingState.showError('main-content', data.error);
