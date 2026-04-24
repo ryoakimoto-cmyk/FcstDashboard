@@ -16,6 +16,13 @@ function parseEmbeddedJson_(elementId, fallback) {
   return JSON.parse(raw);
 }
 
+function isValidInitDataPayload_(payload) {
+  return !!payload &&
+    !payload.error &&
+    Array.isArray(payload.members) &&
+    Array.isArray(payload.periodOptions);
+}
+
 function getWebAppUrl_() {
   if (_webAppUrl) return _webAppUrl;
   return window.location.href.split('?')[0];
@@ -441,9 +448,13 @@ const App = {
       .withSuccessHandler(function(freshData) {
         try {
           var normalizedFreshData = normalizeInitDataResponse_(freshData);
-          if (!normalizedFreshData || !_selectedDept) return;
+          if (!isValidInitDataPayload_(normalizedFreshData) || !_selectedDept) return;
           ClientCache.set(_selectedDept, 'initData', normalizedFreshData, normalizedFreshData.sfLastUpdated);
-          if (!cachedEntry || !cachedEntry.data || !cachedEntry.data.sfLastUpdated || normalizedFreshData.sfLastUpdated !== cachedEntry.data.sfLastUpdated) {
+          if (!cachedEntry ||
+              !isValidInitDataPayload_(cachedEntry.data) ||
+              !isValidInitDataPayload_(App.state.currentData) ||
+              !cachedEntry.data.sfLastUpdated ||
+              normalizedFreshData.sfLastUpdated !== cachedEntry.data.sfLastUpdated) {
             App.renderDashboard(normalizedFreshData);
           }
         } catch (error) {
@@ -460,7 +471,7 @@ const App = {
     (function() {
       if (!_selectedDept) return;
       startInitLoadTimeout_();
-      if (_embeddedInitData !== null && _embeddedInitData !== undefined) {
+      if (isValidInitDataPayload_(_embeddedInitData)) {
         try {
           App.renderDashboard(_embeddedInitData);
           App.embeddedDataUsed = true;
@@ -471,7 +482,7 @@ const App = {
         }
       } else {
         var cached = ClientCache.get(_selectedDept, 'initData');
-        if (cached && cached.data) {
+        if (cached && isValidInitDataPayload_(cached.data)) {
           try {
             App.renderDashboard(cached.data);
             App.refreshInitDataSilently_(cached);
@@ -523,6 +534,14 @@ const App = {
   },
 
   applyFcstLatestData_(result) {
+    if (!isValidInitDataPayload_(result && result.data)) {
+      App.LoadingState.showError(
+        'main-content',
+        'FCST初期データが不完全です。SF更新をお試しください。',
+        function() { App.reloadFcstFromSS(); }
+      );
+      return;
+    }
     App.state.lastUpdated = (result.data && result.data.lastUpdated) || '';
     App.state.sfLastUpdated = (result.data && result.data.sfLastUpdated) || '';
     App.state.currentData = result.data;
@@ -2480,6 +2499,10 @@ App.renderDashboard = function(data) {
     var normalizedData = normalizeInitDataResponse_(data);
     if (normalizedData && normalizedData.error) {
       App.LoadingState.showError('main-content', normalizedData.error);
+      return;
+    }
+    if (!isValidInitDataPayload_(normalizedData)) {
+      App.reloadFcstFromSS();
       return;
     }
     App.applyFcstLatestData_({ data: normalizedData || {} });

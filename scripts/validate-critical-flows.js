@@ -135,6 +135,11 @@ assertIncludes(client, 'TTL: 300000,', 'client cache TTL must stay at 5 minutes'
 assertIncludes(client, 'ClientCache.shouldRevalidate(cached)', 'client should only revalidate stale caches');
 assertIncludes(client, 'App.refreshInitDataSilently_({ data: _embeddedInitData });', 'embedded init data must refresh in background');
 assertIncludes(client, 'App.refreshInitDataSilently_(cached);', 'cached init data must refresh in background');
+assertIncludes(client, 'if (isValidInitDataPayload_(_embeddedInitData)) {', 'embedded init data must be validated before render');
+assertIncludes(client, 'if (cached && isValidInitDataPayload_(cached.data)) {', 'cached init data must be validated before render');
+assertIncludes(client, '!isValidInitDataPayload_(App.state.currentData)', 'silent init refresh must recover broken current state');
+assertIncludes(client, 'App.reloadFcstFromSS();', 'invalid init payload must fall back to spreadsheet refresh');
+assertIncludes(client, "if (!isValidInitDataPayload_(result && result.data)) {", 'applyFcstLatestData must reject incomplete payloads');
 assertIncludes(client, 'function startInitLoadTimeout_()', 'FCST init timeout helper missing');
 assertIncludes(client, 'clearInitLoadTimeout_();', 'FCST init timeout clear missing');
 assertIncludes(client, 'function navigateToWebApp_(deptKey)', 'web app navigation helper missing');
