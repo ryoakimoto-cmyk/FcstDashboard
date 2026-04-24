@@ -89,6 +89,9 @@ function validateHtmlTemplate(filePath, content) {
 
 files.forEach((filePath) => {
   const raw = fs.readFileSync(filePath, 'utf8');
+  if (raw.includes('\uFFFD')) {
+    throw new Error(`${path.basename(filePath)}: contains replacement character U+FFFD`);
+  }
   const sources = extractSources(filePath, raw);
   sources.forEach((source, index) => {
     acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'script' });

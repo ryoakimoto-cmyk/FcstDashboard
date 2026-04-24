@@ -44,10 +44,8 @@ function migrateToSharedArchitecture() {
     Logger.log('Created: ' + CHANGE_LOG_SHEET_NAME);
   }
 
-  if (!ss.getSheetByName(OPP_LIST_SNAPSHOT_SHEET_NAME)) {
-    ss.insertSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-    Logger.log('Created: ' + OPP_LIST_SNAPSHOT_SHEET_NAME);
-  }
+  OppHistory_ensureInfrastructure_();
+  Logger.log('Ensured Opp history infrastructure sheets.');
 
   if (!ss.getSheetByName(MONTHLY_TARGET_MASTER_SHEET_NAME)) {
     ss.insertSheet(MONTHLY_TARGET_MASTER_SHEET_NAME);

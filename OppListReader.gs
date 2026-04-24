@@ -51,7 +51,10 @@ function OppListReader_getLiveRows(deptKey) {
       subOwner: subOwner,
       phase: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['フェーズ'])),
       forecast: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['Forecast'])),
+      scheduleDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['予定日'])),
+      closeDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['確定日', '受注日'])),
       scheduleOrCloseDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['予定日 / 確定日'])),
+      confidence: OppListReader_toNullableNumber_(OppListReader_valueByKeys_(row, headerMap, ['確度', '確度(%)', '確度 (%)'])),
       dealName: OppListReader_formatCell_(dealName),
       allocationPercent: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['計上割合 (%)'])),
       mrr: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['MRR'])),
@@ -104,6 +107,12 @@ function OppListReader_valueByKeys_(row, headerMap, keys) {
 
 function OppListReader_toNumber_(value) {
   return typeof value === 'number' ? value : value === '' || value === null ? 0 : Number(value) || 0;
+}
+
+function OppListReader_toNullableNumber_(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  var num = typeof value === 'number' ? value : Number(value);
+  return isNaN(num) ? null : num;
 }
 
 function OppListReader_toBoolean_(value) {
