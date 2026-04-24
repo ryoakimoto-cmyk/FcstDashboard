@@ -3,7 +3,9 @@
     "allow": [
       "Bash(clasp push:*)",
       "Bash(clasp deploy:*)",
-      "Bash(clasp deployments:*)"
+      "Bash(clasp deployments:*)",
+      "Bash(clasp version:*)",
+      "Bash(clasp login:*)"
     ]
   }
 }
