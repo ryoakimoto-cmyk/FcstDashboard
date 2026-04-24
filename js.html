@@ -3,6 +3,7 @@
 var _selectedDept = (typeof GAS_SELECTED_DEPT !== 'undefined' && GAS_SELECTED_DEPT !== 'null') ? GAS_SELECTED_DEPT : null;
 var _userDefaultDept = (typeof GAS_USER_DEFAULT_DEPT !== 'undefined' && GAS_USER_DEFAULT_DEPT !== 'null') ? GAS_USER_DEFAULT_DEPT : null;
 var _userEmail = (typeof GAS_USER_EMAIL !== 'undefined' && GAS_USER_EMAIL !== 'null') ? GAS_USER_EMAIL : '';
+var _webAppUrl = (typeof GAS_WEBAPP_URL !== 'undefined' && GAS_WEBAPP_URL !== 'null') ? GAS_WEBAPP_URL : '';
 var _deptConfig = {};
 var _embeddedInitData = null;
 var _initLoadTimeoutId = null;
@@ -13,6 +14,21 @@ function parseEmbeddedJson_(elementId, fallback) {
   var raw = el.textContent || el.innerText || '';
   if (!raw || raw === 'null') return fallback;
   return JSON.parse(raw);
+}
+
+function getWebAppUrl_() {
+  if (_webAppUrl) return _webAppUrl;
+  return window.location.href.split('?')[0];
+}
+
+function navigateToWebApp_(deptKey) {
+  var base = getWebAppUrl_();
+  var nextUrl = deptKey ? (base + '?dept=' + encodeURIComponent(deptKey)) : base;
+  if (window.top && window.top !== window) {
+    window.top.location.href = nextUrl;
+    return;
+  }
+  window.location.href = nextUrl;
 }
 
 function clearInitLoadTimeout_() {
@@ -252,7 +268,7 @@ function renderTopPage_() {
       var card = document.createElement('div');
       card.className = 'dept-card' + (isDefault ? ' dept-card--default' : '');
       card.onclick = function() {
-        window.location.href = window.location.pathname + '?dept=' + encodeURIComponent(dept.key);
+        navigateToWebApp_(dept.key);
       };
 
       var label = document.createElement('span');
@@ -396,7 +412,7 @@ const App = {
     var btn = document.createElement('button');
     btn.className = 'back-btn';
     btn.textContent = 'トップに戻る';
-    btn.onclick = function() { window.location.href = window.location.pathname; };
+    btn.onclick = function() { navigateToWebApp_(null); };
     header.insertBefore(btn, header.firstChild);
   },
 
@@ -748,7 +764,12 @@ const App = {
     this.state.activeView = view;
     document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
     document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
-    document.getElementById('view-' + view).classList.add('active');
+    var nextView = document.getElementById('view-' + view);
+    if (!nextView) {
+      renderBootError_(new Error('Missing view container: view-' + view));
+      return;
+    }
+    nextView.classList.add('active');
 
     if (view === 'fcst') this.renderFcst();
     if (view === 'trend') this.renderTrend();

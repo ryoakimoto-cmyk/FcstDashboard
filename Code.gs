@@ -6,6 +6,12 @@ function doGet(e) {
   var email = Session.getActiveUser().getEmail();
   var userDefaultDept = UserReader_getUserDefaultDept(email) || null;
   var deptConfigJson = safeJsonForTemplate_(DEPT_CONFIG);
+  var webAppUrl = '';
+  try {
+    webAppUrl = ScriptApp.getService().getUrl() || '';
+  } catch (e2) {
+    webAppUrl = '';
+  }
 
   if (!email.endsWith('@sansan.com')) {
     return HtmlService.createHtmlOutput('<h1>アクセス権限がありません</h1>');
@@ -17,6 +23,7 @@ function doGet(e) {
     tmpl.deptConfigJson = deptConfigJson;
     tmpl.userDefaultDept = userDefaultDept || 'null';
     tmpl.userEmail = email;
+    tmpl.webAppUrl = webAppUrl || 'null';
     tmpl.embeddedInitData = 'null';
     return tmpl.evaluate()
       .setTitle('FCST Dashboard')
@@ -28,6 +35,7 @@ function doGet(e) {
   tmpl.deptConfigJson = deptConfigJson;
   tmpl.userDefaultDept = userDefaultDept || 'null';
   tmpl.userEmail = email;
+  tmpl.webAppUrl = webAppUrl || 'null';
   tmpl.embeddedInitData = getEmbeddedInitDataForDept_(deptKey);
   return tmpl.evaluate()
     .setTitle('FCST Dashboard - ' + DEPT_CONFIG[deptKey].label)

@@ -80,6 +80,8 @@ assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared o
 assertIncludes(code, 'AssignmentMaster_getContext', 'Code.gs must use shared assignment context');
 assertIncludes(code, 'function getEmbeddedInitDataForDept_(deptKey)', 'dept embedded init helper missing');
 assertIncludes(code, "tmpl.embeddedInitData = getEmbeddedInitDataForDept_(deptKey);", 'dept page must use embedded init helper');
+assertIncludes(code, "tmpl.webAppUrl = webAppUrl || 'null';", 'dept page must embed absolute web app url');
+assertIncludes(code, "webAppUrl = ScriptApp.getService().getUrl() || '';", 'web app url resolution missing');
 assertIncludes(code, 'return json.length <= 800000 ? json : \'null\';', 'embedded init size guard missing');
 assertNotIncludes(code, 'function createOppSnapshotV2(deptKey)', 'legacy v2 opp snapshot wrapper must be removed');
 assertNotIncludes(code, 'function setupOppSnapshotTriggerV2()', 'legacy v2 opp snapshot trigger wrapper must be removed');
@@ -135,6 +137,10 @@ assertIncludes(client, 'App.refreshInitDataSilently_({ data: _embeddedInitData }
 assertIncludes(client, 'App.refreshInitDataSilently_(cached);', 'cached init data must refresh in background');
 assertIncludes(client, 'function startInitLoadTimeout_()', 'FCST init timeout helper missing');
 assertIncludes(client, 'clearInitLoadTimeout_();', 'FCST init timeout clear missing');
+assertIncludes(client, 'function navigateToWebApp_(deptKey)', 'web app navigation helper missing');
+assertIncludes(client, 'navigateToWebApp_(dept.key);', 'dept card must navigate through web app helper');
+assertIncludes(client, 'btn.onclick = function() { navigateToWebApp_(null); };', 'back navigation must use web app helper');
+assertIncludes(client, "var nextView = document.getElementById('view-' + view);", 'switchView null guard missing');
 assertIncludes(client, 'function getSharedQuarterDefinitions_(periodOptions)', 'shared quarter definitions missing');
 assertCount(client, 'function isDepartmentTotalMember_(member)', 1, 'duplicate department total helper');
 assertCount(client, 'function isGroupTotalMember_(member)', 1, 'duplicate group total helper');

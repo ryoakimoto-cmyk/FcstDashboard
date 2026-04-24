@@ -62,6 +62,7 @@ function validateHtmlTemplate(filePath, content) {
       'id="main-content"',
       "id=\"gas-dept-config-json\"",
       "id=\"gas-embedded-init-data-json\"",
+      'var GAS_WEBAPP_URL =',
       "<?!= include('js') ?>"
     ].forEach((marker) => {
       if (!content.includes(marker)) {
