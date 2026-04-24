@@ -19,10 +19,7 @@ function OppListSnapshot_createWeekly(deptKey) {
     var appendRows = (rows || []).map(function(row) {
       var payload = JSON.parse(JSON.stringify(row));
       payload.snapshotDate = dateStr;
-      // Task 4 guard: omit proposalProductIds for depts without proposalProducts feature
-      if (!isProposalProductsEnabled_(deptKey)) {
-        delete payload.proposalProductIds;
-      }
+      delete payload.proposalProductIds;
       return [now, dateStr, row.oppId || '', deptKey, JSON.stringify(payload)];
     });
 

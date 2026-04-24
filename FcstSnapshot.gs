@@ -32,7 +32,7 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
   var metricKeys = ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'confirmed', 'expectedMrr'];
 
   if (isProposalProductsEnabled_(deptKey)) {
-    metricKeys = metricKeys.concat(['received', 'debtMgmt', 'debtMgmtLite', 'expense']);
+    metricKeys = metricKeys.concat(PROPOSAL_PRODUCT_METRIC_KEYS, CONFIRMED_PROPOSAL_PRODUCT_METRIC_KEYS);
   }
 
   (members || []).forEach(function(member) {
@@ -738,7 +738,7 @@ function FcstSnapshot_extractMetricPayload_(payload) {
 
 function FcstSnapshot_buildWeekOverWeek_(currentMetric, prevMetric, metricKeysOpt) {
   var metricKeys = metricKeysOpt || ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'confirmed', 'expectedMrr'];
-  ['received', 'debtMgmt', 'debtMgmtLite', 'expense'].forEach(function(metricKey) {
+  PROPOSAL_PRODUCT_METRIC_KEYS.concat(CONFIRMED_PROPOSAL_PRODUCT_METRIC_KEYS).forEach(function(metricKey) {
     if ((currentMetric && currentMetric.hasOwnProperty(metricKey)) || (prevMetric && prevMetric.hasOwnProperty(metricKey))) {
       metricKeys.push(metricKey);
     }

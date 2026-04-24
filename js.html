@@ -3,6 +3,7 @@ var _selectedDept = (typeof GAS_SELECTED_DEPT !== 'undefined' && GAS_SELECTED_DE
 var _userDefaultDept = (typeof GAS_USER_DEFAULT_DEPT !== 'undefined' && GAS_USER_DEFAULT_DEPT !== 'null') ? GAS_USER_DEFAULT_DEPT : null;
 var _userEmail = (typeof GAS_USER_EMAIL !== 'undefined' && GAS_USER_EMAIL !== 'null') ? GAS_USER_EMAIL : '';
 var _deptConfig = {};
+var _embeddedInitData = null;
 
 function parseEmbeddedJson_(elementId, fallback) {
   var el = document.getElementById(elementId);
@@ -15,6 +16,20 @@ function parseEmbeddedJson_(elementId, fallback) {
     return fallback;
   }
 };
+
+try {
+  _deptConfig = parseEmbeddedJson_('gas-dept-config-json', {}) || {};
+} catch (e) {
+  _deptConfig = {};
+}
+
+try {
+  _embeddedInitData = parseEmbeddedJson_('gas-embedded-init-data-json', null);
+} catch (e) {
+  _embeddedInitData = null;
+}
+
+var GAS_DEPT_CONFIG = _deptConfig;
 
 const LOADING_PRESETS = {
   init: [
@@ -77,6 +92,32 @@ function proposalProductFields_() {
   return ['received', 'debtMgmt', 'debtMgmtLite', 'expense'];
 }
 
+function confirmedProposalProductFields_() {
+  return ['confirmedReceived', 'confirmedDebtMgmt', 'confirmedDebtMgmtLite', 'confirmedExpense'];
+}
+
+function proposalProductCommitFields_() {
+  return ['fcstCommitReceived', 'fcstCommitDebtMgmt', 'fcstCommitDebtMgmtLite', 'fcstCommitExpense'];
+}
+
+function fcstProposalProductMetricDefs_() {
+  return [
+    { key: 'received', label: '\u53d7\u9818', editable: false, supportsTargetDiff: false },
+    { key: 'debtMgmt', label: '\u50b5\u6a29\u7ba1\u7406', editable: false, supportsTargetDiff: false },
+    { key: 'debtMgmtLite', label: '\u50b5\u6a29\u7ba1\u7406 Lite', editable: false, supportsTargetDiff: false },
+    { key: 'expense', label: '\u7d4c\u8cbb', editable: false, supportsTargetDiff: false }
+  ];
+}
+
+function fcstConfirmedProposalMetricDefs_() {
+  return [
+    { key: 'confirmedReceived', label: '\u78ba\u5b9a\u53d7\u9818', editable: false, supportsTargetDiff: false },
+    { key: 'confirmedDebtMgmt', label: '\u78ba\u5b9a\u50b5\u6a29\u7ba1\u7406', editable: false, supportsTargetDiff: false },
+    { key: 'confirmedDebtMgmtLite', label: '\u78ba\u5b9a\u50b5\u6a29\u7ba1\u7406 Lite', editable: false, supportsTargetDiff: false },
+    { key: 'confirmedExpense', label: '\u78ba\u5b9a\u7d4c\u8cbb', editable: false, supportsTargetDiff: false }
+  ];
+}
+
 function hasProposalProducts_() {
   return !App || !App.currentFeatures || App.currentFeatures.proposalProducts !== false;
 }
@@ -100,12 +141,21 @@ function applyOppDisplayLabels_() {
 
 function getFcstMetricKeys_() {
   var metricKeys = ['fcstAdjusted', 'fcstCommit', 'confirmed', 'expectedMrr'];
-  return hasProposalProducts_() ? metricKeys.concat(proposalProductFields_()) : metricKeys;
+  return hasProposalProducts_()
+    ? metricKeys.concat(proposalProductFields_(), confirmedProposalProductFields_())
+    : metricKeys;
 }
 
 function getOppEditableFields_() {
   var fields = ['fcstCommit', 'fcstMin', 'fcstMax'];
   return hasProposalProducts_() ? fields.concat(proposalProductFields_()) : fields;
+}
+
+function getOppAmountFields_() {
+  var fields = ['fcstCommit', 'fcstMin', 'fcstMax'];
+  return hasProposalProducts_()
+    ? fields.concat(proposalProductFields_(), proposalProductCommitFields_())
+    : fields;
 }
 
 // --- Top page routing ---
@@ -161,10 +211,11 @@ function renderTopPage_() {
     html += '<div class="dept-card-grid">';
     divisions[divKey].forEach(function(dept) {
       var isDefault = (_userDefaultDept === dept.key);
-      html += '<div class="dept-card' + (isDefault ? ' dept-card--default' : '') + '" onclick="window.location.href=window.location.pathname+\'?dept=' + dept.key + '\'">';
+      var cardHref = buildAppUrl_(dept.key);
+      html += '<a class="dept-card' + (isDefault ? ' dept-card--default' : '') + '" href="' + cardHref + '" target="_top">';
       html += '<span class="dept-card-label">' + dept.label + '</span>';
       if (isDefault) html += '<span class="dept-card-badge">あなたの部署</span>';
-      html += '</div>';
+      html += '</a>';
     });
     html += '</div></div>';
   });
@@ -256,11 +307,10 @@ function renderTopPage_() {
 
     deptList.forEach(function(dept) {
       var isDefault = (_userDefaultDept === dept.key);
-      var card = document.createElement('div');
+      var card = document.createElement('a');
       card.className = 'dept-card' + (isDefault ? ' dept-card--default' : '');
-      card.onclick = function() {
-        window.location.href = window.location.pathname + '?dept=' + encodeURIComponent(dept.key);
-      };
+      card.href = buildAppUrl_(dept.key);
+      card.target = '_top';
 
       var label = document.createElement('span');
       label.className = 'dept-card-label';
@@ -338,8 +388,31 @@ const App = {
     selectedPeriod: '',
     selectedQuarterKey: '',
     selectedGroup: '\u90e8\u5168\u4f53',      // '\u90e8\u5168\u4f53' | \u30b0\u30eb\u30fc\u30d7\u540d
-    visibleSeries: { fcstAdjusted: true, fcstCommit: true, target: true, confirmed: true, expectedMrr: true },
-    expandedMetrics: { fcstAdjusted: false, fcstCommit: false, confirmed: false, expectedMrr: false, received: false, debtMgmt: false, debtMgmtLite: false, expense: false },
+    visibleSeries: {
+      fcstAdjusted: true,
+      fcstCommit: true,
+      target: true,
+      confirmed: true,
+      expectedMrr: true,
+      confirmedReceived: false,
+      confirmedDebtMgmt: false,
+      confirmedDebtMgmtLite: false,
+      confirmedExpense: false
+    },
+    expandedMetrics: {
+      fcstAdjusted: false,
+      fcstCommit: false,
+      confirmed: false,
+      expectedMrr: false,
+      received: false,
+      debtMgmt: false,
+      debtMgmtLite: false,
+      expense: false,
+      confirmedReceived: false,
+      confirmedDebtMgmt: false,
+      confirmedDebtMgmtLite: false,
+      confirmedExpense: false
+    },
     expandedAll: { keyDeals: false, notes: false },
     expandedNoteKeys: {},
     trendChart: null,
@@ -715,12 +788,30 @@ const App = {
 
   switchView(view) {
     var features = App.currentFeatures || {};
+    var requestedView = view;
     if (view === 'opps' && features.oppList === false) view = getDefaultVisibleView_(features);
     if (view === 'trend' && features.chart === false) view = getDefaultVisibleView_(features);
+    var viewEl = document.getElementById('view-' + view);
+    if (!viewEl) {
+      var fallbackView = getDefaultVisibleView_(features);
+      view = fallbackView;
+      viewEl = document.getElementById('view-' + view);
+    }
+    if (!viewEl) {
+      console.warn('switchView: target view element not found', {
+        requestedView: requestedView,
+        resolvedView: view
+      });
+      return;
+    }
     this.state.activeView = view;
-    document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
-    document.querySelectorAll('.tab').forEach(function(t) { t.classList.toggle('active', t.dataset.view === view); });
-    document.getElementById('view-' + view).classList.add('active');
+    document.querySelectorAll('.view').forEach(function(v) {
+      if (v) v.classList.remove('active');
+    });
+    document.querySelectorAll('.tab').forEach(function(t) {
+      if (t) t.classList.toggle('active', t.dataset && t.dataset.view === view);
+    });
+    viewEl.classList.add('active');
 
     if (view === 'fcst') this.renderFcst();
     if (view === 'trend') this.renderTrend();
@@ -1865,8 +1956,9 @@ const App = {
   renderOpps() {
     const filters = this.getOppFilterState_();
     this.persistOppFilterState_();
+    const amountFields = getOppAmountFields_();
     const editableFields = getOppEditableFields_();
-    const diffFields = getOppEditableFields_();
+    const diffFields = amountFields;
     const sourceRows = this.getOppRowsForView_();
     const dateCandidates = this.filterOppRows_(sourceRows, filters, { ignoreDate: true });
     filters.dateValue = this.refreshOppDateOptions_(dateCandidates, filters.dateValue);
@@ -1912,8 +2004,9 @@ const App = {
         '<td class="opp-col-keydeal">' + (editable
           ? '<span class="opp-keydeal-wrap' + (keyDealEdited ? ' edited' : '') + '"><input type="checkbox" class="opp-checkbox" data-key="' + escapeAttr(checkKey) + '"' + checked + ' onchange="App.toggleOppKeyDeal(\'' + escapeAttr(opp.oppId) + '\', this.checked)"></span>'
           : (opp.keyDeal ? 'TRUE' : 'FALSE')) + '</td>' +
-        editableFields.map(function(field) {
-          return '<td class="opp-num-col">' + App.renderOppAmountCell_(opp, field, editable) + '</td>';
+        amountFields.map(function(field) {
+          var fieldEditable = editable && editableFields.indexOf(field) !== -1;
+          return '<td class="opp-num-col">' + App.renderOppAmountCell_(opp, field, fieldEditable) + '</td>';
         }).join('') +
         '<td class="opp-cell-comment">' + (
           editable
@@ -1926,7 +2019,7 @@ const App = {
         '<td class="opp-summary-cell">' + escapeHtml(opp.initiative || '') + '</td>' +
         '</tr>';
     }).join('');
-    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="24" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
+    document.getElementById('opp-tbody').innerHTML = html || '<tr><td colspan="' + (17 + amountFields.length) + '" style="text-align:center;color:var(--color-text-sub);padding:24px;">該当する案件がありません</td></tr>';
   },
 
   renderOppDiffHeaderButtons_(fields) {
@@ -2100,7 +2193,11 @@ const App = {
       received: '受領',
       debtMgmt: '債権管理',
       debtMgmtLite: '債権管理 Lite',
-      expense: '経費'
+      expense: '経費',
+      fcstCommitReceived: 'FCST(コミット)_受領',
+      fcstCommitDebtMgmt: 'FCST(コミット)_債権管理',
+      fcstCommitDebtMgmtLite: 'FCST(コミット)_債権管理 Lite',
+      fcstCommitExpense: 'FCST(コミット)_経費'
     }[field] || field;
   },
 
@@ -2860,538 +2957,6 @@ function renderBootError_(error) {
   if (overlay) overlay.classList.add('hidden');
 }
 
-var App = {
-  state: {
-    activeView: 'fcst',
-    initData: null,
-    fcstRowsByPeriod: {},
-    snapshotDates: [],
-    snapshotDate: null,
-    snapshotPayloads: {},
-    oppData: null,
-    trendData: null,
-    selectedPeriod: '',
-    selectedQuarterKey: '',
-    selectedGroup: '部全体',
-    fcstFiltersCollapsed: false,
-    expandedMetrics: { fcstAdjusted: true, fcstCommit: false, fcstMin: false, fcstMax: false, expectedMrr: false, confirmed: false },
-    diffToggles: {},
-    expandedNoteKeys: {},
-    trendBlock: 'Q',
-    trendChart: null,
-    secondaryWarmStarted: false
-  },
-
-  boot: function() {
-    _deptConfig = parseEmbeddedJson_('gas-dept-config-json', {});
-    if (!_selectedDept) {
-      this.renderTopPage();
-      return;
-    }
-    this.prepareDeptLayout();
-    this.loadInitData();
-  },
-
-  prepareDeptLayout: function() {
-    var cfg = currentDeptConfig_();
-    var badge = document.querySelector('.division-badge');
-    if (badge && cfg) {
-      badge.textContent = cfg.division + '事業部';
-      badge.style.display = 'inline-block';
-    }
-    var ownerLabel = document.getElementById('opp-owner-label');
-    if (ownerLabel) ownerLabel.textContent = getResolvedOppOwnerLabel_();
-
-    var back = document.querySelector('.back-btn');
-    if (!back) {
-      back = document.createElement('a');
-      back.className = 'back-btn';
-      back.href = buildAppUrl_(null);
-      back.target = '_top';
-      back.textContent = 'トップに戻る';
-      var headerTop = document.querySelector('.header-top');
-      if (headerTop) headerTop.insertBefore(back, headerTop.firstChild);
-    }
-  },
-
-  renderTopPage: function() {
-    var overlay = document.getElementById('loading-overlay');
-    if (overlay) overlay.classList.add('hidden');
-    document.querySelectorAll('.tab-bar, #view-fcst, #view-opps, #view-trend, #save-bar').forEach(function(el) {
-      if (el) el.style.display = 'none';
-    });
-
-    var badge = document.querySelector('.division-badge');
-    if (badge) {
-      badge.textContent = '';
-      badge.style.display = 'none';
-    }
-
-    var main = document.getElementById('main-content');
-    var divisions = {};
-    Object.keys(_deptConfig).forEach(function(key) {
-      var cfg = _deptConfig[key] || {};
-      var division = cfg.division || 'OTHER';
-      if (!divisions[division]) divisions[division] = [];
-      divisions[division].push({ key: key, label: cfg.label || key });
-    });
-
-    var labels = {
-      BO: 'Bill One事業部',
-      SS: 'Sansan事業部',
-      CO: 'Contract One事業部',
-      OTHER: 'その他'
-    };
-
-    var html = '<div class="top-page"><div class="top-page-header"><h1 class="top-page-title">FCST Dashboard</h1><p class="top-page-subtitle">部署を選択してください</p></div>';
-    ['BO', 'SS', 'CO', 'OTHER'].forEach(function(div) {
-      if (!divisions[div] || !divisions[div].length) return;
-      html += '<div class="division-section"><div class="division-header">' + escapeHtml(labels[div] || div) + '</div><div class="dept-card-grid">';
-      divisions[div].forEach(function(dept) {
-        var isDefault = _userDefaultDept === dept.key;
-        html += '<a class="dept-card' + (isDefault ? ' dept-card--default' : '') + '" href="' + escapeHtml(buildAppUrl_(dept.key)) + '" target="_top">';
-        html += '<span class="dept-card-label">' + escapeHtml(dept.label) + '</span>';
-        if (isDefault) html += '<span class="dept-card-badge">あなたの部署</span>';
-        html += '</a>';
-      });
-      html += '</div></div>';
-    });
-    html += '</div>';
-    main.style.visibility = 'visible';
-    main.innerHTML = html;
-  },
-
-  switchView: function(view) {
-    this.state.activeView = view;
-    document.querySelectorAll('.tab').forEach(function(tab) {
-      tab.classList.toggle('active', tab.dataset.view === view);
-    });
-    document.querySelectorAll('.view').forEach(function(panel) {
-      panel.classList.toggle('active', panel.id === 'view-' + view);
-    });
-    if (view === 'opps' && !this.state.oppData) this.loadOpps();
-    if (view === 'trend' && !this.state.trendData) this.loadTrend();
-  },
-
-  setLoading: function(show, text, options) {
-    var config = options || {};
-    var overlay = document.getElementById('loading-overlay');
-    var main = document.getElementById('main-content');
-    if (overlay) overlay.classList.toggle('hidden', !show);
-    if (main) main.style.visibility = show ? 'hidden' : 'visible';
-    var textEl = document.getElementById('loading-text');
-    if (textEl) textEl.textContent = text || 'Loading...';
-    var subTextEl = document.getElementById('loading-subtext');
-    if (subTextEl) subTextEl.textContent = show ? (config.subtext || '???????????') : '';
-    var stageEl = document.getElementById('loading-stage-name');
-    if (stageEl) stageEl.textContent = show ? (config.stage || '??????') : '??';
-    var percentEl = document.getElementById('loading-percent');
-    var percent = show ? Math.max(0, Math.min(99, Number(config.percent) || 0)) : 100;
-    if (percentEl) percentEl.textContent = percent + '%';
-    var barEl = document.getElementById('loading-progress-bar');
-    if (barEl) barEl.style.width = percent + '%';
-  },
-
-  setUpdateBadge: function(text) {
-    var el = document.querySelector('.update-badge');
-    if (el) el.textContent = '最終更新: ' + (text || '-');
-  },
-
-  showInlineError: function(targetId, message) {
-    var el = document.getElementById(targetId);
-    if (!el) return;
-    el.innerHTML = '<div class="error-panel"><div class="error-icon">!</div><div class="error-message">' + escapeHtml(message) + '</div></div>';
-  },
-
-  pickDefaultPeriod: function(data) {
-    var options = safeArray(data && data.periodOptions);
-    return options.length ? (options[0].key || '') : '';
-  },
-
-  getPrefetchedInitState_: function() {
-    return window.__FCST_BOOTSTRAP__ && window.__FCST_BOOTSTRAP__.init
-      ? window.__FCST_BOOTSTRAP__.init
-      : null;
-  },
-
-  applyInitData_: function(result) {
-    var data = result && result.data ? result.data : result;
-    if (!data || data.error) {
-      this.handleInitDataError_((data && data.error) || 'FCSTデータの取得に失敗しました');
-      return;
-    }
-
-    this.ensureFcstUiState_();
-    this.state.initData = data;
-    this.state.snapshotDates = safeArray(data.snapshotDates);
-    this.state.snapshotDate = null;
-    this.state.snapshotPayloads = {};
-    var defaultPeriod = String(data.defaultPeriod || this.pickDefaultPeriod(data) || '');
-    this.state.selectedPeriod = defaultPeriod;
-    if (defaultPeriod) this.state.fcstRowsByPeriod[defaultPeriod] = safeArray(data.rows);
-    var selectedQuarter = this.findQuarterForPeriod_(defaultPeriod, data.periodOptions) || safeArray(data.periodOptions)[0] || null;
-    this.state.selectedQuarterKey = selectedQuarter ? selectedQuarter.key : '';
-    this.state.selectedGroup = '部全体';
-    this.setUpdateBadge(data.lastUpdated || data.sfLastUpdated || '-');
-    this.renderFcst();
-    this.setLoading(false);
-    this.warmSecondaryViews_();
-  },
-
-  handleInitDataError_: function(message) {
-    this.setLoading(false);
-    this.showInlineError('fcst-content', message || 'FCSTデータの取得に失敗しました');
-  },
-
-  warmSecondaryViews_: function() {
-    var self = this;
-    if (self.state.secondaryWarmStarted || !_selectedDept) return;
-    self.state.secondaryWarmStarted = true;
-
-    window.setTimeout(function() {
-      if (self.state.oppData) return;
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (!result || result.error || self.state.oppData) return;
-          self.state.oppData = result;
-        })
-        .withFailureHandler(function() {})
-        .getOpportunities(_selectedDept);
-    }, 500);
-
-    window.setTimeout(function() {
-      if (self.state.trendData) return;
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (!result || result.error || self.state.trendData) return;
-          self.state.trendData = result;
-        })
-        .withFailureHandler(function() {})
-        .getTrendData(_selectedDept, self.state.trendBlock || 'Q');
-    }, 1400);
-  },
-
-  loadInitData: function() {
-    var self = this;
-    self.setLoading(true, 'FCSTを読み込んでいます...', { stage: '初期化', percent: 35 });
-
-    var prefetched = self.getPrefetchedInitState_();
-    if (prefetched && prefetched.status === 'ready' && prefetched.value) {
-      self.applyInitData_(prefetched.value);
-      return;
-    }
-    if (prefetched && prefetched.status === 'error') {
-      self.handleInitDataError_(prefetched.error);
-      return;
-    }
-    if (prefetched && prefetched.status === 'pending') {
-      var onPrefetched = function() {
-        window.removeEventListener('fcst:prefetch-init', onPrefetched);
-        var nextState = self.getPrefetchedInitState_();
-        if (nextState && nextState.status === 'ready' && nextState.value) {
-          self.applyInitData_(nextState.value);
-          return;
-        }
-        self.handleInitDataError_((nextState && nextState.error) || 'FCSTデータの取得に失敗しました');
-      };
-      window.addEventListener('fcst:prefetch-init', onPrefetched);
-      return;
-    }
-
-    google.script.run
-      .withSuccessHandler(function(result) { self.applyInitData_(result); })
-      .withFailureHandler(function(error) {
-        self.handleInitDataError_((error && error.message) || String(error));
-      })
-      .getClientInitData(_selectedDept);
-  },
-
-  currentFcstPeriodOptions_: function() {
-    if (this.state.snapshotDate) {
-      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
-      return safeArray(snapshotPayload.periodOptions);
-    }
-    return safeArray(this.state.initData && this.state.initData.periodOptions);
-  },
-
-  currentFcstRows_: function(periodKey) {
-    if (this.state.snapshotDate) {
-      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
-      return safeArray(snapshotPayload.rowsByPeriod && snapshotPayload.rowsByPeriod[periodKey]);
-    }
-    return safeArray(this.state.fcstRowsByPeriod[periodKey]);
-  },
-
-  renderFcst: function() {
-    var data = this.state.initData;
-    if (!data) return;
-    var period = this.state.selectedPeriod || this.pickDefaultPeriod(data);
-    var options = safeArray(data.periodOptions);
-    var members = safeArray(data.members).filter(function(member) { return member && !member.isTotal; });
-    var html = '<div class="view-toolbar"><span class="view-toolbar-meta">部署: ' + escapeHtml((currentDeptConfig_() && currentDeptConfig_().label) || _selectedDept || '') + '</span></div>';
-    html += '<div class="quarter-chips">';
-    options.forEach(function(option) {
-      html += '<button type="button" class="chip' + (period === option.key ? ' active' : '') + '" onclick="App.selectPeriod(\'' + escapeHtml(option.key) + '\')">' + escapeHtml(option.label || option.key) + '</button>';
-    });
-    html += '</div>';
-    html += '<div class="table-wrapper"><table><thead><tr><th>担当者</th><th>目標</th><th>FCST(調整後)</th><th>FCST(コミット)</th><th>確定</th></tr></thead><tbody>';
-    members.forEach(function(member) {
-      var row = member[period] || {};
-      var target = typeof row.target === 'number' ? row.target : (row.target && row.target.net);
-      var adjusted = row.fcstAdjusted && typeof row.fcstAdjusted === 'object' ? row.fcstAdjusted.net : row.fcstAdjusted;
-      var commit = row.fcstCommit && typeof row.fcstCommit === 'object' ? row.fcstCommit.net : row.fcstCommit;
-      var confirmed = row.confirmed && typeof row.confirmed === 'object' ? row.confirmed.net : row.confirmed;
-      html += '<tr><td>' + escapeHtml(member.displayName || member.name || '') + '</td><td>' + escapeHtml(fmtNum(target)) + '</td><td>' + escapeHtml(fmtNum(adjusted)) + '</td><td>' + escapeHtml(fmtNum(commit)) + '</td><td>' + escapeHtml(fmtNum(confirmed)) + '</td></tr>';
-    });
-    if (!members.length) html += '<tr><td colspan="5">表示できるデータがありません</td></tr>';
-    html += '</tbody></table></div>';
-    document.getElementById('fcst-content').innerHTML = html;
-  },
-
-  selectPeriod: function(period) {
-    this.state.selectedPeriod = period;
-    if (this.state.snapshotDate) {
-      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
-      if (snapshotPayload.rowsByPeriod && snapshotPayload.rowsByPeriod[period]) {
-        this.renderFcst();
-        return;
-      }
-      this.loadSnapshotByDate_(this.state.snapshotDate, period);
-      return;
-    }
-    if (this.state.fcstRowsByPeriod && this.state.fcstRowsByPeriod[period]) {
-      this.renderFcst();
-      return;
-    }
-    this.loadFcstPeriod(period);
-  },
-
-  loadOpps: function() {
-    var self = this;
-    document.getElementById('opps-content').innerHTML = '<div class="loading-overlay-inline"><div class="loading-message">案件リストを読み込んでいます...</div></div>';
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (!result || result.error) {
-          self.showInlineError('opps-content', (result && result.error) || '案件リストの取得に失敗しました');
-          return;
-        }
-        self.state.oppData = result;
-        self.populateOppFilters_();
-        self.renderOpps();
-      })
-      .withFailureHandler(function(error) {
-        self.showInlineError('opps-content', (error && error.message) || String(error));
-      })
-      .getOpportunities(_selectedDept);
-  },
-
-  populateOppFilters_: function() {
-    var rows = safeArray(this.state.oppData && this.state.oppData.rows);
-    populateSelect_('opp-dept-select', uniqueValues_(rows, 'dept'));
-    populateSelect_('opp-phase-select', uniqueValues_(rows, 'phase'));
-    populateSelect_('opp-type-select', uniqueValues_(rows, 'type'));
-    populateSelect_('opp-owner-select', uniqueValues_(rows, 'subOwner'));
-    populateSelect_('opp-forecast-select', uniqueValues_(rows, 'forecast'));
-    populateSelect_('opp-date-select', uniqueValues_(rows, 'scheduleOrCloseDate'));
-  },
-
-  getOppFilters: function() {
-    function valueOf(id) {
-      var el = document.getElementById(id);
-      return el ? (el.value || 'all') : 'all';
-    }
-    var nameEl = document.getElementById('opp-name-search');
-    return {
-      dept: valueOf('opp-dept-select'),
-      phase: valueOf('opp-phase-select'),
-      type: valueOf('opp-type-select'),
-      owner: valueOf('opp-owner-select'),
-      forecast: valueOf('opp-forecast-select'),
-      scheduleOrCloseDate: valueOf('opp-date-select'),
-      keyDeal: valueOf('opp-keydeal-select'),
-      nameQuery: nameEl ? String(nameEl.value || '').trim().toLowerCase() : ''
-    };
-  },
-
-  resetOppFilters: function() {
-    ['opp-dept-select', 'opp-phase-select', 'opp-type-select', 'opp-owner-select', 'opp-forecast-select', 'opp-date-select', 'opp-keydeal-select'].forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) el.value = 'all';
-    });
-    var nameEl = document.getElementById('opp-name-search');
-    if (nameEl) nameEl.value = '';
-    this.renderOpps();
-  },
-
-  renderOpps: function() {
-    var result = this.state.oppData;
-    if (!result) return;
-    var cfg = currentDeptConfig_();
-    var showProposal = !cfg || !cfg.features || cfg.features.proposalProducts !== false;
-    var filters = this.getOppFilters();
-    var rows = safeArray(result.rows).filter(function(row) {
-      if (filters.dept !== 'all' && row.dept !== filters.dept) return false;
-      if (filters.phase !== 'all' && row.phase !== filters.phase) return false;
-      if (filters.type !== 'all' && row.type !== filters.type) return false;
-      if (filters.owner !== 'all' && row.subOwner !== filters.owner) return false;
-      if (filters.forecast !== 'all' && row.forecast !== filters.forecast) return false;
-      if (filters.scheduleOrCloseDate !== 'all' && row.scheduleOrCloseDate !== filters.scheduleOrCloseDate) return false;
-      if (filters.keyDeal !== 'all' && String(!!row.keyDeal) !== filters.keyDeal) return false;
-      if (filters.nameQuery && String(row.dealName || '').toLowerCase().indexOf(filters.nameQuery) === -1) return false;
-      return true;
-    });
-    var count = document.getElementById('opp-count');
-    if (count) count.textContent = rows.length + '件';
-
-    var html = '<div class="view-toolbar"><span class="view-toolbar-meta">最終更新: ' + escapeHtml(result.lastUpdated || '-') + '</span><span class="view-toolbar-meta">件数: ' + escapeHtml(String(rows.length)) + '</span></div>';
-    html += '<div class="table-wrapper opp-table-wrap"><table><thead><tr>';
-    html += '<th class="opp-col-month">完了予定月</th><th class="opp-col-dept">担当部署</th><th class="opp-col-type">種別</th><th class="opp-col-owner">' + escapeHtml(getResolvedOppOwnerLabel_()) + '</th>';
-    html += '<th class="opp-col-phase">フェーズ</th><th class="opp-col-forecast">フォーキャスト</th><th class="opp-col-date">予定日 / 確定日</th>';
-    html += '<th class="opp-name-header">案件名</th><th class="opp-num-header">按分率(%)</th><th class="opp-num-header">MRR</th><th class="opp-num-header">初期費用</th>';
-    html += '<th class="opp-col-keydeal">Key Deal</th><th class="opp-num-header">FCST(コミット)</th><th class="opp-num-header">FCST(MIN)</th><th class="opp-num-header">FCST(MAX)</th>';
-    if (showProposal) html += '<th class="opp-num-header">受領</th><th class="opp-num-header">債権管理</th><th class="opp-num-header">債権管理Lite</th><th class="opp-num-header">経費</th>';
-    html += '<th class="opp-col-comment">FCSTコメント</th><th class="opp-col-firstmeeting">初回MTG日</th><th class="opp-col-summary">案件概要</th><th class="opp-col-summary">オプション商材</th><th class="opp-col-summary">施策</th>';
-    html += '</tr></thead><tbody>';
-    rows.forEach(function(row) {
-      html += '<tr>';
-      html += '<td>' + escapeHtml(row.completedMonth || '') + '</td>';
-      html += '<td>' + escapeHtml(row.dept || '') + '</td>';
-      html += '<td>' + escapeHtml(row.type || '') + '</td>';
-      html += '<td>' + escapeHtml(row.subOwner || '') + '</td>';
-      html += '<td>' + escapeHtml(row.phase || '') + '</td>';
-      html += '<td>' + escapeHtml(row.forecast || '') + '</td>';
-      html += '<td>' + escapeHtml(row.scheduleOrCloseDate || '') + '</td>';
-      html += '<td>' + renderOppDealLink_(row) + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.allocationPercent)) + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.mrr)) + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.initialCost)) + '</td>';
-      html += '<td>' + escapeHtml(row.keyDeal ? 'TRUE' : 'FALSE') + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.fcstCommit)) + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.fcstMin)) + '</td>';
-      html += '<td>' + escapeHtml(fmtNum(row.fcstMax)) + '</td>';
-      if (showProposal) {
-        html += '<td>' + escapeHtml(fmtNum(row.received)) + '</td>';
-        html += '<td>' + escapeHtml(fmtNum(row.debtMgmt)) + '</td>';
-        html += '<td>' + escapeHtml(fmtNum(row.debtMgmtLite)) + '</td>';
-        html += '<td>' + escapeHtml(fmtNum(row.expense)) + '</td>';
-      }
-      html += '<td>' + escapeHtml(row.fcstComment || '') + '</td>';
-      html += '<td>' + escapeHtml(row.firstMeetingDate || '') + '</td>';
-      html += '<td>' + escapeHtml(row.summary || '') + '</td>';
-      html += '<td>' + escapeHtml(row.optionFeatures || '') + '</td>';
-      html += '<td>' + escapeHtml(row.initiative || '') + '</td>';
-      html += '</tr>';
-    });
-    if (!rows.length) html += '<tr><td colspan="' + (showProposal ? '24' : '20') + '">該当する案件がありません</td></tr>';
-    html += '</tbody></table></div>';
-    document.getElementById('opps-content').innerHTML = html;
-  },
-
-  reloadOppsFromSS: function() {
-    var self = this;
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (!result || result.error) {
-          self.showInlineError('opps-content', (result && result.error) || 'スプレッドシート再読込に失敗しました');
-          return;
-        }
-        self.state.oppData = result;
-        self.populateOppFilters_();
-        self.renderOpps();
-      })
-      .withFailureHandler(function(error) {
-        self.showInlineError('opps-content', (error && error.message) || String(error));
-      })
-      .refreshFromSpreadsheet(_selectedDept);
-  },
-
-  reloadOpps: function() {
-    var self = this;
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (!result || result.error) {
-          self.showInlineError('opps-content', (result && result.error) || 'SF最新取得に失敗しました');
-          return;
-        }
-        self.state.oppData = result;
-        self.populateOppFilters_();
-        self.renderOpps();
-      })
-      .withFailureHandler(function(error) {
-        self.showInlineError('opps-content', (error && error.message) || String(error));
-      })
-      .refreshSfDataAndGetOpportunities(_selectedDept);
-  },
-
-  loadTrend: function() {
-    var self = this;
-    self.syncTrendBlockOptions_();
-    var block = self.state.trendBlock || 'Q';
-    document.getElementById('trend-content').innerHTML = '<div class="loading-overlay-inline"><div class="loading-message">推移を読み込んでいます...</div></div>';
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (!result || result.error) {
-          self.showInlineError('trend-content', (result && result.error) || '推移データの取得に失敗しました');
-          return;
-        }
-        self.state.trendData = result;
-        self.renderTrend();
-      })
-      .withFailureHandler(function(error) {
-        self.showInlineError('trend-content', (error && error.message) || String(error));
-      })
-      .getTrendData(_selectedDept, block);
-  },
-
-  changeTrendBlock: function(block) {
-    this.state.trendBlock = block || 'Q';
-    this.loadTrend();
-  },
-
-  renderTrend: function() {
-    var data = this.state.trendData;
-    if (!data) return;
-    var points = safeArray(data.points);
-    var container = document.getElementById('trend-content');
-    if (!container) return;
-    if (points.length) {
-      container.innerHTML =
-        '<div class="chart-card"><div class="chart-title">推移グラフ (Net MRR)</div><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>' +
-        '<div class="chart-card"><div class="chart-title">週次スナップショット</div><div id="trend-table-wrap"></div></div>';
-      this.renderTrendChart_(points);
-      this.renderTrendTable_(points);
-      return;
-    }
-    var labels = safeArray(data.labels);
-    var series = data.series || {};
-    var hasSeries = labels.length > 0;
-    if (!hasSeries) {
-      container.innerHTML = '<div class="chart-card"><div class="trend-empty">推移データがまだありません</div></div>';
-      return;
-    }
-    container.innerHTML = '<div class="chart-card"><div class="chart-title">推移グラフ (Net MRR)</div><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>';
-    var canvas = document.getElementById('trend-chart');
-    if (!canvas || typeof Chart === 'undefined') return;
-    if (this.state.trendChart) this.state.trendChart.destroy();
-    this.state.trendChart = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: 'FCST(調整後)', data: safeArray(series.fcstAdjusted), borderColor: '#1a73e8', tension: 0.2 },
-          { label: 'FCST(コミット)', data: safeArray(series.fcstCommit), borderColor: '#0b8043', tension: 0.2 },
-          { label: '目標', data: safeArray(series.target), borderColor: '#f29900', tension: 0.2 }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  },
-
-  closeDetailModal: function() {
-    var modal = document.getElementById('detail-modal');
-    if (modal) modal.classList.add('hidden');
-  }
-};
 
 App.findQuarterOption_ = function(quarterKey, options) {
   return safeArray(options).find(function(option) {
@@ -3542,48 +3107,30 @@ App.findFcstSummaryRow_ = function(rows, selectedGroup) {
 };
 
 App.buildFcstSummaryFallback_ = function(rows, selectedGroup) {
+  var summaryMetricKeys = ['target', 'fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'expectedMrr', 'confirmed'];
+  if (hasProposalProducts_()) {
+    summaryMetricKeys = summaryMetricKeys.concat(confirmedProposalProductFields_());
+  }
   var summary = {
-    metric: {
-      target: { net: 0, newExp: 0, churn: 0 },
-      fcstAdjusted: { net: 0, newExp: 0, churn: 0 },
-      fcstCommit: { net: 0, newExp: 0, churn: 0 },
-      fcstMin: { net: 0, newExp: 0, churn: 0 },
-      fcstMax: { net: 0, newExp: 0, churn: 0 },
-      expectedMrr: { net: 0, newExp: 0, churn: 0 },
-      confirmed: { net: 0, newExp: 0, churn: 0 }
-    },
-    wow: {
-      target: { net: 0, newExp: 0, churn: 0 },
-      fcstAdjusted: { net: 0, newExp: 0, churn: 0 },
-      fcstCommit: { net: 0, newExp: 0, churn: 0 },
-      fcstMin: { net: 0, newExp: 0, churn: 0 },
-      fcstMax: { net: 0, newExp: 0, churn: 0 },
-      expectedMrr: { net: 0, newExp: 0, churn: 0 },
-      confirmed: { net: 0, newExp: 0, churn: 0 }
-    }
+    metric: {},
+    wow: {}
   };
+  summaryMetricKeys.forEach(function(metricKey) {
+    summary.metric[metricKey] = { net: 0, newExp: 0, churn: 0 };
+    summary.wow[metricKey] = { net: 0, newExp: 0, churn: 0 };
+  });
   safeArray(rows).forEach(function(row) {
     if (!row || row.isTotal) return;
     if (selectedGroup !== '部全体' && String(row.group || '') !== selectedGroup) return;
-    addFcstMetric_(summary.metric.target, row.metric && row.metric.target);
-    addFcstMetric_(summary.metric.fcstAdjusted, row.metric && row.metric.fcstAdjusted);
-    addFcstMetric_(summary.metric.fcstCommit, row.metric && row.metric.fcstCommit);
-    addFcstMetric_(summary.metric.fcstMin, row.metric && row.metric.fcstMin);
-    addFcstMetric_(summary.metric.fcstMax, row.metric && row.metric.fcstMax);
-    addFcstMetric_(summary.metric.expectedMrr, row.metric && row.metric.expectedMrr);
-    addFcstMetric_(summary.metric.confirmed, row.metric && row.metric.confirmed);
-    addFcstMetric_(summary.wow.target, row.wow && row.wow.target);
-    addFcstMetric_(summary.wow.fcstAdjusted, row.wow && row.wow.fcstAdjusted);
-    addFcstMetric_(summary.wow.fcstCommit, row.wow && row.wow.fcstCommit);
-    addFcstMetric_(summary.wow.fcstMin, row.wow && row.wow.fcstMin);
-    addFcstMetric_(summary.wow.fcstMax, row.wow && row.wow.fcstMax);
-    addFcstMetric_(summary.wow.expectedMrr, row.wow && row.wow.expectedMrr);
-    addFcstMetric_(summary.wow.confirmed, row.wow && row.wow.confirmed);
+    summaryMetricKeys.forEach(function(metricKey) {
+      addFcstMetric_(summary.metric[metricKey], row.metric && row.metric[metricKey]);
+      addFcstMetric_(summary.wow[metricKey], row.wow && row.wow[metricKey]);
+    });
   });
   return summary;
 };
 
-App.renderFcstSummaryCards_ = function(summaryRow, periodLabel) {
+App.renderFcstSummaryCards_DEPRECATED_OLD = function(summaryRow, periodLabel) {
   var cards = [
     { key: 'target', label: '目標' },
     { key: 'fcstAdjusted', label: 'FCST(調整後)' },
@@ -3611,7 +3158,7 @@ App.renderFcstSummaryCards_ = function(summaryRow, periodLabel) {
   }).join('') + '</div>';
 };
 
-function fcstMetricDefs_() {
+function fcstMetricDefs_DEPRECATED_OLD() {
   return [
     { key: 'fcstAdjusted', label: 'FCST(調整後)', editable: true },
     { key: 'fcstCommit', label: 'FCST(コミット)', editable: false },
@@ -3664,7 +3211,7 @@ function renderFcstDiffBadge_(value) {
   return '<span class="diff-badge ' + fcstDiffBadgeClass_(value) + '">' + escapeHtml(fmtDiffFcst_(value)) + '</span>';
 }
 
-App.ensureFcstUiState_ = function() {
+App.ensureFcstUiState_DEPRECATED_ = function() {
   if (!this.state.expandedMetrics) {
     this.state.expandedMetrics = {
       fcstAdjusted: true,
@@ -3676,6 +3223,79 @@ App.ensureFcstUiState_ = function() {
     };
   }
   ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'expectedMrr', 'confirmed'].forEach(function(metricKey) {
+    if (!Object.prototype.hasOwnProperty.call(App.state.expandedMetrics, metricKey)) {
+      App.state.expandedMetrics[metricKey] = metricKey === 'fcstAdjusted';
+    }
+  });
+  if (!this.state.diffToggles) this.state.diffToggles = {};
+  if (!this.state.expandedNoteKeys) this.state.expandedNoteKeys = {};
+};
+
+function fcstSummaryCardDefs_() {
+  var cards = [
+    { key: 'target', label: '\u76ee\u6a19', showTargetDiff: false },
+    { key: 'fcstAdjusted', label: 'FCST(\u8abf\u6574\u5f8c)' },
+    { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)' },
+    { key: 'expectedMrr', label: '\u671f\u5f85MRR' },
+    { key: 'confirmed', label: '\u78ba\u5b9a' }
+  ];
+  if (hasProposalProducts_()) {
+    cards = cards.concat(fcstConfirmedProposalMetricDefs_().map(function(metricDef) {
+      return { key: metricDef.key, label: metricDef.label, showTargetDiff: false };
+    }));
+  }
+  return cards;
+}
+
+function fcstMetricStateKeys_() {
+  var keys = ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'expectedMrr', 'confirmed'];
+  if (hasProposalProducts_()) {
+    keys = keys.concat(proposalProductFields_(), confirmedProposalProductFields_());
+  }
+  return keys;
+}
+
+function fcstMetricDefs_() {
+  var metricDefs = [
+    { key: 'fcstAdjusted', label: 'FCST(\u8abf\u6574\u5f8c)', editable: true },
+    { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)', editable: false },
+    { key: 'fcstMin', label: 'FCST(MIN)', editable: false },
+    { key: 'fcstMax', label: 'FCST(MAX)', editable: false },
+    { key: 'expectedMrr', label: '\u671f\u5f85MRR', editable: false },
+    { key: 'confirmed', label: '\u78ba\u5b9a', editable: false }
+  ];
+  if (hasProposalProducts_()) {
+    metricDefs = metricDefs.concat(fcstProposalProductMetricDefs_(), fcstConfirmedProposalMetricDefs_());
+  }
+  return metricDefs;
+}
+
+App.renderFcstSummaryCards_ = function(summaryRow, periodLabel) {
+  return '<div class="card-grid">' + fcstSummaryCardDefs_().map(function(card) {
+    var metric = summaryRow && summaryRow.metric ? summaryRow.metric[card.key] : null;
+    var wow = summaryRow && summaryRow.wow ? summaryRow.wow[card.key] : null;
+    var targetDiff = card.showTargetDiff === false
+      ? null
+      : diffFcstMetric_(metric, summaryRow && summaryRow.metric && summaryRow.metric.target);
+    var targetNet = safeMetricPart_(targetDiff, 'net');
+    var wowNet = safeMetricPart_(wow, 'net');
+    var diffClass = wowNet >= 0 ? 'positive' : 'negative';
+    var targetHtml = card.showTargetDiff === false
+      ? '<div class="card-target">' + escapeHtml(periodLabel || '') + '</div>'
+      : '<div class="card-target">\u76ee\u6a19\u5dee ' + escapeHtml(fmtDiffNum(targetNet)) + '</div>';
+    return '<div class="summary-card">' +
+      '<div class="card-period">' + escapeHtml(card.label) + '</div>' +
+      '<div class="card-net">' + escapeHtml(fmtNum(safeMetricPart_(metric, 'net'))) + '</div>' +
+      '<div class="card-unit">' + escapeHtml(periodLabel || '') + '</div>' +
+      '<div class="card-diff ' + diffClass + '">\u5148\u9031\u6bd4 ' + escapeHtml(fmtDiffNum(wowNet)) + '</div>' +
+      targetHtml +
+    '</div>';
+  }).join('') + '</div>';
+};
+
+App.ensureFcstUiState_ = function() {
+  if (!this.state.expandedMetrics) this.state.expandedMetrics = {};
+  fcstMetricStateKeys_().forEach(function(metricKey) {
     if (!Object.prototype.hasOwnProperty.call(App.state.expandedMetrics, metricKey)) {
       App.state.expandedMetrics[metricKey] = metricKey === 'fcstAdjusted';
     }
@@ -3972,6 +3592,51 @@ App.renderFcstMetricCell_ = function(row, period, metricDef, partKey) {
   return baseHtml + badges;
 };
 
+App.renderFcstSubHeader_ = function(metricDef, partKey, isFirstColumn) {
+  this.ensureFcstUiState_();
+  var labelMap = { net: 'Net', newExp: 'New+Exp', churn: 'Churn' };
+  var toggles = (((this.state.diffToggles || {})[metricDef.key] || {})[partKey] || {});
+  var supportsTargetDiff = metricDef.supportsTargetDiff !== false;
+  var classes = ['sub-header'];
+  if (partKey === 'net') classes.push('sub-header-net');
+  if (partKey === 'newExp') classes.push('sub-header-plus');
+  if (partKey === 'churn') classes.push('sub-header-minus');
+  if (isFirstColumn) classes.push('col-group-start');
+  var html = '<th class="' + classes.join(' ') + '">' + labelMap[partKey];
+  html += '<button class="diff-toggle-btn' + (toggles.wow ? ' active' : '') + '" type="button" onclick="App.toggleDiff(\'' + metricDef.key + '\', \'' + partKey + '\', \'wow\')">\u5148\u9031\u6bd4</button>';
+  if (supportsTargetDiff) {
+    html += '<button class="diff-toggle-btn' + (toggles.target ? ' active' : '') + '" type="button" onclick="App.toggleDiff(\'' + metricDef.key + '\', \'' + partKey + '\', \'target\')">\u76ee\u6a19\u5dee</button>';
+  }
+  html += '</th>';
+  return html;
+};
+
+App.renderFcstMetricCell_ = function(row, period, metricDef, partKey) {
+  this.ensureFcstUiState_();
+  var metric = row.metric && row.metric[metricDef.key];
+  var baseHtml;
+  if (metricDef.editable && !row.isTotal && !this.state.snapshotDate) {
+    baseHtml = this.renderFcstAdjCell_(
+      row.name,
+      period,
+      partKey,
+      Number(safeMetricPart_(metric, partKey)) || 0,
+      !!row.hasFcstAdjustedSaved
+    );
+  } else {
+    baseHtml = renderMetricValue_(metric, partKey);
+  }
+
+  var toggles = (((this.state.diffToggles || {})[metricDef.key] || {})[partKey] || {});
+  var supportsTargetDiff = metricDef.supportsTargetDiff !== false;
+  var badges = '';
+  if (toggles.wow) badges += renderFcstDiffBadge_(safeMetricPart_(row.wow && row.wow[metricDef.key], partKey) || 0);
+  if (supportsTargetDiff && toggles.target) {
+    badges += renderFcstDiffBadge_(safeMetricPart_(diffFcstMetric_(metric, row.metric && row.metric.target), partKey) || 0);
+  }
+  return baseHtml + badges;
+};
+
 App.renderFcstModern_ = function() {
   this.ensureFcstUiState_();
   var data = this.state.initData;
@@ -4196,7 +3861,7 @@ App.renderTrendChart_ = function(points) {
   });
 };
 
-App.renderTrendTable_ = function(points) {
+App.renderTrendTable_DEPRECATED_OLD = function(points) {
   var wrap = document.getElementById('trend-table-wrap');
   if (!wrap) return;
   if (!points.length) {
@@ -4251,7 +3916,7 @@ App.openTrendKeyDealModal_ = function(snapshotKey) {
     .getTrendWeekDetails(deptKey, periodKey, snapshotKey);
 };
 
-App.renderTrendKeyDealModalBody_ = function(result, title, kicker) {
+App.renderTrendKeyDealModalBody_DEPRECATED_OLD = function(result, title, kicker) {
   var metrics = (result && result.metrics) || {};
   var keyDeals = safeArray(result && result.keyDeals);
   var metricCards = [
@@ -4289,6 +3954,96 @@ App.renderTrendKeyDealModalBody_ = function(result, title, kicker) {
   this.openDetailModal_(title, kicker, bodyHtml, '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>');
 };
 
+App.renderTrendTable_ = function(points) {
+  var wrap = document.getElementById('trend-table-wrap');
+  if (!wrap) return;
+  if (!points.length) {
+    wrap.innerHTML = '<div class="trend-empty">\u30c7\u30fc\u30bf\u306a\u3057</div>';
+    return;
+  }
+
+  var metricCols = [
+    { key: 'target', label: '\u76ee\u6a19' },
+    { key: 'confirmed', label: '\u78ba\u5b9a' },
+    { key: 'fcstAdjusted', label: 'FCST(\u8abf\u6574\u5f8c)' },
+    { key: 'fcstCommit', label: 'FCST(\u30b3\u30df\u30c3\u30c8)' },
+    { key: 'expectedMrr', label: '\u671f\u5f85MRR' }
+  ];
+  if (hasProposalProducts_()) {
+    metricCols = metricCols.concat(fcstConfirmedProposalMetricDefs_().map(function(metricDef) {
+      return { key: metricDef.key, label: metricDef.label };
+    }));
+  }
+
+  var header = '<thead><tr><th>\u65e5\u4ed8</th>' +
+    metricCols.map(function(metricCol) {
+      return '<th>' + escapeHtml(metricCol.label) + '</th>';
+    }).join('') +
+    '<th>Key Deal\u4ef6\u6570</th></tr></thead>';
+
+  var body = points.slice().reverse().map(function(point) {
+    var metrics = point.metrics || {};
+    var classes = [];
+    if (point.isLive) classes.push('trend-row-live');
+    if (point.isBackfilled) classes.push('trend-row-backfilled');
+    var classAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
+    var snapshotKey = String(point.snapshotKey || '');
+    return '<tr' + classAttr + ' data-snapshot-key="' + escapeHtml(snapshotKey) + '" onclick="App.openTrendKeyDealModal_(\'' + escapeHtml(snapshotKey).replace(/'/g, '&#39;') + '\')">' +
+      '<td>' + escapeHtml(point.label || point.date || '') + '</td>' +
+      metricCols.map(function(metricCol) {
+        return '<td>' + escapeHtml(fmtNum(metrics[metricCol.key])) + '</td>';
+      }).join('') +
+      '<td>' + escapeHtml(String(point.keyDealCount || 0)) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  wrap.innerHTML = '<table class="trend-table">' + header + '<tbody>' + body + '</tbody></table>';
+};
+
+App.renderTrendKeyDealModalBody_ = function(result, title, kicker) {
+  var metrics = (result && result.metrics) || {};
+  var keyDeals = safeArray(result && result.keyDeals);
+  var metricCards = [
+    { label: '\u76ee\u6a19', value: metrics.target },
+    { label: '\u78ba\u5b9a', value: metrics.confirmed },
+    { label: 'FCST(\u8abf\u6574\u5f8c)', value: metrics.fcstAdjusted },
+    { label: 'FCST(\u30b3\u30df\u30c3\u30c8)', value: metrics.fcstCommit },
+    { label: '\u671f\u5f85MRR', value: metrics.expectedMrr }
+  ];
+  if (hasProposalProducts_()) {
+    metricCards = metricCards.concat(fcstConfirmedProposalMetricDefs_().map(function(metricDef) {
+      return { label: metricDef.label, value: metrics[metricDef.key] };
+    }));
+  }
+  var metricCardsHtml = metricCards.map(function(card) {
+    return '<div class="trend-stat"><div class="ts-label">' + escapeHtml(card.label) + '</div><div class="ts-val">' + escapeHtml(fmtNum(card.value)) + '</div></div>';
+  }).join('');
+
+  var dealsHtml;
+  if (!keyDeals.length) {
+    dealsHtml = '<div class="trend-empty">Key Deal \u306a\u3057</div>';
+  } else {
+    var rows = keyDeals.map(function(deal) {
+      var companyCell = escapeHtml(deal.company || '-');
+      if (deal.oppId) {
+        companyCell = '<a href="' + escapeHtml(buildOpportunityUrl_(deal.oppId)) + '" target="_blank" rel="noopener">' + companyCell + '</a>';
+      }
+      return '<tr>' +
+        '<td>' + companyCell + '</td>' +
+        '<td>' + escapeHtml(fmtNum(deal.monthlyMrr)) + '</td>' +
+        '<td>' + escapeHtml(deal.phase || '-') + '</td>' +
+        '<td>' + escapeHtml(fmtNum(deal.fcst)) + '</td>' +
+      '</tr>';
+    }).join('');
+    dealsHtml = '<table class="trend-keydeal-table"><thead><tr><th>\u4f1a\u793e\u540d</th><th>\u6708\u984dMRR</th><th>\u30d5\u30a7\u30fc\u30ba</th><th>FCST</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  var bodyHtml = '<div class="trend-metrics-grid">' + metricCardsHtml + '</div>' +
+    '<div class="detail-section-title">Key Deal' + (keyDeals.length ? ' (' + keyDeals.length + ')' : '') + '</div>' +
+    dealsHtml;
+  this.openDetailModal_(title, kicker, bodyHtml, '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">\u9589\u3058\u308b</button>');
+};
+
 window.addEventListener('error', function(event) {
   renderBootError_(event.error || event.message || event);
 });
@@ -4298,7 +4053,7 @@ window.addEventListener('unhandledrejection', function(event) {
 });
 
 function bootClient_() {
-  App.boot();
+  App.init();
 }
 
 if (document.readyState === 'loading') {

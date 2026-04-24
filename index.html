@@ -41,46 +41,42 @@
   </div>
 
   <div id="view-opps" class="view">
-    <div class="dept-controls" style="flex-wrap:wrap;gap:10px;">
+    <div class="view-toolbar">
       <button class="save-bar-btn" type="button" onclick="App.reloadOppsFromSS()">&#12473;&#12503;&#12524;&#12483;&#12489;&#12471;&#12540;&#12488;&#20877;&#35501;&#36796;</button>
       <button class="save-bar-btn primary" type="button" onclick="App.reloadOpps()">SF&#26368;&#26032;&#21462;&#24471;</button>
-      <label>&#25285;&#24403;&#37096;&#32626;:</label>
-      <select id="opp-dept-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <label>&#12501;&#12455;&#12540;&#12474;:</label>
-      <select id="opp-phase-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <label>&#31278;&#21029;:</label>
-      <select id="opp-type-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <span style="margin-left:auto;font-size:12px;color:var(--color-text-sub);" id="opp-count"></span>
+      <span class="view-toolbar-meta" id="opp-last-updated">最終更新: -</span>
+      <span class="view-toolbar-meta" style="margin-left:auto;" id="opp-count">0件</span>
+      <button class="save-bar-btn" type="button" onclick="App.toggleFilterPanel('opps')">フィルタを閉じる</button>
     </div>
 
-    <div class="dept-controls opp-filter-grid">
-      <label id="opp-owner-label">案件担当</label>
-      <select id="opp-owner-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <label>&#12501;&#12457;&#12540;&#12461;&#12515;&#12473;&#12488;</label>
-      <select id="opp-forecast-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <label>予定日 / 確定日</label>
-      <select id="opp-date-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-      </select>
-      <label>&#26696;&#20214;&#21517;</label>
-      <input id="opp-name-search" type="text" oninput="App.renderOpps()" placeholder="&#26696;&#20214;&#21517;&#12391;&#32094;&#12426;&#36796;&#12415;">
-      <label>Key Deal</label>
-      <select id="opp-keydeal-select" onchange="App.renderOpps()">
-        <option value="all">&#12377;&#12409;&#12390;</option>
-        <option value="true">TRUE</option>
-        <option value="false">FALSE</option>
-      </select>
-      <button class="save-bar-btn" type="button" onclick="App.resetOppFilters()">&#12501;&#12451;&#12523;&#12479;&#35299;&#38500;</button>
+    <div class="view-filter-panel" id="opp-filter-panel">
+      <div class="filter-chip-row">
+        <span class="filter-chip-label">担当部署:</span>
+        <select id="opp-dept-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+        <span class="filter-chip-label">フェーズ:</span>
+        <select id="opp-phase-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+        <span class="filter-chip-label">種別:</span>
+        <select id="opp-type-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+      </div>
+      <div class="filter-chip-row">
+        <span class="filter-chip-label" id="opp-owner-label">案件担当:</span>
+        <select id="opp-owner-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+        <span class="filter-chip-label">フォーキャスト:</span>
+        <select id="opp-forecast-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+        <span class="filter-chip-label">予定日 / 確定日:</span>
+        <select id="opp-date-select" onchange="App.renderOpps()"><option value="all">すべて</option></select>
+      </div>
+      <div class="filter-chip-row">
+        <span class="filter-chip-label">案件名:</span>
+        <input id="opp-name-search" type="text" oninput="App.renderOpps()" placeholder="案件名で絞り込み">
+        <span class="filter-chip-label">Key Deal:</span>
+        <select id="opp-keydeal-select" onchange="App.renderOpps()">
+          <option value="all">すべて</option>
+          <option value="true">TRUE</option>
+          <option value="false">FALSE</option>
+        </select>
+        <button class="save-bar-btn" type="button" onclick="App.resetOppFilters()">フィルタ解除</button>
+      </div>
     </div>
 
     <div class="opp-period-bar">
@@ -113,6 +109,10 @@
             <th class="opp-num-header" data-opp-diff-field="debtMgmt" data-base-label="債権管理" data-feature="proposalProducts">債権管理</th>
             <th class="opp-num-header" data-opp-diff-field="debtMgmtLite" data-base-label="債権管理 Lite" data-feature="proposalProducts">債権管理 Lite</th>
             <th class="opp-num-header" data-opp-diff-field="expense" data-base-label="経費" data-feature="proposalProducts">経費</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstCommitReceived" data-base-label="FCST(コミット)_受領" data-feature="proposalProducts">FCST(コミット)_受領</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstCommitDebtMgmt" data-base-label="FCST(コミット)_債権管理" data-feature="proposalProducts">FCST(コミット)_債権管理</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstCommitDebtMgmtLite" data-base-label="FCST(コミット)_債権管理 Lite" data-feature="proposalProducts">FCST(コミット)_債権管理 Lite</th>
+            <th class="opp-num-header" data-opp-diff-field="fcstCommitExpense" data-base-label="FCST(コミット)_経費" data-feature="proposalProducts">FCST(コミット)_経費</th>
             <th class="opp-col-comment">FCSTコメント</th>
             <th class="opp-col-firstmeeting">初回商談日</th>
             <th class="opp-col-summary">案件概要</th>

@@ -15,13 +15,13 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
   var monthKeyMap = {};
 
   rows.forEach(function(row) {
-    var date = SfDataReader_parseDate_(SfDataReader_valueByKeys_(row, headerMap, ['完了月', '計上月', 'Close Month'], 0));
+    var date = SfDataReader_parseDate_(SfDataReader_valueByKeys_(row, headerMap, ['完了予定月']));
     if (!date || !FcstPeriods_isSupportedDate_(date)) return;
 
     var monthKey = FcstPeriods_formatMonthKey_(date);
     monthKeyMap[monthKey] = true;
 
-    var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', '担当名'], 3)).trim();
+    var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['ユーザー'])).trim();
     if (!sourceName) return;
 
     var user = SfDataReader_resolveUser_(context, sourceName, monthKey);
@@ -40,27 +40,35 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     member.sortOrder = user.sortOrder || member.sortOrder || 0;
 
     var metric = SfDataReader_getOrCreateMonthMetric_(member, monthKey);
-    var typeValue = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['種別', '案件種別'], 24)).trim();
+    var typeValue = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['種別（バケット）'])).trim();
+    var phaseValue = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['フェーズ_変換'])).trim();
+    var isConfirmedPhase = phaseValue === '確定';
     var bucket = typeValue === 'New+Exp' ? 'newExp' : typeValue === 'Churn' ? 'churn' : null;
-    var fcstCommitValue = SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38);
+    var fcstCommitValue = SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_分割後']);
 
     SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, fcstCommitValue);
-    metric.fcstMin += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MIN)(換算値)', 'FCST(MIN)', 'FCST（MIN）'], 39));
-    metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)(換算値)', 'FCST(MAX)', 'FCST（MAX）'], 40));
-    SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10));
-    SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['Expected MRR', 'ExpectedMRR'], 37));
-    SfDataReader_addBreakdownValue_(metric.received, bucket, SfDataReader_valueByKeys_(row, headerMap, ['受領'], 53));
-    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理', '債権管理回収'], 54));
-    SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理Lite', '債権管理 Lite'], 55));
-    SfDataReader_addBreakdownValue_(metric.expense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['経費'], 56));
+    metric.fcstMin += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MIN)_分割後']));
+    metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)_分割後']));
+    SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['金額（LK＋新ソリューション）(換算値)']));
+    SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['期待MRR_分割後']));
+    SfDataReader_addBreakdownValue_(metric.received, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_受領_分割後']));
+    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_債権管理_分割後']));
+    SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_債権管理 Lite_分割後']));
+    SfDataReader_addBreakdownValue_(metric.expense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_経費_分割後']));
+    if (isConfirmedPhase) {
+      SfDataReader_addBreakdownValue_(metric.confirmedReceived, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_受領']));
+      SfDataReader_addBreakdownValue_(metric.confirmedDebtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_債権管理']));
+      SfDataReader_addBreakdownValue_(metric.confirmedDebtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_債権管理 Lite']));
+      SfDataReader_addBreakdownValue_(metric.confirmedExpense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_経費']));
+    }
 
-    if (SfDataReader_toBoolean_(SfDataReader_valueByKeys_(row, headerMap, ['Key Deal フラグ', 'KeyDeal'], 32))) {
+    if (SfDataReader_toBoolean_(SfDataReader_valueByKeys_(row, headerMap, ['Key Deal フラグ']))) {
       metric.keyDeals.push({
-        company: SfDataReader_stripLegalForm_(SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['取引先名', '会社名'], 25)).trim()),
-        monthlyMrr: SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10)),
-        phase: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['フェーズ'], 30)).trim(),
+        company: SfDataReader_stripLegalForm_(SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['取引先名'])).trim()),
+        monthlyMrr: SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['金額（LK＋新ソリューション）(換算値)'])),
+        phase: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['フェーズ_変換'])).trim(),
         fcst: SfDataReader_toNumber_(fcstCommitValue),
-        oppId: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['ID', '案件ID'], 21)).trim()
+        oppId: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['案件 ID'])).trim()
       });
     }
 
@@ -207,6 +215,10 @@ function SfDataReader_createMetric_() {
     debtMgmt: SfDataReader_createBreakdown_(),
     debtMgmtLite: SfDataReader_createBreakdown_(),
     expense: SfDataReader_createBreakdown_(),
+    confirmedReceived: SfDataReader_createBreakdown_(),
+    confirmedDebtMgmt: SfDataReader_createBreakdown_(),
+    confirmedDebtMgmtLite: SfDataReader_createBreakdown_(),
+    confirmedExpense: SfDataReader_createBreakdown_(),
     keyDeals: []
   };
 }
@@ -315,6 +327,18 @@ function SfDataReader_sumMetrics_(metrics) {
     sum.expense.net += metric.expense.net || 0;
     sum.expense.newExp += metric.expense.newExp || 0;
     sum.expense.churn += metric.expense.churn || 0;
+    sum.confirmedReceived.net += metric.confirmedReceived.net || 0;
+    sum.confirmedReceived.newExp += metric.confirmedReceived.newExp || 0;
+    sum.confirmedReceived.churn += metric.confirmedReceived.churn || 0;
+    sum.confirmedDebtMgmt.net += metric.confirmedDebtMgmt.net || 0;
+    sum.confirmedDebtMgmt.newExp += metric.confirmedDebtMgmt.newExp || 0;
+    sum.confirmedDebtMgmt.churn += metric.confirmedDebtMgmt.churn || 0;
+    sum.confirmedDebtMgmtLite.net += metric.confirmedDebtMgmtLite.net || 0;
+    sum.confirmedDebtMgmtLite.newExp += metric.confirmedDebtMgmtLite.newExp || 0;
+    sum.confirmedDebtMgmtLite.churn += metric.confirmedDebtMgmtLite.churn || 0;
+    sum.confirmedExpense.net += metric.confirmedExpense.net || 0;
+    sum.confirmedExpense.newExp += metric.confirmedExpense.newExp || 0;
+    sum.confirmedExpense.churn += metric.confirmedExpense.churn || 0;
     sum.keyDeals = sum.keyDeals.concat(metric.keyDeals || []);
     return sum;
   }, SfDataReader_createMetric_());
@@ -351,6 +375,10 @@ function SfDataReader_finalizeMetric_(metric) {
     debtMgmt: finalizeBreakdown(metric.debtMgmt),
     debtMgmtLite: finalizeBreakdown(metric.debtMgmtLite),
     expense: finalizeBreakdown(metric.expense),
+    confirmedReceived: finalizeBreakdown(metric.confirmedReceived),
+    confirmedDebtMgmt: finalizeBreakdown(metric.confirmedDebtMgmt),
+    confirmedDebtMgmtLite: finalizeBreakdown(metric.confirmedDebtMgmtLite),
+    confirmedExpense: finalizeBreakdown(metric.confirmedExpense),
     keyDeals: SfDataReader_unique_((metric.keyDeals || []).map(function(keyDeal) {
       return JSON.stringify(keyDeal);
     })).map(function(text) {

@@ -114,7 +114,7 @@ function AggregatedCache_refresh(deptKey) {
 }
 
 function AggregatedCache_stripProposalProductFields_(result) {
-  var proposalFields = ['received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+  var proposalFields = PROPOSAL_PRODUCT_METRIC_KEYS.concat(CONFIRMED_PROPOSAL_PRODUCT_METRIC_KEYS);
   var periodKeys = [];
 
   (result.periodOptions || []).forEach(function(opt) {

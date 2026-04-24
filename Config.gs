@@ -42,6 +42,8 @@ const SSCS_CONFLICT_COLUMNS = [
 ];
 
 const APP_DATA_CACHE_SHEET_NAME = 'AppDataCache';
+const PROPOSAL_PRODUCT_METRIC_KEYS = ['received', 'debtMgmt', 'debtMgmtLite', 'expense'];
+const CONFIRMED_PROPOSAL_PRODUCT_METRIC_KEYS = ['confirmedReceived', 'confirmedDebtMgmt', 'confirmedDebtMgmtLite', 'confirmedExpense'];
 
 var DEPT_CONFIG_CACHE_ = null;
 var DEPT_CONFIG_CACHE_SOURCE_ = '';
