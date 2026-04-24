@@ -6,7 +6,13 @@ Purpose: hand over from the current lane to `shared lane`
 
 ## Current state
 
-The recent snapshot / FCST / opp work is now split across backend and frontend changes in the main worktree.
+The recent snapshot / FCST / opp work is integrated in the main worktree and reflected to both GitHub and Apps Script HEAD.
+
+Release status:
+
+- git commit: `d044a57`
+- git push: done
+- `clasp push -f`: done
 
 Backend changes are present in:
 
@@ -25,11 +31,10 @@ Frontend changes from `FCST lane` and `Opp lane` are present in:
 Validation:
 
 - `npm run validate:syntax` passed on 2026-04-24
+- `npm run validate:critical` passed on 2026-04-24
 
 Not done:
 
-- `git push`
-- `clasp push`
 - manual GAS verification after the latest frontend changes
 
 ## Backend changes already implemented
@@ -175,7 +180,7 @@ If `shared lane` resumes from here, start with these:
    - FCST screen shows the new `確定*` metrics only for proposal-products-enabled departments.
    - opp screen shows the new `FCST(コミット)_*` columns and diff behavior correctly.
    - snapshot views still load without `proposalProductIds`.
-3. If accepted, perform `git push` and `clasp push`.
+3. If follow-up fixes are needed, continue from `master` after deployed commit `d044a57`.
 
 ## Related handoff
 
