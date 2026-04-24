@@ -2,3 +2,9 @@
 Thumbs.db
 desktop.ini
 .clasprc.json
+.codex-review-signoff.json
+.codex-changed-files.json
+debug.log
+__tmp_js_extract.js
+_from_commit_js.html
+_js_from_commit.html

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MRR進捗ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; background: #f5f7fa; color: #333; }
+
+  .header { background: #fff; padding: 16px 24px; box-shadow: 0 1px 3px rgba(0,0,0,.1); display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+  .header h1 { font-size: 20px; color: #1a73e8; margin-right: auto; }
+
+  .tabs { display: flex; gap: 4px; }
+  .tab { padding: 6px 16px; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; background: #fff; font-size: 14px; }
+  .tab.active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+
+  .selector { display: flex; align-items: center; gap: 8px; }
+  .selector label { font-size: 13px; font-weight: 600; }
+  .selector select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .card .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .card .value { font-size: 22px; font-weight: 700; }
+  .card .sub { font-size: 12px; margin-top: 4px; }
+  .val-pos { color: #333; }
+  .val-neg { color: #ea4335; }
+
+  .chart-wrap { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.08); margin-bottom: 20px; }
+  canvas { max-height: 400px; }
+
+  .deal-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+  .deal-table th { background: #f0f3f8; padding: 10px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid #ddd; }
+  .deal-table td { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #eee; }
+  .deal-table tr.pos { background: #e8f0fe; }
+  .deal-table tr.neg { background: #fce8e6; }
+
+  .no-deals { padding: 24px; text-align: center; color: #999; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08); }
+
+  @media (max-width: 700px) {
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>MRR進捗ダッシュボード</h1>
+  <div class="tabs">
+    <div class="tab active" data-view="weekly" onclick="switchView('weekly')">週別</div>
+    <div class="tab" data-view="dept" onclick="switchView('dept')">部署別</div>
+  </div>
+  <div class="selector" id="deptSelector">
+    <label>部署:</label>
+    <select id="deptSelect" onchange="render()"></select>
+  </div>
+  <div class="selector" id="weekSelector" style="display:none;">
+    <label>週:</label>
+    <select id="weekSelect" onchange="render()"></select>
+  </div>
+</div>
+
+<div class="container">
+  <div class="cards" id="cards"></div>
+  <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+  <div id="dealArea"></div>
+</div>
+
+<script>
+const D = {
+  weeks: ['3月W4','3月W5','4月W1','4月W2'],
+  depts: ['EP1','EP2','EP3','SMB1','SMB2','SMB3','SMB4','SMB5','Micro','Global+事業部付'],
+  data: {
+    '3月W4': {
+      'SS':  {target:7732,actual:-1662,expectedMrr:-549,fcst:2293,keyDeal:''},
+      'EP1': {target:678,actual:-1289,expectedMrr:-413,fcst:-1650,keyDeal:'・三菱電機 119万 / P3 / 0万ヨミ\n・日本電気 -871万 / 確定 / -871万ヨミ\n・東京センチュリー 50万 / 確定 / 50万ヨミ\n・阪和興業 135万 / P4 / 0万ヨミ'},
+      'EP2': {target:987,actual:-507,expectedMrr:-43,fcst:188,keyDeal:'・シャープ 230万 / P3 / 54万ヨミ\n・三菱UFJモルガン・スタンレー証券 529万 / P4 / 0万ヨミ\n・アフラック生命保険 200万 / P3 / 0万ヨミ'},
+      'EP3': {target:1313,actual:-187,expectedMrr:-12,fcst:620,keyDeal:'・三機工業 170万 / 確定 / 170万ヨミ\n・ファナック 122万 / P3 / 0万ヨミ\n・能美防災 180万 / P3 / 0万ヨミ'},
+      'SMB1':{target:583,actual:-97,expectedMrr:-38,fcst:372,keyDeal:'・ひとまいる -200万 / -P3 / -200万ヨミ\n・久米設計 84万 / P5 / 0万ヨミ'},
+      'SMB2':{target:1196,actual:155,expectedMrr:5,fcst:753,keyDeal:'・非破壊検査 71万 / P4 / 0万ヨミ'},
+      'SMB3':{target:1557,actual:305,expectedMrr:0,fcst:1370,keyDeal:''},
+      'SMB4':{target:892,actual:74,expectedMrr:-22,fcst:308,keyDeal:'・KISCO 50万 / P3 / 0万ヨミ'},
+      'SMB5':{target:526,actual:-37,expectedMrr:-23,fcst:430,keyDeal:''},
+      'Micro':{target:0,actual:-79,expectedMrr:-3,fcst:-143,keyDeal:''},
+      'Global+事業部付':{target:0,actual:0,expectedMrr:0,fcst:45,keyDeal:''}
+    },
+    '3月W5': {
+      'SS':  {target:7732,actual:116,expectedMrr:2836,fcst:2361,keyDeal:''},
+      'EP1': {target:678,actual:1435,expectedMrr:-1306,fcst:-1644,keyDeal:'・三菱電機 119万 / P3 / 0万ヨミ\n・日本電気 -871万 / 確定 / -871万ヨミ\n・長谷工リンクス 91万 / P3 / 91万ヨミ'},
+      'EP2': {target:987,actual:842,expectedMrr:86,fcst:149,keyDeal:'・シャープ 230万 / P3 / 54万ヨミ\n・住友電気工業 92万 / P4 / 100万ヨミ'},
+      'EP3': {target:1313,actual:2510,expectedMrr:1036,fcst:570,keyDeal:'・三機工業 170万 / 確定 / 170万ヨミ\n・香港上海銀行 106万 / P4 / 106万ヨミ\n・総合車両製作所 58万 / P4 / 58万ヨミ'},
+      'SMB1':{target:583,actual:305,expectedMrr:419,fcst:466,keyDeal:'・ひとまいる -200万 / 確定 / -200万ヨミ\n・NTT・TCリース 50万 / P5 / 50万ヨミ'},
+      'SMB2':{target:1196,actual:1290,expectedMrr:841,fcst:734,keyDeal:'・非破壊検査 71万 / P4 / 0万ヨミ'},
+      'SMB3':{target:1557,actual:1698,expectedMrr:1201,fcst:1390,keyDeal:''},
+      'SMB4':{target:892,actual:1722,expectedMrr:422,fcst:312,keyDeal:''},
+      'SMB5':{target:526,actual:614,expectedMrr:94,fcst:430,keyDeal:''},
+      'Micro':{target:0,actual:0,expectedMrr:-111,fcst:-117,keyDeal:''},
+      'Global+事業部付':{target:0,actual:60,expectedMrr:155,fcst:71,keyDeal:''}
+    },
+    '4月W1': {
+      'SS':  {target:7732,actual:116,expectedMrr:3004,fcst:2306,keyDeal:''},
+      'EP1': {target:678,actual:1343,expectedMrr:-1326,fcst:-1617,keyDeal:'・三菱電機 119万 / P3 / 0万ヨミ\n・阪和興業 135万 / P4 / 135万ヨミ\n・長谷工リンクス 80万 / P4 / 80万ヨミ'},
+      'EP2': {target:987,actual:1025,expectedMrr:172,fcst:100,keyDeal:'・シャープ 230万 / P3 / 54万ヨミ\n・三菱UFJモルガン・スタンレー証券 529万 / P4 / 0万ヨミ'},
+      'EP3': {target:1313,actual:2919,expectedMrr:906,fcst:882,keyDeal:'・三機工業 170万 / 確定 / 170万ヨミ\n・ファナック 122万 / P3 / 0万ヨミ\n・明電舎 100万 / P5 / 75万ヨミ'},
+      'SMB1':{target:583,actual:481,expectedMrr:277,fcst:576,keyDeal:'・ひとまいる -200万 / 確定 / -200万ヨミ\n・三信電気 53万 / P4 / 44万ヨミ'},
+      'SMB2':{target:1196,actual:1450,expectedMrr:907,fcst:515,keyDeal:'・非破壊検査 71万 / P4 / 0万ヨミ'},
+      'SMB3':{target:1557,actual:1980,expectedMrr:1397,fcst:916,keyDeal:''},
+      'SMB4':{target:892,actual:2030,expectedMrr:499,fcst:483,keyDeal:''},
+      'SMB5':{target:526,actual:836,expectedMrr:143,fcst:149,keyDeal:''},
+      'Micro':{target:0,actual:0,expectedMrr:-110,fcst:-78,keyDeal:''},
+      'Global+事業部付':{target:0,actual:86,expectedMrr:143,fcst:381,keyDeal:''}
+    },
+    '4月W2': {
+      'SS':  {target:7732,actual:116,expectedMrr:3072,fcst:2399,keyDeal:''},
+      'EP1': {target:678,actual:1343,expectedMrr:-1409,fcst:-1507,keyDeal:'・三菱電機 119万 / P3 / 0万ヨミ\n・阪和興業 135万 / P4 / 135万ヨミ\n・IHI -228万 / -P2 / -228万ヨミ'},
+      'EP2': {target:987,actual:1025,expectedMrr:92,fcst:89,keyDeal:'・シャープ 230万 / P3 / 54万ヨミ'},
+      'EP3': {target:1313,actual:3175,expectedMrr:935,fcst:854,keyDeal:'・三機工業 170万 / 確定 / 170万ヨミ\n・WorksHumanIntelligence 180万 / P3 / 0万ヨミ'},
+      'SMB1':{target:583,actual:1113,expectedMrr:307,fcst:476,keyDeal:''},
+      'SMB2':{target:1196,actual:1456,expectedMrr:918,fcst:427,keyDeal:'・非破壊検査 71万 / P4 / 0万ヨミ'},
+      'SMB3':{target:1557,actual:2087,expectedMrr:1522,fcst:1051,keyDeal:''},
+      'SMB4':{target:892,actual:2350,expectedMrr:534,fcst:518,keyDeal:''},
+      'SMB5':{target:526,actual:936,expectedMrr:146,fcst:199,keyDeal:''},
+      'Micro':{target:0,actual:0,expectedMrr:-118,fcst:-80,keyDeal:''},
+      'Global+事業部付':{target:0,actual:165,expectedMrr:143,fcst:373,keyDeal:''}
+    }
+  }
+};
+
+let currentView = 'weekly';
+let chart = null;
+
+// --- Init selectors ---
+const deptSel = document.getElementById('deptSelect');
+const weekSel = document.getElementById('weekSelect');
+['SS事業部', ...D.depts].forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; deptSel.appendChild(o); });
+D.weeks.forEach(w => { const o = document.createElement('option'); o.value = w; o.textContent = w; weekSel.appendChild(o); });
+weekSel.value = D.weeks[D.weeks.length - 1];
+
+// --- Helpers ---
+function fmt(v) {
+  const s = Math.abs(v).toLocaleString('ja-JP');
+  return (v < 0 ? '-' : '') + s + '万';
+}
+function cls(v) { return v < 0 ? 'val-neg' : 'val-pos'; }
+
+function getDeptData(week, dept) {
+  if (dept === 'SS事業部') return D.data[week]['SS'];
+  return D.data[week][dept];
+}
+
+function switchView(v) {
+  currentView = v;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+  document.getElementById('deptSelector').style.display = v === 'weekly' ? '' : 'none';
+  document.getElementById('weekSelector').style.display = v === 'dept' ? '' : 'none';
+  render();
+}
+
+function parseDeals(text) {
+  if (!text) return [];
+  const lines = text.split('\n').filter(l => l.trim());
+  return lines.map(line => {
+    const clean = line.replace(/^・/, '').trim();
+    const m = clean.match(/^(.+?)\s+(-?\d+)万\s*\/\s*(.+?)\s*\/\s*(-?\d+)万ヨミ$/);
+    if (m) return { company: m[1], mrr: parseInt(m[2]), phase: m[3].trim(), yomi: parseInt(m[4]) };
+    return { company: clean, mrr: 0, phase: '-', yomi: 0, raw: true };
+  });
+}
+
+// --- Render ---
+function render() {
+  renderCards();
+  renderChart();
+  renderDeals();
+}
+
+function renderCards() {
+  const area = document.getElementById('cards');
+  let target, actual, fcst;
+  if (currentView === 'weekly') {
+    const dept = deptSel.value;
+    const lastWeek = D.weeks[D.weeks.length - 1];
+    const d = getDeptData(lastWeek, dept);
+    target = d.target; actual = d.actual; fcst = d.fcst;
+  } else {
+    const week = weekSel.value;
+    const d = D.data[week]['SS'];
+    target = d.target; actual = d.actual; fcst = d.fcst;
+  }
+  const diffA = actual - target;
+  const diffF = fcst - target;
+  const rate = target !== 0 ? ((actual / target) * 100).toFixed(1) : '-';
+
+  area.innerHTML = `
+    <div class="card"><div class="label">目標</div><div class="value">${fmt(target)}</div></div>
+    <div class="card"><div class="label">実績</div><div class="value ${cls(actual)}">${fmt(actual)}</div>
+      <div class="sub ${cls(diffA)}">vs 目標: ${diffA >= 0 ? '+' : ''}${fmt(diffA)}</div></div>
+    <div class="card"><div class="label">FCST</div><div class="value ${cls(fcst)}">${fmt(fcst)}</div>
+      <div class="sub ${cls(diffF)}">vs 目標: ${diffF >= 0 ? '+' : ''}${fmt(diffF)}</div></div>
+    <div class="card"><div class="label">達成率</div><div class="value ${rate !== '-' && parseFloat(rate) < 0 ? 'val-neg' : 'val-pos'}">${rate}%</div></div>`;
+}
+
+function renderChart() {
+  if (chart) chart.destroy();
+  const ctx = document.getElementById('mainChart').getContext('2d');
+
+  if (currentView === 'weekly') {
+    const dept = deptSel.value;
+    const actuals  = D.weeks.map(w => getDeptData(w, dept).actual);
+    const expected = D.weeks.map(w => getDeptData(w, dept).expectedMrr);
+    const fcsts    = D.weeks.map(w => getDeptData(w, dept).fcst);
+    const tgt      = getDeptData(D.weeks[0], dept).target;
+    const targets  = D.weeks.map(() => tgt);
+
+    const targetTickPluginW = {
+      id: 'targetTicksWeekly',
+      afterDatasetsDraw(ch) {
+        const cctx = ch.ctx;
+        const barMetas = ch.data.datasets
+          .map((_, idx) => ch.getDatasetMeta(idx))
+          .filter(meta => meta.type === 'bar');
+        if (!barMetas.length) return;
+        cctx.save();
+        cctx.strokeStyle = '#ea4335';
+        cctx.lineWidth = 3;
+        cctx.setLineDash([]);
+        targets.forEach((val, i) => {
+          const bars = barMetas.map(m => m.data[i]).filter(Boolean);
+          if (!bars.length) return;
+          const y = ch.scales.y.getPixelForValue(val);
+          const left  = Math.min(...bars.map(b => b.x - b.width / 2));
+          const right = Math.max(...bars.map(b => b.x + b.width / 2));
+          cctx.beginPath();
+          cctx.moveTo(left, y);
+          cctx.lineTo(right, y);
+          cctx.stroke();
+        });
+        cctx.restore();
+      }
+    };
+
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: D.weeks,
+        datasets: [
+          { label: '目標',    data: [], borderColor: '#ea4335', backgroundColor: 'transparent', type: 'line', borderWidth: 3, pointRadius: 0 },
+          { label: '実績',    data: actuals,  backgroundColor: 'rgba(26,115,232,0.7)',  borderColor: '#1a73e8', borderWidth: 1 },
+          { label: '期待MRR', data: expected, backgroundColor: 'rgba(52,168,83,0.7)',   borderColor: '#34a853', borderWidth: 1 },
+          { label: 'FCST',   data: fcsts,    backgroundColor: 'rgba(251,188,4,0.7)',   borderColor: '#fbbc04', borderWidth: 1 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { ticks: { callback: v => v.toLocaleString() + '万' } }
+        }
+      },
+      plugins: [targetTickPluginW]
+    });
+  } else {
+    const week = weekSel.value;
+    const targets  = D.depts.map(d => D.data[week][d].target);
+    const actuals  = D.depts.map(d => D.data[week][d].actual);
+    const expected = D.depts.map(d => D.data[week][d].expectedMrr);
+    const fcsts    = D.depts.map(d => D.data[week][d].fcst);
+
+    // 各部署ごとに棒グループ幅にまたがる水平ティック線を描画するプラグイン
+    const targetTickPlugin = {
+      id: 'targetTicks',
+      afterDatasetsDraw(ch) {
+        const cctx = ch.ctx;
+        const barMetas = ch.data.datasets
+          .map((_, idx) => ch.getDatasetMeta(idx))
+          .filter(meta => meta.type === 'bar');
+        if (!barMetas.length) return;
+        cctx.save();
+        cctx.strokeStyle = '#ea4335';
+        cctx.lineWidth = 3;
+        cctx.setLineDash([]);
+        targets.forEach((val, i) => {
+          const bars = barMetas.map(m => m.data[i]).filter(Boolean);
+          if (!bars.length) return;
+          const y = ch.scales.y.getPixelForValue(val);
+          const left  = Math.min(...bars.map(b => b.x - b.width / 2));
+          const right = Math.max(...bars.map(b => b.x + b.width / 2));
+          cctx.beginPath();
+          cctx.moveTo(left, y);
+          cctx.lineTo(right, y);
+          cctx.stroke();
+        });
+        cctx.restore();
+      }
+    };
+
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: D.depts,
+        datasets: [
+          // 目標はプラグインで描画。凡例用にデータなしの不可視データセットを置く
+          { label: '目標',    data: [], borderColor: '#ea4335', backgroundColor: 'transparent', type: 'line', borderWidth: 3, pointRadius: 0 },
+          { label: '実績',    data: actuals,  backgroundColor: 'rgba(26,115,232,0.7)', borderColor: '#1a73e8', borderWidth: 1 },
+          { label: '期待MRR', data: expected, backgroundColor: 'rgba(52,168,83,0.7)',  borderColor: '#34a853', borderWidth: 1 },
+          { label: 'FCST',   data: fcsts,    backgroundColor: 'rgba(251,188,4,0.7)',  borderColor: '#fbbc04', borderWidth: 1 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { ticks: { callback: v => v.toLocaleString() + '万' } }
+        }
+      },
+      plugins: [targetTickPlugin]
+    });
+  }
+}
+
+function renderDeals() {
+  const area = document.getElementById('dealArea');
+  let deals = [];
+
+  if (currentView === 'weekly') {
+    const dept = deptSel.value;
+    if (dept === 'SS事業部') {
+      const lastWeek = D.weeks[D.weeks.length - 1];
+      D.depts.forEach(d => {
+        const kd = D.data[lastWeek][d].keyDeal;
+        parseDeals(kd).forEach(deal => deals.push({ dept: d, ...deal }));
+      });
+    } else {
+      const lastWeek = D.weeks[D.weeks.length - 1];
+      parseDeals(D.data[lastWeek][dept].keyDeal).forEach(deal => deals.push({ dept, ...deal }));
+    }
+  } else {
+    const week = weekSel.value;
+    D.depts.forEach(d => {
+      const kd = D.data[week][d].keyDeal;
+      parseDeals(kd).forEach(deal => deals.push({ dept: d, ...deal }));
+    });
+  }
+
+  if (deals.length === 0) {
+    area.innerHTML = '<div class="no-deals">Key Deal データなし</div>';
+    return;
+  }
+
+  let html = '<table class="deal-table"><thead><tr><th>部署</th><th>会社名</th><th>MRR(万)</th><th>フェーズ</th><th>ヨミ(万)</th></tr></thead><tbody>';
+  deals.forEach(d => {
+    const rowCls = d.mrr > 0 ? 'pos' : d.mrr < 0 ? 'neg' : '';
+    html += `<tr class="${rowCls}"><td>${d.dept}</td><td>${d.company}</td><td class="${cls(d.mrr)}">${fmt(d.mrr)}</td><td>${d.phase}</td><td class="${cls(d.yomi)}">${fmt(d.yomi)}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>

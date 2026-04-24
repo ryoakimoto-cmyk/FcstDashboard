@@ -95,16 +95,12 @@ function FcstAdjusted_getSheet_(deptKey) {
 }
 
 function FcstAdjusted_ensureSchema_(sheet) {
-  var headerWidth = Math.max(sheet.getLastColumn(), FCST_STATE_HEADERS.length);
-  if (headerWidth < FCST_STATE_HEADERS.length) headerWidth = FCST_STATE_HEADERS.length;
-  var headers = sheet.getRange(1, 1, 1, headerWidth).getValues()[0];
+  var headers = sheet.getRange(1, 1, 1, FCST_STATE_HEADERS.length).getValues()[0];
   for (var i = 0; i < FCST_STATE_HEADERS.length; i++) {
     if (String(headers[i] || '') !== FCST_STATE_HEADERS[i]) {
-      sheet.getRange(1, i + 1).setValue(FCST_STATE_HEADERS[i]);
+      sheet.getRange(1, 1, 1, FCST_STATE_HEADERS.length).setValues([FCST_STATE_HEADERS]);
+      return;
     }
-  }
-  if (headers.indexOf('dept') === -1) {
-    sheet.getRange(1, sheet.getLastColumn() + 1).setValue('dept');
   }
 }
 

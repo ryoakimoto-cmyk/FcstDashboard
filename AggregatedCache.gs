@@ -67,13 +67,17 @@ function AggregatedCache_writeKey(deptKey, dataKey, value) {
   lock.waitLock(15000);
   try {
     var key = deptKey + ':' + dataKey;
-    var rowIdx = AggregatedCache_findRow_(sheet, key);
-    var now = new Date();
-    if (rowIdx > 0) {
-      sheet.getRange(rowIdx, 2).setValue(JSON.stringify(value));
-      sheet.getRange(rowIdx, 3).setValue(now);
-    } else {
-      sheet.appendRow([key, JSON.stringify(value), now]);
+    var now = new Date().toISOString();
+    var rows = AggregatedCache_encodeRows_(key, JSON.stringify(value), now);
+    var existingValues = sheet.getLastRow() > 0 ? sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues() : [];
+    var kept = existingValues.filter(function(row) {
+      var rowKey = String(row[0] || '');
+      return rowKey !== key && rowKey.indexOf(key + '__') !== 0;
+    });
+    var allRows = kept.concat(rows);
+    sheet.clearContents();
+    if (allRows.length > 0) {
+      sheet.getRange(1, 1, allRows.length, 3).setValues(allRows);
     }
   } finally {
     lock.releaseLock();
@@ -100,7 +104,9 @@ function AggregatedCache_refresh(deptKey) {
     }
 
     AggregatedCache_write(deptKey, result);
+    try { AggregatedCache_cacheSfLastUpdated_(deptKey, result.sfLastUpdated); } catch (e) {}
     try { CacheLayer_write(deptKey, 'initData', result); } catch (e) {}
+    try { primeClientPayloadCaches_(deptKey, result); } catch (e) {}
     return result;
   } catch (e) {
     throw new Error('集計キャッシュ更新失敗: [' + (e && e.message ? e.message : String(e)) + ']');
@@ -145,8 +151,15 @@ function AggregatedCache_runScheduledUpdate() {
     var lastRun = CacheService.getScriptCache().get('lastScheduledUpdate');
     if (lastRun && (Date.now() - parseInt(lastRun)) < 3600000) return;
   }
-  Object.keys(DEPT_CONFIG).forEach(function(dk) {
+  getDeptKeys_().forEach(function(dk) {
     AggregatedCache_refresh(dk);
+    try {
+      if (FcstSnapshot_shouldAutoRecoverWeekly_(new Date())) {
+        FcstSnapshot_autoRecoverWeeklyIfMissing_(dk);
+      }
+    } catch (e) {
+      Logger.log('auto-recovery skipped for ' + dk + ': ' + (e && e.message ? e.message : e));
+    }
   });
   CacheService.getScriptCache().put('lastScheduledUpdate', String(Date.now()), 7200);
 }
@@ -176,7 +189,11 @@ function AggregatedCache_getOrCreateSheet_(deptKey) {
 
 function AggregatedCache_parseJson_(text, fallback) {
   if (text === '' || text === null || text === undefined) return fallback;
-  return JSON.parse(String(text));
+  try {
+    return JSON.parse(String(text));
+  } catch (e) {
+    return fallback;
+  }
 }
 
 function AggregatedCache_hasMembers_(deptKey, sheet) {
@@ -252,12 +269,34 @@ function AggregatedCache_decodeValue_(key, value) {
   return AggregatedCache_parseJson_(value, null);
 }
 
+function AggregatedCache_cacheSfLastUpdated_(deptKey, lastUpdated) {
+  var value = String(lastUpdated || '');
+  if (!value) return;
+  var cache = CacheService.getScriptCache();
+  var cacheKey = (typeof CACHE_PREFIX === 'string' ? CACHE_PREFIX : 'fcst:') + deptKey + ':sfLastUpdated';
+  var ttl = (typeof CACHE_TTL === 'number' ? CACHE_TTL : 3600);
+  try {
+    cache.put(cacheKey, JSON.stringify(value), ttl);
+  } catch (e) {
+    try { cache.put(cacheKey, value, ttl); } catch (ignored) {}
+  }
+}
+
 function AggregatedCache_getSfLastUpdated_(deptKey) {
-  var cached = CacheLayer_read(deptKey, 'sfLastUpdated');
-  if (cached) return cached;
+  var cache = CacheService.getScriptCache();
+  var cacheKey = (typeof CACHE_PREFIX === 'string' ? CACHE_PREFIX : 'fcst:') + deptKey + ':sfLastUpdated';
+  var cached = cache.get(cacheKey);
+  if (cached !== null && cached !== undefined && cached !== '') {
+    try {
+      var parsed = JSON.parse(cached);
+      if (parsed !== null && parsed !== undefined && String(parsed) !== '') return String(parsed);
+    } catch (e) {
+      return String(cached);
+    }
+  }
   var sheet = getSfDataSheet_(deptKey);
   if (!sheet) return '';
   var lastUpdated = SfDataReader_extractLastUpdated_(sheet.getRange(1, 1));
-  CacheLayer_write(deptKey, 'sfLastUpdated', lastUpdated);
+  AggregatedCache_cacheSfLastUpdated_(deptKey, lastUpdated);
   return lastUpdated;
 }

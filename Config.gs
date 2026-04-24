@@ -5,9 +5,10 @@ const FCST_ADJUSTED_SHEET_NAME = 'FCST調整';
 const EXPORT_WAITING_SHEET_NAME = 'Export待機';
 const AGGREGATED_CACHE_SHEET_NAME = '集計キャッシュ';
 const DEPT_MASTER_SHEET_NAME = '部門マスタ';
-const MONTHLY_TARGET_MASTER_SHEET_NAME = '月次目標マスタ';
+const ORG_MASTER_SHEET_NAME = '組織マスタ';
+const TARGET_MASTER_SHEET_NAME = '目標マスタ';
+const ASSIGNMENT_MASTER_SHEET_NAME = '所属マスタ';
 const CHANGE_LOG_SHEET_NAME = '変更ログ';
-const TARGET_SHEET_NAME = '目標';
 const FCST_SNAPSHOT_SHEET_NAME = 'FCSTスナップショット';
 const OPP_LIST_SNAPSHOT_SHEET_NAME = '案件リストスナップショット';
 const EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME = 'Export待機_提案商品';
@@ -39,7 +40,11 @@ const SSCS_CONFLICT_COLUMNS = [
   'FCSTコメント'
 ];
 
-const DEPT_CONFIG = {
+const APP_DATA_CACHE_SHEET_NAME = 'AppDataCache';
+
+var DEPT_CONFIG_CACHE_ = null;
+var DEPT_CONFIG_CACHE_SOURCE_ = '';
+/*
   BOCS:    { label: 'BOCS',   division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
   BOE1:    { label: 'BO東1',  division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
   BOE2:    { label: 'BO東2',  division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
@@ -56,6 +61,7 @@ const DEPT_CONFIG = {
   SSSMBCS: { label: 'SMBCS',  division: 'SS', sfSheet: SF_DATA_SHEET_SSCS, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: false } },
   CO:      { label: 'CO',     division: 'CO', sfSheet: SF_DATA_SHEET_CO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: false } }
 };
+*/
 
 function getDeptConfig_(deptKey) {
   return deptKey && DEPT_CONFIG[deptKey] ? DEPT_CONFIG[deptKey] : null;
@@ -76,9 +82,199 @@ function getSharedSheet(sheetName) {
 }
 
 function getSfDataSheet_(deptKey) {
-  var cfg = DEPT_CONFIG[deptKey];
+  var cfg = getDeptConfig_(deptKey);
   if (!cfg || !cfg.sfSheet) return null;
   return getSharedSheet(cfg.sfSheet);
+}
+
+function resetDeptConfigCache_() {
+  DEPT_CONFIG_CACHE_ = null;
+  DEPT_CONFIG_CACHE_SOURCE_ = '';
+}
+
+function getDeptConfigMap_() {
+  if (DEPT_CONFIG_CACHE_) return DEPT_CONFIG_CACHE_;
+
+  var fromAssignment = DeptConfig_buildMapFromAssignmentMaster_();
+  if (Object.keys(fromAssignment).length) {
+    DEPT_CONFIG_CACHE_ = fromAssignment;
+    DEPT_CONFIG_CACHE_SOURCE_ = 'assignment';
+    return DEPT_CONFIG_CACHE_;
+  }
+
+  DEPT_CONFIG_CACHE_ = DeptConfig_buildMapFromOrgAndTarget_();
+  DEPT_CONFIG_CACHE_SOURCE_ = 'derived';
+  return DEPT_CONFIG_CACHE_;
+}
+
+function getDeptConfig_(deptKey) {
+  var key = String(deptKey || '').trim();
+  if (!key) return null;
+  var map = getDeptConfigMap_();
+  return map[key] || null;
+}
+
+function getDeptKeys_() {
+  return Object.keys(getDeptConfigMap_());
+}
+
+function isValidDeptKey_(deptKey) {
+  return !!getDeptConfig_(deptKey);
+}
+
+function isProposalProductsEnabled_(deptKey) {
+  var cfg = getDeptConfig_(deptKey);
+  return !!(cfg && cfg.features && cfg.features.proposalProducts);
+}
+
+function isSscsDept_(deptKey) {
+  var cfg = getDeptConfig_(deptKey);
+  return !!(cfg && cfg.sfSheetKey === 'SSCS');
+}
+
+function DeptConfig_buildMapFromAssignmentMaster_() {
+  var sheet = getSharedSheet(ASSIGNMENT_MASTER_SHEET_NAME);
+  if (!sheet) return {};
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return {};
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = AssignmentMaster_buildHeaderMap_(headers);
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var catalog = {};
+
+  values.forEach(function(row) {
+    var displayFlag = AssignmentMaster_toBoolean_(AssignmentMaster_valueByKeys_(row, headerMap, ['display_flag']));
+    if (!displayFlag) return;
+
+    var deptCode = AssignmentMaster_formatCell_(AssignmentMaster_valueByKeys_(row, headerMap, ['department_code'])).trim();
+    var departmentName = AssignmentMaster_formatCell_(AssignmentMaster_valueByKeys_(row, headerMap, ['department_name'])).trim();
+    var divisionCode = AssignmentMaster_formatCell_(AssignmentMaster_valueByKeys_(row, headerMap, ['division_code'])).trim();
+    var divisionName = AssignmentMaster_formatCell_(AssignmentMaster_valueByKeys_(row, headerMap, ['division_name'])).trim();
+    var targetMonth = AssignmentMaster_normalizeMonth_(AssignmentMaster_valueByKeys_(row, headerMap, ['target_month']));
+    if (!deptCode || !divisionCode) return;
+
+    DeptConfig_putCatalogEntry_(catalog, {
+      departmentCode: deptCode,
+      departmentName: departmentName,
+      divisionCode: divisionCode,
+      divisionName: divisionName,
+      targetMonth: targetMonth
+    });
+  });
+
+  return DeptConfig_finalizeCatalog_(catalog);
+}
+
+function DeptConfig_buildMapFromOrgAndTarget_() {
+  var orgRows = OrgMasterReader_getRows();
+  var targetRows = TargetMasterReader_getRows();
+  var orgByGroup = {};
+  var catalog = {};
+
+  orgRows.forEach(function(row) {
+    if (!row || !row.groupCode) return;
+    if (!orgByGroup[row.groupCode]) orgByGroup[row.groupCode] = [];
+    orgByGroup[row.groupCode].push(row);
+  });
+
+  Object.keys(orgByGroup).forEach(function(groupCode) {
+    orgByGroup[groupCode].sort(function(a, b) {
+      return a.startMonth.localeCompare(b.startMonth);
+    });
+  });
+
+  targetRows.forEach(function(target) {
+    if (!target || !target.displayFlag) return;
+    var candidates = (orgByGroup[target.groupCode] || []).filter(function(orgRow) {
+      return orgRow.startMonth <= target.targetMonth && target.targetMonth <= orgRow.endMonth;
+    });
+    if (candidates.length !== 1) return;
+
+    var org = candidates[0];
+    DeptConfig_putCatalogEntry_(catalog, {
+      departmentCode: org.departmentCode,
+      departmentName: org.departmentName,
+      divisionCode: org.divisionCode,
+      divisionName: org.divisionName,
+      targetMonth: target.targetMonth
+    });
+  });
+
+  return DeptConfig_finalizeCatalog_(catalog);
+}
+
+function DeptConfig_putCatalogEntry_(catalog, row) {
+  var deptCode = String(row && row.departmentCode || '').trim();
+  var divisionCode = String(row && row.divisionCode || '').trim();
+  if (!deptCode || !divisionCode) return;
+
+  var targetMonth = String(row && row.targetMonth || '').trim();
+  var current = catalog[deptCode];
+  if (!current || (targetMonth && targetMonth >= current.targetMonth)) {
+    catalog[deptCode] = {
+      departmentCode: deptCode,
+      departmentName: String(row && row.departmentName || '').trim() || deptCode,
+      divisionCode: divisionCode,
+      divisionName: String(row && row.divisionName || '').trim() || divisionCode,
+      targetMonth: targetMonth
+    };
+  }
+}
+
+function DeptConfig_finalizeCatalog_(catalog) {
+  return Object.keys(catalog).sort().reduce(function(map, deptCode) {
+    var row = catalog[deptCode];
+    var config = DeptConfig_buildEntry_(row);
+    if (config) map[deptCode] = config;
+    return map;
+  }, {});
+}
+
+function DeptConfig_buildEntry_(row) {
+  var deptCode = String(row && row.departmentCode || '').trim();
+  var departmentName = String(row && row.departmentName || '').trim() || deptCode;
+  var divisionCode = String(row && row.divisionCode || '').trim();
+  var divisionName = String(row && row.divisionName || '').trim() || divisionCode;
+  var sfSheetKey = DeptConfig_resolveSfSheetKey_(divisionCode, deptCode);
+  var sfSheet = DeptConfig_getSfSheetNameByKey_(sfSheetKey);
+  if (!deptCode || !divisionCode || !sfSheet) return null;
+
+  return {
+    label: departmentName,
+    division: divisionCode,
+    divisionName: divisionName,
+    departmentCode: deptCode,
+    departmentName: departmentName,
+    sfSheetKey: sfSheetKey,
+    sfSheet: sfSheet,
+    features: {
+      oppList: true,
+      adjustment: true,
+      snapshot: true,
+      chart: true,
+      proposalProducts: sfSheetKey === 'BO'
+    }
+  };
+}
+
+function DeptConfig_resolveSfSheetKey_(divisionCode, departmentCode) {
+  var division = String(divisionCode || '').trim().toUpperCase();
+  var deptCode = String(departmentCode || '').trim().toUpperCase();
+  if (division === 'BO') return 'BO';
+  if (division === 'CO') return 'CO';
+  if (division === 'SS') return deptCode.indexOf('CS') !== -1 ? 'SSCS' : 'SS';
+  return '';
+}
+
+function DeptConfig_getSfSheetNameByKey_(sfSheetKey) {
+  if (sfSheetKey === 'BO') return SF_DATA_SHEET_BO;
+  if (sfSheetKey === 'SS') return SF_DATA_SHEET_SS;
+  if (sfSheetKey === 'SSCS') return SF_DATA_SHEET_SSCS;
+  if (sfSheetKey === 'CO') return SF_DATA_SHEET_CO;
+  return '';
 }
 
 function normalizeSSCSHeaders_(headers) {

@@ -1,37 +1,59 @@
 function OppListWriter_saveDrafts(deptKey, changes) {
-  var list = Array.isArray(changes) ? changes : [];
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var list = OppListWriter_normalizeChanges_(changes);
+  if (!list.length) {
+    return {
+      success: true,
+      exportWaiting: { newCount: 0, updatedCount: 0 },
+      proposalExportWaiting: { newCount: 0, updatedCount: 0 }
+    };
+  }
 
-  var exportRes = OppListWriter_upsertExportWaiting_(ss, list);
-  var proposalRes = DEPT_CONFIG[deptKey].features.proposalProducts
-    ? OppListWriter_upsertProposalExportWaiting_(ss, list)
-    : { newCount: 0, updatedCount: 0 };
+  var lock = LockService.getSpreadsheetLock();
+  lock.waitLock(10000);
+  try {
+    var exportRes = OppListWriter_upsertExportWaiting_(list);
+    var proposalRes = isProposalProductsEnabled_(deptKey)
+      ? OppListWriter_upsertProposalExportWaiting_(list)
+      : { newCount: 0, updatedCount: 0 };
 
-  return {
-    success: true,
-    exportWaiting: exportRes,
-    proposalExportWaiting: proposalRes
-  };
+    return {
+      success: true,
+      exportWaiting: exportRes,
+      proposalExportWaiting: proposalRes
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function OppListWriter_saveOppSfValue(deptKey, p) {
-  var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
-  if (!sheet) return { error: EXPORT_WAITING_SHEET_NAME + ' sheet not found' };
+  var oppId = String(p && p.oppId || '').trim();
+  var fieldName = String(p && p.fieldName || '').trim();
+  if (!oppId || !fieldName) return { error: 'oppId and fieldName are required' };
 
-  var now = new Date();
-  var lastColumn = Math.max(sheet.getLastColumn(), 6);
-  var row = Array(lastColumn).fill('');
-  row[0] = now;
-  row[1] = p && p.oppId ? p.oppId : '';
-  row[2] = deptKey || '';
-  row[3] = p && p.fieldName ? p.fieldName : '';
-  row[4] = p && p.value !== undefined ? p.value : '';
-  row[5] = 'sf_field_update';
-  sheet.appendRow(row);
-  return { status: 'ok' };
+  var lock = LockService.getSpreadsheetLock();
+  lock.waitLock(10000);
+  try {
+    var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
+    if (!sheet) return { error: EXPORT_WAITING_SHEET_NAME + ' sheet not found' };
+
+    var now = new Date();
+    var lastColumn = Math.max(sheet.getLastColumn(), 6);
+    var row = Array(lastColumn).fill('');
+    row[0] = now;
+    row[1] = oppId;
+    row[2] = deptKey || '';
+    row[3] = fieldName;
+    row[4] = p && p.value !== undefined ? p.value : '';
+    row[5] = 'sf_field_update';
+    sheet.appendRow(row);
+    return { status: 'ok' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
-function OppListWriter_upsertExportWaiting_(ss, changes) {
+function OppListWriter_upsertExportWaiting_(changes) {
   var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
   if (!sheet) return { newCount: 0, updatedCount: 0, error: EXPORT_WAITING_SHEET_NAME + ' sheet not found' };
 
@@ -52,25 +74,30 @@ function OppListWriter_upsertExportWaiting_(ss, changes) {
   var updatedCount = 0;
 
   changes.forEach(function(change) {
+    if (!OppListWriter_hasExportWaitingChanges_(change)) return;
+
     var oppId = String(change.oppId || '').trim();
     if (!oppId) return;
 
     var fields = change.fields || {};
-    var row = rowMap.hasOwnProperty(oppId)
-      ? (values[rowMap[oppId]] || Array(colCount).fill('')).slice()
+    var rowIndex = rowMap.hasOwnProperty(oppId) ? rowMap[oppId] : -1;
+    var row = rowIndex >= 0
+      ? (values[rowIndex] || Array(colCount).fill('')).slice()
       : Array(colCount).fill('');
+    var before = row.slice();
 
     row[0] = oppId;
-    row[1] = change.keyDeal === true;
+    if (Object.prototype.hasOwnProperty.call(change, 'keyDeal')) row[1] = change.keyDeal === true;
     if (fields.hasOwnProperty('fcstCommit')) row[2] = OppListWriter_toNumberOrBlank_(fields.fcstCommit);
     if (fields.hasOwnProperty('fcstMin')) row[3] = OppListWriter_toNumberOrBlank_(fields.fcstMin);
     if (fields.hasOwnProperty('fcstMax')) row[4] = OppListWriter_toNumberOrBlank_(fields.fcstMax);
     if (fields.hasOwnProperty('comment')) row[5] = String(fields.comment || '');
     row[7] = '-';
 
-    if (rowMap.hasOwnProperty(oppId)) {
-      values[rowMap[oppId]] = row;
-      updatedIndexes[rowMap[oppId]] = true;
+    if (rowIndex >= 0) {
+      if (OppListWriter_rowsEqual_(before, row)) return;
+      values[rowIndex] = row;
+      updatedIndexes[rowIndex] = true;
       updatedCount++;
     } else {
       newRows.push(row);
@@ -90,7 +117,7 @@ function OppListWriter_upsertExportWaiting_(ss, changes) {
   return { newCount: newRows.length, updatedCount: updatedCount };
 }
 
-function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
+function OppListWriter_upsertProposalExportWaiting_(changes) {
   var sheet = getSharedSheet(EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME);
   if (!sheet) return { newCount: 0, updatedCount: 0, error: EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME + ' sheet not found' };
 
@@ -118,6 +145,8 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
   var updatedCount = 0;
 
   changes.forEach(function(change) {
+    if (!OppListWriter_hasProposalExportChanges_(change)) return;
+
     var fields = change.fields || {};
     var proposalIds = change.proposalProductIds || {};
 
@@ -127,9 +156,11 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
       var proposalId = String(proposalIds[module.proposalKey] || '').trim();
       if (!proposalId) return;
 
-      var row = rowMap.hasOwnProperty(proposalId)
-        ? (values[rowMap[proposalId]] || Array(colCount).fill('')).slice()
+      var rowIndex = rowMap.hasOwnProperty(proposalId) ? rowMap[proposalId] : -1;
+      var row = rowIndex >= 0
+        ? (values[rowIndex] || Array(colCount).fill('')).slice()
         : Array(colCount).fill('');
+      var before = row.slice();
 
       row[0] = proposalId;
       row[1] = module.moduleName;
@@ -137,9 +168,10 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
       row[3] = String(change.oppId || '');
       row[5] = '-';
 
-      if (rowMap.hasOwnProperty(proposalId)) {
-        values[rowMap[proposalId]] = row;
-        updatedIndexes[rowMap[proposalId]] = true;
+      if (rowIndex >= 0) {
+        if (OppListWriter_rowsEqual_(before, row)) return;
+        values[rowIndex] = row;
+        updatedIndexes[rowIndex] = true;
         updatedCount++;
       } else {
         newRows.push(row);
@@ -163,6 +195,72 @@ function OppListWriter_upsertProposalExportWaiting_(ss, changes) {
 function OppListWriter_toNumberOrBlank_(value) {
   if (value === '' || value === null || value === undefined) return '';
   return Number(value) || 0;
+}
+
+function OppListWriter_normalizeChanges_(changes) {
+  var mergedByOppId = {};
+  var merged = [];
+
+  (Array.isArray(changes) ? changes : []).forEach(function(change) {
+    var oppId = String(change && change.oppId || '').trim();
+    if (!oppId) return;
+
+    if (!mergedByOppId[oppId]) {
+      mergedByOppId[oppId] = {
+        oppId: oppId,
+        proposalProductIds: {},
+        fields: {}
+      };
+      merged.push(mergedByOppId[oppId]);
+    }
+
+    var target = mergedByOppId[oppId];
+    if (Object.prototype.hasOwnProperty.call(change, 'keyDeal')) {
+      target.keyDeal = change.keyDeal === true;
+    }
+
+    var proposalIds = change && change.proposalProductIds || {};
+    Object.keys(proposalIds).forEach(function(key) {
+      if (!Object.prototype.hasOwnProperty.call(proposalIds, key)) return;
+      var value = String(proposalIds[key] || '').trim();
+      if (value) target.proposalProductIds[key] = value;
+    });
+
+    var fields = change && change.fields || {};
+    Object.keys(fields).forEach(function(key) {
+      if (!Object.prototype.hasOwnProperty.call(fields, key)) return;
+      target.fields[key] = fields[key];
+    });
+  });
+
+  return merged;
+}
+
+function OppListWriter_hasExportWaitingChanges_(change) {
+  if (change && Object.prototype.hasOwnProperty.call(change, 'keyDeal')) return true;
+  return OppListWriter_hasAnyOwnProperty_(change && change.fields, ['fcstCommit', 'fcstMin', 'fcstMax', 'comment']);
+}
+
+function OppListWriter_hasProposalExportChanges_(change) {
+  return OppListWriter_hasAnyOwnProperty_(change && change.fields, ['received', 'debtMgmt', 'debtMgmtLite', 'expense']);
+}
+
+function OppListWriter_hasAnyOwnProperty_(obj, keys) {
+  var source = obj || {};
+  for (var i = 0; i < keys.length; i++) {
+    if (Object.prototype.hasOwnProperty.call(source, keys[i])) return true;
+  }
+  return false;
+}
+
+function OppListWriter_rowsEqual_(left, right) {
+  var a = Array.isArray(left) ? left : [];
+  var b = Array.isArray(right) ? right : [];
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function saveDiffOppList(deptKey, dirtyRows, userEmail, timestamp) {

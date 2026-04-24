@@ -1,8 +1,11 @@
 function OppListReader_getDeptUserNames_(deptKey) {
-  var master = UserReader_getDeptMaster();
-  return master
-    .filter(function(row) { return row.deptKey === deptKey; })
-    .map(function(row) { return row.userName; });
+  return AssignmentMaster_getDepartmentUsers(deptKey);
+}
+
+function OppListReader_getLastUpdated(deptKey) {
+  var sheet = getSfDataSheet_(deptKey);
+  if (!sheet) return '';
+  return OppListReader_extractLastUpdated_(sheet.getRange(1, 1));
 }
 
 function OppListReader_getLiveRows(deptKey) {
@@ -22,7 +25,7 @@ function OppListReader_getLiveRows(deptKey) {
   });
 
   var headers = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
-  if (deptKey === 'SSSMBCS') headers = normalizeSSCSHeaders_(headers);
+  if (isSscsDept_(deptKey)) headers = normalizeSSCSHeaders_(headers);
   var headerMap = OppListReader_buildHeaderMap_(headers);
   var values = sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
   var rows = [];
@@ -32,7 +35,7 @@ function OppListReader_getLiveRows(deptKey) {
     var dealName = OppListReader_valueByKeys_(row, headerMap, ['案件名']);
     if (!oppId || !dealName) return;
 
-    var subOwner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者'])).trim();
+    var subOwner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['ユーザー', 'サブオーナー', '担当者'])).trim();
     if (deptUserNames.length && !deptUserMap[subOwner]) return;
 
     oppId = String(oppId).trim();

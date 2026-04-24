@@ -1,45 +1,18 @@
 <script>
-// ===== TOP PAGE ROUTING =====
 var _selectedDept = (typeof GAS_SELECTED_DEPT !== 'undefined' && GAS_SELECTED_DEPT !== 'null') ? GAS_SELECTED_DEPT : null;
 var _userDefaultDept = (typeof GAS_USER_DEFAULT_DEPT !== 'undefined' && GAS_USER_DEFAULT_DEPT !== 'null') ? GAS_USER_DEFAULT_DEPT : null;
 var _userEmail = (typeof GAS_USER_EMAIL !== 'undefined' && GAS_USER_EMAIL !== 'null') ? GAS_USER_EMAIL : '';
 var _deptConfig = {};
-var _embeddedInitData = null;
 
 function parseEmbeddedJson_(elementId, fallback) {
   var el = document.getElementById(elementId);
   if (!el) return fallback;
   var raw = el.textContent || el.innerText || '';
   if (!raw || raw === 'null') return fallback;
-  return JSON.parse(raw);
-}
-
-var ClientCache = {
-  KEY_PREFIX: 'fcst_',
-  TTL: 3600000,
-  get: function(deptKey, dataKey) {
-    try {
-      var raw = localStorage.getItem(this.KEY_PREFIX + deptKey + '_' + dataKey);
-      if (!raw) return null;
-      return JSON.parse(raw);
-    } catch (e) { return null; }
-  },
-  set: function(deptKey, dataKey, data, updatedAt) {
-    try {
-      localStorage.setItem(this.KEY_PREFIX + deptKey + '_' + dataKey,
-        JSON.stringify({ data: data, updatedAt: updatedAt || null, storedAt: Date.now() }));
-    } catch (e) {
-      try {
-        Object.keys(localStorage).forEach(function(k) {
-          if (k.indexOf('fcst_') === 0) localStorage.removeItem(k);
-        });
-        localStorage.setItem(ClientCache.KEY_PREFIX + deptKey + '_' + dataKey,
-          JSON.stringify({ data: data, updatedAt: updatedAt || null, storedAt: Date.now() }));
-      } catch (e2) {}
-    }
-  },
-  isStale: function(entry) {
-    return !entry || (Date.now() - entry.storedAt > this.TTL);
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return fallback;
   }
 };
 
@@ -2754,7 +2727,7 @@ function formatCell(value) {
 }
 
 function escapeHtml(value) {
-  return String(value === null || value === undefined ? '' : value)
+  return String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -2762,102 +2735,1575 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function escapeAttr(value) {
-  return escapeHtml(value);
+function fmtNum(value) {
+  var num = Number(value);
+  if (!isFinite(num)) return '-';
+  return num.toLocaleString('ja-JP');
 }
 
-function computeWowMap_(currentMembers, prevMembers, periodOptions) {
-  var prevMetricMap = {};
-  var periods = [];
-  (periodOptions || []).forEach(function(option) {
-    if (!option || !option.key) return;
-    periods.push(option.key);
-    (option.months || []).forEach(function(monthKey) {
-      periods.push(monthKey);
-    });
-  });
-  var metricKeys = getFcstMetricKeys_();
-  (prevMembers || []).forEach(function(m) {
-    if (!m || !m.name) return;
-    periods.forEach(function(p) {
-      var key = m.name + '|' + p;
-      prevMetricMap[key] = m[p] || {};
-    });
-  });
-  var wowMap = {};
-  (currentMembers || []).forEach(function(m) {
-    if (!m || !m.name) return;
-    periods.forEach(function(p) {
-      var key = m.name + '|' + p;
-      var cur = m[p] || {};
-      var prev = prevMetricMap[key] || {};
-      var wow = {};
-      metricKeys.forEach(function(mk) {
-        var curVal = cur[mk] || { net: 0, newExp: 0, churn: 0 };
-        var prevVal = prev[mk] || { net: 0, newExp: 0, churn: 0 };
-        if (typeof curVal === 'number') {
-          wow[mk] = { net: curVal - (typeof prevVal === 'number' ? prevVal : (prevVal.net || 0)), newExp: 0, churn: 0 };
-        } else {
-          wow[mk] = {
-            net: (Number(curVal.net) || 0) - (Number(typeof prevVal === 'number' ? prevVal : (prevVal.net || 0)) || 0),
-            newExp: (Number(curVal.newExp) || 0) - (Number(prevVal.newExp) || 0),
-            churn: (Number(curVal.churn) || 0) - (Number(prevVal.churn) || 0),
-          };
-        }
-      });
-      wowMap[key] = wow;
-    });
-  });
-  return wowMap;
+function fmtDiffNum(value) {
+  var num = Number(value) || 0;
+  if (!num) return '0';
+  return (num > 0 ? '+' : '') + fmtNum(num);
 }
 
-function findFcstQuarterOption_(periodOptions, quarterKey) {
-  return (periodOptions || []).find(function(option) {
-    return option && option.key === quarterKey;
-  }) || null;
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
 }
 
-function isValidFcstPeriod_(periodOptions, periodKey) {
-  if (!periodKey) return false;
-  return (periodOptions || []).some(function(option) {
-    return option.key === periodKey || (option.months || []).indexOf(periodKey) !== -1;
+function safeMetricPart_(metric, partKey) {
+  if (metric == null) return 0;
+  if (typeof metric === 'number') return partKey === 'net' ? metric : 0;
+  return Number(metric[partKey]) || 0;
+}
+
+function metricToneClass_(partKey, value) {
+  var num = Number(value) || 0;
+  if (num > 0) return 'val-positive';
+  if (num < 0) return 'val-negative';
+  return 'val-sub';
+}
+
+function renderMetricValue_(metric, partKey) {
+  var value = safeMetricPart_(metric, partKey);
+  return '<span class="' + metricToneClass_(partKey, value) + '">' + escapeHtml(fmtNum(value)) + '</span>';
+}
+
+function formatFcstPeriodLabel_(periodKey, periodOptions) {
+  var options = safeArray(periodOptions);
+  for (var i = 0; i < options.length; i++) {
+    var option = options[i];
+    if (!option) continue;
+    if (option.key === periodKey) return option.label || option.key;
+    if (safeArray(option.months).indexOf(periodKey) !== -1) {
+      var match = String(periodKey || '').match(/^(\d{4})-(\d{2})$/);
+      return match ? (Number(match[2]) + '月') : String(periodKey || '');
+    }
+  }
+  var monthMatch = String(periodKey || '').match(/^(\d{4})-(\d{2})$/);
+  return monthMatch ? (Number(monthMatch[2]) + '月') : String(periodKey || '');
+}
+
+function buildAppUrl_(deptKey) {
+  var baseUrl = (typeof GAS_WEBAPP_URL !== 'undefined' && GAS_WEBAPP_URL && GAS_WEBAPP_URL !== 'null')
+    ? GAS_WEBAPP_URL
+    : window.location.href.split('?')[0];
+  return deptKey ? (baseUrl + '?dept=' + encodeURIComponent(deptKey)) : baseUrl;
+}
+
+function currentDeptConfig_() {
+  return _selectedDept && _deptConfig[_selectedDept] ? _deptConfig[_selectedDept] : null;
+}
+
+function getOppOwnerLabel_() {
+  var cfg = currentDeptConfig_();
+  var division = cfg && cfg.division ? String(cfg.division) : '';
+  if (division === 'SS') return cfg && cfg.sfSheetKey === 'SSCS' ? '案件CS担当' : '案件主担当';
+  return '案件副担当';
+}
+
+function uniqueValues_(rows, key) {
+  var map = {};
+  safeArray(rows).forEach(function(row) {
+    var value = row && row[key];
+    if (value !== undefined && value !== null && value !== '') map[String(value)] = true;
   });
+  return Object.keys(map).sort();
 }
 
-function formatFcstMonthLabel_(monthKey) {
-  var match = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
-  if (!match) return monthKey;
-  return Number(match[2]) + '\u6708';
+function getResolvedOppOwnerLabel_() {
+  return getOppOwnerLabel_();
+}
+
+function resolveOppOwnerLabel_() {
+  return getResolvedOppOwnerLabel_();
+}
+
+
+function populateSelect_(id, values) {
+  var select = document.getElementById(id);
+  if (!select) return;
+  var current = select.value || 'all';
+  select.innerHTML = '<option value="all">すべて</option>' + safeArray(values).map(function(value) {
+    return '<option value="' + escapeHtml(value) + '">' + escapeHtml(value) + '</option>';
+  }).join('');
+  var found = false;
+  for (var i = 0; i < select.options.length; i++) {
+    if (select.options[i].value === current) {
+      found = true;
+      break;
+    }
+  }
+  select.value = found ? current : 'all';
+}
+
+function buildOpportunityUrl_(oppId) {
+  var id = String(oppId || '').trim();
+  if (!/^[A-Za-z0-9]{15,18}$/.test(id)) return '';
+  return 'https://sansan.lightning.force.com/lightning/r/Opportunity/' + encodeURIComponent(id) + '/view';
+}
+
+function renderOppDealLink_(row) {
+  var url = buildOpportunityUrl_(row && row.oppId);
+  var label = escapeHtml((row && row.dealName) || '');
+  if (!url) return label;
+  return '<a href="' + escapeHtml(url) + '" target="_blank" class="deal-card-link">' + label + '</a>';
 }
 
 function renderBootError_(error) {
-  var message = (error && error.stack) || (error && error.message) || String(error);
   var target = document.getElementById('main-content') || document.body;
+  var message = (error && error.stack) || (error && error.message) || String(error);
   if (!target) return;
   target.style.visibility = 'visible';
-  target.innerHTML =
-    '<div style="padding:24px;color:#b00020;font:14px/1.5 sans-serif;white-space:pre-wrap;">' +
-    'BOOT ERROR\n\n' + escapeHtml(message) +
-    '</div>';
+  target.innerHTML = '<div style="padding:24px;color:#b00020;font:14px/1.5 sans-serif;white-space:pre-wrap;">BOOT ERROR\n\n' + escapeHtml(message) + '</div>';
   var overlay = document.getElementById('loading-overlay');
   if (overlay) overlay.classList.add('hidden');
 }
 
+var App = {
+  state: {
+    activeView: 'fcst',
+    initData: null,
+    fcstRowsByPeriod: {},
+    snapshotDates: [],
+    snapshotDate: null,
+    snapshotPayloads: {},
+    oppData: null,
+    trendData: null,
+    selectedPeriod: '',
+    selectedQuarterKey: '',
+    selectedGroup: '部全体',
+    fcstFiltersCollapsed: false,
+    expandedMetrics: { fcstAdjusted: true, fcstCommit: false, fcstMin: false, fcstMax: false, expectedMrr: false, confirmed: false },
+    diffToggles: {},
+    expandedNoteKeys: {},
+    trendBlock: 'Q',
+    trendChart: null,
+    secondaryWarmStarted: false
+  },
+
+  boot: function() {
+    _deptConfig = parseEmbeddedJson_('gas-dept-config-json', {});
+    if (!_selectedDept) {
+      this.renderTopPage();
+      return;
+    }
+    this.prepareDeptLayout();
+    this.loadInitData();
+  },
+
+  prepareDeptLayout: function() {
+    var cfg = currentDeptConfig_();
+    var badge = document.querySelector('.division-badge');
+    if (badge && cfg) {
+      badge.textContent = cfg.division + '事業部';
+      badge.style.display = 'inline-block';
+    }
+    var ownerLabel = document.getElementById('opp-owner-label');
+    if (ownerLabel) ownerLabel.textContent = getResolvedOppOwnerLabel_();
+
+    var back = document.querySelector('.back-btn');
+    if (!back) {
+      back = document.createElement('a');
+      back.className = 'back-btn';
+      back.href = buildAppUrl_(null);
+      back.target = '_top';
+      back.textContent = 'トップに戻る';
+      var headerTop = document.querySelector('.header-top');
+      if (headerTop) headerTop.insertBefore(back, headerTop.firstChild);
+    }
+  },
+
+  renderTopPage: function() {
+    var overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    document.querySelectorAll('.tab-bar, #view-fcst, #view-opps, #view-trend, #save-bar').forEach(function(el) {
+      if (el) el.style.display = 'none';
+    });
+
+    var badge = document.querySelector('.division-badge');
+    if (badge) {
+      badge.textContent = '';
+      badge.style.display = 'none';
+    }
+
+    var main = document.getElementById('main-content');
+    var divisions = {};
+    Object.keys(_deptConfig).forEach(function(key) {
+      var cfg = _deptConfig[key] || {};
+      var division = cfg.division || 'OTHER';
+      if (!divisions[division]) divisions[division] = [];
+      divisions[division].push({ key: key, label: cfg.label || key });
+    });
+
+    var labels = {
+      BO: 'Bill One事業部',
+      SS: 'Sansan事業部',
+      CO: 'Contract One事業部',
+      OTHER: 'その他'
+    };
+
+    var html = '<div class="top-page"><div class="top-page-header"><h1 class="top-page-title">FCST Dashboard</h1><p class="top-page-subtitle">部署を選択してください</p></div>';
+    ['BO', 'SS', 'CO', 'OTHER'].forEach(function(div) {
+      if (!divisions[div] || !divisions[div].length) return;
+      html += '<div class="division-section"><div class="division-header">' + escapeHtml(labels[div] || div) + '</div><div class="dept-card-grid">';
+      divisions[div].forEach(function(dept) {
+        var isDefault = _userDefaultDept === dept.key;
+        html += '<a class="dept-card' + (isDefault ? ' dept-card--default' : '') + '" href="' + escapeHtml(buildAppUrl_(dept.key)) + '" target="_top">';
+        html += '<span class="dept-card-label">' + escapeHtml(dept.label) + '</span>';
+        if (isDefault) html += '<span class="dept-card-badge">あなたの部署</span>';
+        html += '</a>';
+      });
+      html += '</div></div>';
+    });
+    html += '</div>';
+    main.style.visibility = 'visible';
+    main.innerHTML = html;
+  },
+
+  switchView: function(view) {
+    this.state.activeView = view;
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.classList.toggle('active', tab.dataset.view === view);
+    });
+    document.querySelectorAll('.view').forEach(function(panel) {
+      panel.classList.toggle('active', panel.id === 'view-' + view);
+    });
+    if (view === 'opps' && !this.state.oppData) this.loadOpps();
+    if (view === 'trend' && !this.state.trendData) this.loadTrend();
+  },
+
+  setLoading: function(show, text, options) {
+    var config = options || {};
+    var overlay = document.getElementById('loading-overlay');
+    var main = document.getElementById('main-content');
+    if (overlay) overlay.classList.toggle('hidden', !show);
+    if (main) main.style.visibility = show ? 'hidden' : 'visible';
+    var textEl = document.getElementById('loading-text');
+    if (textEl) textEl.textContent = text || 'Loading...';
+    var subTextEl = document.getElementById('loading-subtext');
+    if (subTextEl) subTextEl.textContent = show ? (config.subtext || '???????????') : '';
+    var stageEl = document.getElementById('loading-stage-name');
+    if (stageEl) stageEl.textContent = show ? (config.stage || '??????') : '??';
+    var percentEl = document.getElementById('loading-percent');
+    var percent = show ? Math.max(0, Math.min(99, Number(config.percent) || 0)) : 100;
+    if (percentEl) percentEl.textContent = percent + '%';
+    var barEl = document.getElementById('loading-progress-bar');
+    if (barEl) barEl.style.width = percent + '%';
+  },
+
+  setUpdateBadge: function(text) {
+    var el = document.querySelector('.update-badge');
+    if (el) el.textContent = '最終更新: ' + (text || '-');
+  },
+
+  showInlineError: function(targetId, message) {
+    var el = document.getElementById(targetId);
+    if (!el) return;
+    el.innerHTML = '<div class="error-panel"><div class="error-icon">!</div><div class="error-message">' + escapeHtml(message) + '</div></div>';
+  },
+
+  pickDefaultPeriod: function(data) {
+    var options = safeArray(data && data.periodOptions);
+    return options.length ? (options[0].key || '') : '';
+  },
+
+  getPrefetchedInitState_: function() {
+    return window.__FCST_BOOTSTRAP__ && window.__FCST_BOOTSTRAP__.init
+      ? window.__FCST_BOOTSTRAP__.init
+      : null;
+  },
+
+  applyInitData_: function(result) {
+    var data = result && result.data ? result.data : result;
+    if (!data || data.error) {
+      this.handleInitDataError_((data && data.error) || 'FCSTデータの取得に失敗しました');
+      return;
+    }
+
+    this.ensureFcstUiState_();
+    this.state.initData = data;
+    this.state.snapshotDates = safeArray(data.snapshotDates);
+    this.state.snapshotDate = null;
+    this.state.snapshotPayloads = {};
+    var defaultPeriod = String(data.defaultPeriod || this.pickDefaultPeriod(data) || '');
+    this.state.selectedPeriod = defaultPeriod;
+    if (defaultPeriod) this.state.fcstRowsByPeriod[defaultPeriod] = safeArray(data.rows);
+    var selectedQuarter = this.findQuarterForPeriod_(defaultPeriod, data.periodOptions) || safeArray(data.periodOptions)[0] || null;
+    this.state.selectedQuarterKey = selectedQuarter ? selectedQuarter.key : '';
+    this.state.selectedGroup = '部全体';
+    this.setUpdateBadge(data.lastUpdated || data.sfLastUpdated || '-');
+    this.renderFcst();
+    this.setLoading(false);
+    this.warmSecondaryViews_();
+  },
+
+  handleInitDataError_: function(message) {
+    this.setLoading(false);
+    this.showInlineError('fcst-content', message || 'FCSTデータの取得に失敗しました');
+  },
+
+  warmSecondaryViews_: function() {
+    var self = this;
+    if (self.state.secondaryWarmStarted || !_selectedDept) return;
+    self.state.secondaryWarmStarted = true;
+
+    window.setTimeout(function() {
+      if (self.state.oppData) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || result.error || self.state.oppData) return;
+          self.state.oppData = result;
+        })
+        .withFailureHandler(function() {})
+        .getOpportunities(_selectedDept);
+    }, 500);
+
+    window.setTimeout(function() {
+      if (self.state.trendData) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || result.error || self.state.trendData) return;
+          self.state.trendData = result;
+        })
+        .withFailureHandler(function() {})
+        .getTrendData(_selectedDept, self.state.trendBlock || 'Q');
+    }, 1400);
+  },
+
+  loadInitData: function() {
+    var self = this;
+    self.setLoading(true, 'FCSTを読み込んでいます...', { stage: '初期化', percent: 35 });
+
+    var prefetched = self.getPrefetchedInitState_();
+    if (prefetched && prefetched.status === 'ready' && prefetched.value) {
+      self.applyInitData_(prefetched.value);
+      return;
+    }
+    if (prefetched && prefetched.status === 'error') {
+      self.handleInitDataError_(prefetched.error);
+      return;
+    }
+    if (prefetched && prefetched.status === 'pending') {
+      var onPrefetched = function() {
+        window.removeEventListener('fcst:prefetch-init', onPrefetched);
+        var nextState = self.getPrefetchedInitState_();
+        if (nextState && nextState.status === 'ready' && nextState.value) {
+          self.applyInitData_(nextState.value);
+          return;
+        }
+        self.handleInitDataError_((nextState && nextState.error) || 'FCSTデータの取得に失敗しました');
+      };
+      window.addEventListener('fcst:prefetch-init', onPrefetched);
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(result) { self.applyInitData_(result); })
+      .withFailureHandler(function(error) {
+        self.handleInitDataError_((error && error.message) || String(error));
+      })
+      .getClientInitData(_selectedDept);
+  },
+
+  currentFcstPeriodOptions_: function() {
+    if (this.state.snapshotDate) {
+      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
+      return safeArray(snapshotPayload.periodOptions);
+    }
+    return safeArray(this.state.initData && this.state.initData.periodOptions);
+  },
+
+  currentFcstRows_: function(periodKey) {
+    if (this.state.snapshotDate) {
+      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
+      return safeArray(snapshotPayload.rowsByPeriod && snapshotPayload.rowsByPeriod[periodKey]);
+    }
+    return safeArray(this.state.fcstRowsByPeriod[periodKey]);
+  },
+
+  renderFcst: function() {
+    var data = this.state.initData;
+    if (!data) return;
+    var period = this.state.selectedPeriod || this.pickDefaultPeriod(data);
+    var options = safeArray(data.periodOptions);
+    var members = safeArray(data.members).filter(function(member) { return member && !member.isTotal; });
+    var html = '<div class="view-toolbar"><span class="view-toolbar-meta">部署: ' + escapeHtml((currentDeptConfig_() && currentDeptConfig_().label) || _selectedDept || '') + '</span></div>';
+    html += '<div class="quarter-chips">';
+    options.forEach(function(option) {
+      html += '<button type="button" class="chip' + (period === option.key ? ' active' : '') + '" onclick="App.selectPeriod(\'' + escapeHtml(option.key) + '\')">' + escapeHtml(option.label || option.key) + '</button>';
+    });
+    html += '</div>';
+    html += '<div class="table-wrapper"><table><thead><tr><th>担当者</th><th>目標</th><th>FCST(調整後)</th><th>FCST(コミット)</th><th>確定</th></tr></thead><tbody>';
+    members.forEach(function(member) {
+      var row = member[period] || {};
+      var target = typeof row.target === 'number' ? row.target : (row.target && row.target.net);
+      var adjusted = row.fcstAdjusted && typeof row.fcstAdjusted === 'object' ? row.fcstAdjusted.net : row.fcstAdjusted;
+      var commit = row.fcstCommit && typeof row.fcstCommit === 'object' ? row.fcstCommit.net : row.fcstCommit;
+      var confirmed = row.confirmed && typeof row.confirmed === 'object' ? row.confirmed.net : row.confirmed;
+      html += '<tr><td>' + escapeHtml(member.displayName || member.name || '') + '</td><td>' + escapeHtml(fmtNum(target)) + '</td><td>' + escapeHtml(fmtNum(adjusted)) + '</td><td>' + escapeHtml(fmtNum(commit)) + '</td><td>' + escapeHtml(fmtNum(confirmed)) + '</td></tr>';
+    });
+    if (!members.length) html += '<tr><td colspan="5">表示できるデータがありません</td></tr>';
+    html += '</tbody></table></div>';
+    document.getElementById('fcst-content').innerHTML = html;
+  },
+
+  selectPeriod: function(period) {
+    this.state.selectedPeriod = period;
+    if (this.state.snapshotDate) {
+      var snapshotPayload = this.state.snapshotPayloads[this.state.snapshotDate] || {};
+      if (snapshotPayload.rowsByPeriod && snapshotPayload.rowsByPeriod[period]) {
+        this.renderFcst();
+        return;
+      }
+      this.loadSnapshotByDate_(this.state.snapshotDate, period);
+      return;
+    }
+    if (this.state.fcstRowsByPeriod && this.state.fcstRowsByPeriod[period]) {
+      this.renderFcst();
+      return;
+    }
+    this.loadFcstPeriod(period);
+  },
+
+  loadOpps: function() {
+    var self = this;
+    document.getElementById('opps-content').innerHTML = '<div class="loading-overlay-inline"><div class="loading-message">案件リストを読み込んでいます...</div></div>';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || result.error) {
+          self.showInlineError('opps-content', (result && result.error) || '案件リストの取得に失敗しました');
+          return;
+        }
+        self.state.oppData = result;
+        self.populateOppFilters_();
+        self.renderOpps();
+      })
+      .withFailureHandler(function(error) {
+        self.showInlineError('opps-content', (error && error.message) || String(error));
+      })
+      .getOpportunities(_selectedDept);
+  },
+
+  populateOppFilters_: function() {
+    var rows = safeArray(this.state.oppData && this.state.oppData.rows);
+    populateSelect_('opp-dept-select', uniqueValues_(rows, 'dept'));
+    populateSelect_('opp-phase-select', uniqueValues_(rows, 'phase'));
+    populateSelect_('opp-type-select', uniqueValues_(rows, 'type'));
+    populateSelect_('opp-owner-select', uniqueValues_(rows, 'subOwner'));
+    populateSelect_('opp-forecast-select', uniqueValues_(rows, 'forecast'));
+    populateSelect_('opp-date-select', uniqueValues_(rows, 'scheduleOrCloseDate'));
+  },
+
+  getOppFilters: function() {
+    function valueOf(id) {
+      var el = document.getElementById(id);
+      return el ? (el.value || 'all') : 'all';
+    }
+    var nameEl = document.getElementById('opp-name-search');
+    return {
+      dept: valueOf('opp-dept-select'),
+      phase: valueOf('opp-phase-select'),
+      type: valueOf('opp-type-select'),
+      owner: valueOf('opp-owner-select'),
+      forecast: valueOf('opp-forecast-select'),
+      scheduleOrCloseDate: valueOf('opp-date-select'),
+      keyDeal: valueOf('opp-keydeal-select'),
+      nameQuery: nameEl ? String(nameEl.value || '').trim().toLowerCase() : ''
+    };
+  },
+
+  resetOppFilters: function() {
+    ['opp-dept-select', 'opp-phase-select', 'opp-type-select', 'opp-owner-select', 'opp-forecast-select', 'opp-date-select', 'opp-keydeal-select'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.value = 'all';
+    });
+    var nameEl = document.getElementById('opp-name-search');
+    if (nameEl) nameEl.value = '';
+    this.renderOpps();
+  },
+
+  renderOpps: function() {
+    var result = this.state.oppData;
+    if (!result) return;
+    var cfg = currentDeptConfig_();
+    var showProposal = !cfg || !cfg.features || cfg.features.proposalProducts !== false;
+    var filters = this.getOppFilters();
+    var rows = safeArray(result.rows).filter(function(row) {
+      if (filters.dept !== 'all' && row.dept !== filters.dept) return false;
+      if (filters.phase !== 'all' && row.phase !== filters.phase) return false;
+      if (filters.type !== 'all' && row.type !== filters.type) return false;
+      if (filters.owner !== 'all' && row.subOwner !== filters.owner) return false;
+      if (filters.forecast !== 'all' && row.forecast !== filters.forecast) return false;
+      if (filters.scheduleOrCloseDate !== 'all' && row.scheduleOrCloseDate !== filters.scheduleOrCloseDate) return false;
+      if (filters.keyDeal !== 'all' && String(!!row.keyDeal) !== filters.keyDeal) return false;
+      if (filters.nameQuery && String(row.dealName || '').toLowerCase().indexOf(filters.nameQuery) === -1) return false;
+      return true;
+    });
+    var count = document.getElementById('opp-count');
+    if (count) count.textContent = rows.length + '件';
+
+    var html = '<div class="view-toolbar"><span class="view-toolbar-meta">最終更新: ' + escapeHtml(result.lastUpdated || '-') + '</span><span class="view-toolbar-meta">件数: ' + escapeHtml(String(rows.length)) + '</span></div>';
+    html += '<div class="table-wrapper opp-table-wrap"><table><thead><tr>';
+    html += '<th class="opp-col-month">完了予定月</th><th class="opp-col-dept">担当部署</th><th class="opp-col-type">種別</th><th class="opp-col-owner">' + escapeHtml(getResolvedOppOwnerLabel_()) + '</th>';
+    html += '<th class="opp-col-phase">フェーズ</th><th class="opp-col-forecast">フォーキャスト</th><th class="opp-col-date">予定日 / 確定日</th>';
+    html += '<th class="opp-name-header">案件名</th><th class="opp-num-header">按分率(%)</th><th class="opp-num-header">MRR</th><th class="opp-num-header">初期費用</th>';
+    html += '<th class="opp-col-keydeal">Key Deal</th><th class="opp-num-header">FCST(コミット)</th><th class="opp-num-header">FCST(MIN)</th><th class="opp-num-header">FCST(MAX)</th>';
+    if (showProposal) html += '<th class="opp-num-header">受領</th><th class="opp-num-header">債権管理</th><th class="opp-num-header">債権管理Lite</th><th class="opp-num-header">経費</th>';
+    html += '<th class="opp-col-comment">FCSTコメント</th><th class="opp-col-firstmeeting">初回MTG日</th><th class="opp-col-summary">案件概要</th><th class="opp-col-summary">オプション商材</th><th class="opp-col-summary">施策</th>';
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(row) {
+      html += '<tr>';
+      html += '<td>' + escapeHtml(row.completedMonth || '') + '</td>';
+      html += '<td>' + escapeHtml(row.dept || '') + '</td>';
+      html += '<td>' + escapeHtml(row.type || '') + '</td>';
+      html += '<td>' + escapeHtml(row.subOwner || '') + '</td>';
+      html += '<td>' + escapeHtml(row.phase || '') + '</td>';
+      html += '<td>' + escapeHtml(row.forecast || '') + '</td>';
+      html += '<td>' + escapeHtml(row.scheduleOrCloseDate || '') + '</td>';
+      html += '<td>' + renderOppDealLink_(row) + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.allocationPercent)) + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.mrr)) + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.initialCost)) + '</td>';
+      html += '<td>' + escapeHtml(row.keyDeal ? 'TRUE' : 'FALSE') + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.fcstCommit)) + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.fcstMin)) + '</td>';
+      html += '<td>' + escapeHtml(fmtNum(row.fcstMax)) + '</td>';
+      if (showProposal) {
+        html += '<td>' + escapeHtml(fmtNum(row.received)) + '</td>';
+        html += '<td>' + escapeHtml(fmtNum(row.debtMgmt)) + '</td>';
+        html += '<td>' + escapeHtml(fmtNum(row.debtMgmtLite)) + '</td>';
+        html += '<td>' + escapeHtml(fmtNum(row.expense)) + '</td>';
+      }
+      html += '<td>' + escapeHtml(row.fcstComment || '') + '</td>';
+      html += '<td>' + escapeHtml(row.firstMeetingDate || '') + '</td>';
+      html += '<td>' + escapeHtml(row.summary || '') + '</td>';
+      html += '<td>' + escapeHtml(row.optionFeatures || '') + '</td>';
+      html += '<td>' + escapeHtml(row.initiative || '') + '</td>';
+      html += '</tr>';
+    });
+    if (!rows.length) html += '<tr><td colspan="' + (showProposal ? '24' : '20') + '">該当する案件がありません</td></tr>';
+    html += '</tbody></table></div>';
+    document.getElementById('opps-content').innerHTML = html;
+  },
+
+  reloadOppsFromSS: function() {
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || result.error) {
+          self.showInlineError('opps-content', (result && result.error) || 'スプレッドシート再読込に失敗しました');
+          return;
+        }
+        self.state.oppData = result;
+        self.populateOppFilters_();
+        self.renderOpps();
+      })
+      .withFailureHandler(function(error) {
+        self.showInlineError('opps-content', (error && error.message) || String(error));
+      })
+      .refreshFromSpreadsheet(_selectedDept);
+  },
+
+  reloadOpps: function() {
+    var self = this;
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || result.error) {
+          self.showInlineError('opps-content', (result && result.error) || 'SF最新取得に失敗しました');
+          return;
+        }
+        self.state.oppData = result;
+        self.populateOppFilters_();
+        self.renderOpps();
+      })
+      .withFailureHandler(function(error) {
+        self.showInlineError('opps-content', (error && error.message) || String(error));
+      })
+      .refreshSfDataAndGetOpportunities(_selectedDept);
+  },
+
+  loadTrend: function() {
+    var self = this;
+    self.syncTrendBlockOptions_();
+    var block = self.state.trendBlock || 'Q';
+    document.getElementById('trend-content').innerHTML = '<div class="loading-overlay-inline"><div class="loading-message">推移を読み込んでいます...</div></div>';
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (!result || result.error) {
+          self.showInlineError('trend-content', (result && result.error) || '推移データの取得に失敗しました');
+          return;
+        }
+        self.state.trendData = result;
+        self.renderTrend();
+      })
+      .withFailureHandler(function(error) {
+        self.showInlineError('trend-content', (error && error.message) || String(error));
+      })
+      .getTrendData(_selectedDept, block);
+  },
+
+  changeTrendBlock: function(block) {
+    this.state.trendBlock = block || 'Q';
+    this.loadTrend();
+  },
+
+  renderTrend: function() {
+    var data = this.state.trendData;
+    if (!data) return;
+    var points = safeArray(data.points);
+    var container = document.getElementById('trend-content');
+    if (!container) return;
+    if (points.length) {
+      container.innerHTML =
+        '<div class="chart-card"><div class="chart-title">推移グラフ (Net MRR)</div><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>' +
+        '<div class="chart-card"><div class="chart-title">週次スナップショット</div><div id="trend-table-wrap"></div></div>';
+      this.renderTrendChart_(points);
+      this.renderTrendTable_(points);
+      return;
+    }
+    var labels = safeArray(data.labels);
+    var series = data.series || {};
+    var hasSeries = labels.length > 0;
+    if (!hasSeries) {
+      container.innerHTML = '<div class="chart-card"><div class="trend-empty">推移データがまだありません</div></div>';
+      return;
+    }
+    container.innerHTML = '<div class="chart-card"><div class="chart-title">推移グラフ (Net MRR)</div><div class="chart-wrap"><canvas id="trend-chart"></canvas></div></div>';
+    var canvas = document.getElementById('trend-chart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (this.state.trendChart) this.state.trendChart.destroy();
+    this.state.trendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'FCST(調整後)', data: safeArray(series.fcstAdjusted), borderColor: '#1a73e8', tension: 0.2 },
+          { label: 'FCST(コミット)', data: safeArray(series.fcstCommit), borderColor: '#0b8043', tension: 0.2 },
+          { label: '目標', data: safeArray(series.target), borderColor: '#f29900', tension: 0.2 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  },
+
+  closeDetailModal: function() {
+    var modal = document.getElementById('detail-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+};
+
+App.findQuarterOption_ = function(quarterKey, options) {
+  return safeArray(options).find(function(option) {
+    return option && option.key === quarterKey;
+  }) || null;
+};
+
+App.findQuarterForPeriod_ = function(periodKey, options) {
+  return safeArray(options).find(function(option) {
+    if (!option) return false;
+    if (option.key === periodKey) return true;
+    return safeArray(option.months).indexOf(periodKey) !== -1;
+  }) || null;
+};
+
+App.toggleFilterPanel = function(view) {
+  if (view !== 'fcst') return;
+  this.state.fcstFiltersCollapsed = !this.state.fcstFiltersCollapsed;
+  this.renderFcst();
+};
+
+App.loadFcstPeriod = function(periodKey) {
+  var self = this;
+  if (!periodKey) return;
+  self.setLoading(true, '期間データを読み込んでいます...', { stage: '期間切替', percent: 45 });
+  google.script.run
+    .withSuccessHandler(function(result) {
+      self.setLoading(true, '画面を更新しています...', { stage: '描画', percent: 85 });
+      var data = result && result.data ? result.data : result;
+      if (!data || data.error) {
+        self.setLoading(false);
+        self.showInlineError('fcst-content', (data && data.error) || '期間データの取得に失敗しました');
+        return;
+      }
+      self.state.fcstRowsByPeriod = self.state.fcstRowsByPeriod || {};
+      self.state.fcstRowsByPeriod[periodKey] = safeArray(data.rows);
+      self.state.selectedPeriod = periodKey;
+      self.renderFcst();
+        self.setLoading(false);
+    })
+    .withFailureHandler(function(error) {
+      self.setLoading(false);
+      self.showInlineError('fcst-content', (error && error.message) || String(error));
+    })
+    .getClientPeriodData(_selectedDept, periodKey);
+};
+
+App.loadSnapshotByDate_ = function(dateStr, periodKey) {
+  var self = this;
+  if (!dateStr) return;
+  var requestedPeriod = String(periodKey || this.state.selectedPeriod || '').trim();
+  self.setLoading(true, '週次スナップショットを読み込んでいます...', { stage: '週切替', percent: 45 });
+  google.script.run
+    .withSuccessHandler(function(result) {
+      self.setLoading(true, '画面を更新しています...', { stage: '描画', percent: 85 });
+      if (!result || result.error) {
+        self.setLoading(false);
+        self.showInlineError('fcst-content', (result && result.error) || '週次スナップショットの取得に失敗しました');
+        return;
+      }
+      var payload = self.state.snapshotPayloads[dateStr] || { rowsByPeriod: {} };
+      payload.periodOptions = safeArray(result.periodOptions);
+      payload.date = result.date || dateStr;
+      payload.timestampKey = result.timestampKey || '';
+      payload.rowsByPeriod = payload.rowsByPeriod || {};
+      payload.rowsByPeriod[result.periodKey || requestedPeriod] = safeArray(result.rows);
+      self.state.snapshotPayloads[dateStr] = payload;
+      self.state.snapshotDate = dateStr;
+      self.state.selectedPeriod = result.periodKey || requestedPeriod;
+      var selectedQuarter = self.findQuarterForPeriod_(self.state.selectedPeriod, payload.periodOptions) || payload.periodOptions[0] || null;
+      self.state.selectedQuarterKey = selectedQuarter ? selectedQuarter.key : '';
+      self.renderFcst();
+      self.setLoading(false);
+    })
+    .withFailureHandler(function(error) {
+      self.setLoading(false);
+      self.showInlineError('fcst-content', (error && error.message) || String(error));
+    })
+    .getClientSnapshotData(_selectedDept, dateStr, requestedPeriod);
+};
+
+App.fcstWeekNavPrev = function() {
+  var dates = safeArray(this.state.snapshotDates);
+  if (!dates.length) return;
+  if (!this.state.snapshotDate) {
+    this.loadSnapshotByDate_(dates[0], this.state.selectedPeriod);
+    return;
+  }
+  var idx = dates.indexOf(this.state.snapshotDate);
+  if (idx >= 0 && idx < dates.length - 1) {
+    this.loadSnapshotByDate_(dates[idx + 1], this.state.selectedPeriod);
+  }
+};
+
+App.fcstWeekNavNext = function() {
+  var dates = safeArray(this.state.snapshotDates);
+  if (!this.state.snapshotDate) return;
+  var idx = dates.indexOf(this.state.snapshotDate);
+  if (idx > 0) {
+    this.loadSnapshotByDate_(dates[idx - 1], this.state.selectedPeriod);
+    return;
+  }
+  this.fcstWeekNavToday();
+};
+
+App.fcstWeekNavToday = function() {
+  this.state.snapshotDate = null;
+  this.renderFcst();
+};
+
+App.renderFcstWeekNav_ = function() {
+  var dates = safeArray(this.state.snapshotDates);
+  var isLive = !this.state.snapshotDate;
+  var label = isLive ? '今週' : this.state.snapshotDate;
+  var canGoPrev = isLive ? dates.length > 0 : dates.indexOf(this.state.snapshotDate) < dates.length - 1;
+  var canGoNext = !isLive;
+  var html = '<div class="week-nav-bar">';
+  html += '<button class="week-nav-btn" type="button"' + (canGoPrev ? '' : ' disabled') + ' onclick="App.fcstWeekNavPrev()">◄</button>';
+  html += '<span class="week-nav-label' + (isLive ? ' week-nav-live' : '') + '">' + escapeHtml(label) + '</span>';
+  html += '<button class="week-nav-btn" type="button"' + (canGoNext ? '' : ' disabled') + ' onclick="App.fcstWeekNavNext()">►</button>';
+  if (!isLive) html += '<button class="week-nav-btn week-nav-today" type="button" onclick="App.fcstWeekNavToday()">今週</button>';
+  html += '</div>';
+  return html;
+};
+
+App.selectQuarter = function(quarterKey) {
+  var option = this.findQuarterOption_(quarterKey, this.currentFcstPeriodOptions_());
+  if (!option) return;
+  this.state.selectedQuarterKey = option.key;
+  this.selectPeriod(option.key);
+};
+
+App.selectGroup = function(groupName) {
+  this.state.selectedGroup = groupName || '部全体';
+  this.renderFcst();
+};
+
+App.findFcstSummaryRow_ = function(rows, selectedGroup) {
+  var safeRows = safeArray(rows);
+  if (selectedGroup === '部全体') {
+    return safeRows.find(function(row) {
+      return row && row.isTotal && row.totalKind === 'department';
+    }) || null;
+  }
+  return safeRows.find(function(row) {
+    return row && row.isTotal && row.totalKind === 'group' && String(row.group || '') === selectedGroup;
+  }) || null;
+};
+
+App.buildFcstSummaryFallback_ = function(rows, selectedGroup) {
+  var summary = {
+    metric: {
+      target: { net: 0, newExp: 0, churn: 0 },
+      fcstAdjusted: { net: 0, newExp: 0, churn: 0 },
+      fcstCommit: { net: 0, newExp: 0, churn: 0 },
+      fcstMin: { net: 0, newExp: 0, churn: 0 },
+      fcstMax: { net: 0, newExp: 0, churn: 0 },
+      expectedMrr: { net: 0, newExp: 0, churn: 0 },
+      confirmed: { net: 0, newExp: 0, churn: 0 }
+    },
+    wow: {
+      target: { net: 0, newExp: 0, churn: 0 },
+      fcstAdjusted: { net: 0, newExp: 0, churn: 0 },
+      fcstCommit: { net: 0, newExp: 0, churn: 0 },
+      fcstMin: { net: 0, newExp: 0, churn: 0 },
+      fcstMax: { net: 0, newExp: 0, churn: 0 },
+      expectedMrr: { net: 0, newExp: 0, churn: 0 },
+      confirmed: { net: 0, newExp: 0, churn: 0 }
+    }
+  };
+  safeArray(rows).forEach(function(row) {
+    if (!row || row.isTotal) return;
+    if (selectedGroup !== '部全体' && String(row.group || '') !== selectedGroup) return;
+    addFcstMetric_(summary.metric.target, row.metric && row.metric.target);
+    addFcstMetric_(summary.metric.fcstAdjusted, row.metric && row.metric.fcstAdjusted);
+    addFcstMetric_(summary.metric.fcstCommit, row.metric && row.metric.fcstCommit);
+    addFcstMetric_(summary.metric.fcstMin, row.metric && row.metric.fcstMin);
+    addFcstMetric_(summary.metric.fcstMax, row.metric && row.metric.fcstMax);
+    addFcstMetric_(summary.metric.expectedMrr, row.metric && row.metric.expectedMrr);
+    addFcstMetric_(summary.metric.confirmed, row.metric && row.metric.confirmed);
+    addFcstMetric_(summary.wow.target, row.wow && row.wow.target);
+    addFcstMetric_(summary.wow.fcstAdjusted, row.wow && row.wow.fcstAdjusted);
+    addFcstMetric_(summary.wow.fcstCommit, row.wow && row.wow.fcstCommit);
+    addFcstMetric_(summary.wow.fcstMin, row.wow && row.wow.fcstMin);
+    addFcstMetric_(summary.wow.fcstMax, row.wow && row.wow.fcstMax);
+    addFcstMetric_(summary.wow.expectedMrr, row.wow && row.wow.expectedMrr);
+    addFcstMetric_(summary.wow.confirmed, row.wow && row.wow.confirmed);
+  });
+  return summary;
+};
+
+App.renderFcstSummaryCards_ = function(summaryRow, periodLabel) {
+  var cards = [
+    { key: 'target', label: '目標' },
+    { key: 'fcstAdjusted', label: 'FCST(調整後)' },
+    { key: 'fcstCommit', label: 'FCST(コミット)' },
+    { key: 'expectedMrr', label: '期待MRR' },
+    { key: 'confirmed', label: '確定' }
+  ];
+  return '<div class="card-grid">' + cards.map(function(card) {
+    var metric = summaryRow && summaryRow.metric ? summaryRow.metric[card.key] : null;
+    var wow = summaryRow && summaryRow.wow ? summaryRow.wow[card.key] : null;
+    var targetDiff = card.key === 'target' ? null : diffFcstMetric_(metric, summaryRow && summaryRow.metric && summaryRow.metric.target);
+    var targetNet = safeMetricPart_(targetDiff, 'net');
+    var wowNet = safeMetricPart_(wow, 'net');
+    var diffClass = wowNet >= 0 ? 'positive' : 'negative';
+    var targetHtml = card.key === 'target'
+      ? '<div class="card-target">' + escapeHtml(periodLabel || '') + '</div>'
+      : '<div class="card-target">目標差 ' + escapeHtml(fmtDiffNum(targetNet)) + '</div>';
+    return '<div class="summary-card">' +
+      '<div class="card-period">' + escapeHtml(card.label) + '</div>' +
+      '<div class="card-net">' + escapeHtml(fmtNum(safeMetricPart_(metric, 'net'))) + '</div>' +
+      '<div class="card-unit">' + escapeHtml(periodLabel || '') + '</div>' +
+      '<div class="card-diff ' + diffClass + '">先週比 ' + escapeHtml(fmtDiffNum(wowNet)) + '</div>' +
+      targetHtml +
+    '</div>';
+  }).join('') + '</div>';
+};
+
+function fcstMetricDefs_() {
+  return [
+    { key: 'fcstAdjusted', label: 'FCST(調整後)', editable: true },
+    { key: 'fcstCommit', label: 'FCST(コミット)', editable: false },
+    { key: 'fcstMin', label: 'FCST(MIN)', editable: false },
+    { key: 'fcstMax', label: 'FCST(MAX)', editable: false },
+    { key: 'expectedMrr', label: '期待MRR', editable: false },
+    { key: 'confirmed', label: '確定', editable: false }
+  ];
+}
+
+function cloneFcstMetric_(metric) {
+  return {
+    net: Number(safeMetricPart_(metric, 'net')) || 0,
+    newExp: Number(safeMetricPart_(metric, 'newExp')) || 0,
+    churn: Number(safeMetricPart_(metric, 'churn')) || 0
+  };
+}
+
+function diffFcstMetric_(currentMetric, compareMetric) {
+  var current = cloneFcstMetric_(currentMetric);
+  var compare = cloneFcstMetric_(compareMetric);
+  return {
+    net: current.net - compare.net,
+    newExp: current.newExp - compare.newExp,
+    churn: current.churn - compare.churn
+  };
+}
+
+function addFcstMetric_(targetMetric, addMetric) {
+  targetMetric.net += Number(addMetric && addMetric.net) || 0;
+  targetMetric.newExp += Number(addMetric && addMetric.newExp) || 0;
+  targetMetric.churn += Number(addMetric && addMetric.churn) || 0;
+  return targetMetric;
+}
+
+function fmtDiffFcst_(value) {
+  var num = Number(value) || 0;
+  if (!num) return '0';
+  return (num > 0 ? '+' : '') + fmtNum(num);
+}
+
+function fcstDiffBadgeClass_(value) {
+  var num = Number(value) || 0;
+  if (num > 0) return 'diff-badge-up';
+  if (num < 0) return 'diff-badge-down';
+  return 'diff-badge-flat';
+}
+
+function renderFcstDiffBadge_(value) {
+  return '<span class="diff-badge ' + fcstDiffBadgeClass_(value) + '">' + escapeHtml(fmtDiffFcst_(value)) + '</span>';
+}
+
+App.ensureFcstUiState_ = function() {
+  if (!this.state.expandedMetrics) {
+    this.state.expandedMetrics = {
+      fcstAdjusted: true,
+      fcstCommit: false,
+      fcstMin: false,
+      fcstMax: false,
+      expectedMrr: false,
+      confirmed: false
+    };
+  }
+  ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'expectedMrr', 'confirmed'].forEach(function(metricKey) {
+    if (!Object.prototype.hasOwnProperty.call(App.state.expandedMetrics, metricKey)) {
+      App.state.expandedMetrics[metricKey] = metricKey === 'fcstAdjusted';
+    }
+  });
+  if (!this.state.diffToggles) this.state.diffToggles = {};
+  if (!this.state.expandedNoteKeys) this.state.expandedNoteKeys = {};
+};
+
+App.findFcstRow_ = function(name, period) {
+  return this.currentFcstRows_(period).find(function(row) {
+    return row && row.name === name;
+  }) || null;
+};
+
+App.toggleMetricDetails = function(metricKey) {
+  this.ensureFcstUiState_();
+  this.state.expandedMetrics[metricKey] = !this.state.expandedMetrics[metricKey];
+  this.renderFcst();
+};
+
+App.toggleDiff = function(metricKey, partKey, diffKind) {
+  this.ensureFcstUiState_();
+  if (!this.state.diffToggles[metricKey]) this.state.diffToggles[metricKey] = {};
+  if (!this.state.diffToggles[metricKey][partKey]) this.state.diffToggles[metricKey][partKey] = {};
+  this.state.diffToggles[metricKey][partKey][diffKind] = !this.state.diffToggles[metricKey][partKey][diffKind];
+  this.renderFcst();
+};
+
+App.toggleNoteExpand = function(name, period) {
+  this.ensureFcstUiState_();
+  var key = name + '|' + period;
+  if (this.state.expandedNoteKeys[key]) delete this.state.expandedNoteKeys[key];
+  else this.state.expandedNoteKeys[key] = true;
+  this.renderFcst();
+};
+
+App.rebuildFcstAdjustedTotals_ = function(period) {
+  var rows = safeArray(this.state.fcstRowsByPeriod[period]);
+  var departmentTotal = null;
+  var groupTotals = {};
+
+  rows.forEach(function(row) {
+    if (!row || !row.isTotal) return;
+    row.metric = row.metric || {};
+    row.wow = row.wow || {};
+    row.metric.fcstAdjusted = { net: 0, newExp: 0, churn: 0 };
+    row.wow.fcstAdjusted = { net: 0, newExp: 0, churn: 0 };
+    if (row.totalKind === 'department') departmentTotal = row;
+    if (row.totalKind === 'group' && row.group) groupTotals[row.group] = row;
+  });
+
+  rows.forEach(function(row) {
+    if (!row || row.isTotal) return;
+    var currentMetric = cloneFcstMetric_(row.metric && row.metric.fcstAdjusted);
+    var currentWow = cloneFcstMetric_(row.wow && row.wow.fcstAdjusted);
+    if (departmentTotal) {
+      addFcstMetric_(departmentTotal.metric.fcstAdjusted, currentMetric);
+      addFcstMetric_(departmentTotal.wow.fcstAdjusted, currentWow);
+    }
+    if (row.group && groupTotals[row.group]) {
+      addFcstMetric_(groupTotals[row.group].metric.fcstAdjusted, currentMetric);
+      addFcstMetric_(groupTotals[row.group].wow.fcstAdjusted, currentWow);
+    }
+  });
+};
+
+App.renderFcstAdjCell_ = function(name, period, partKey, value, hasSavedValue) {
+  var displayVal = hasSavedValue ? fmtNum(value) : '未入力';
+  return '<span class="fcst-adj-cell ' + metricToneClass_(partKey, value) + '" ' +
+    'data-name="' + escapeHtml(name) + '" ' +
+    'data-period="' + escapeHtml(period) + '" ' +
+    'data-field="' + escapeHtml(partKey) + '" ' +
+    'data-val="' + escapeHtml(String(Number(value) || 0)) + '" ' +
+    'data-has-saved="' + (hasSavedValue ? 'true' : 'false') + '" ' +
+    'onclick="App.activateFcstAdjInput(this)">' + escapeHtml(displayVal) + '</span>';
+};
+
+App.activateFcstAdjInput = function(el) {
+  var name = el.dataset.name;
+  var period = el.dataset.period;
+  var field = el.dataset.field;
+  var value = Number(el.dataset.val) || 0;
+  var hasSavedValue = el.dataset.hasSaved === 'true';
+  var input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'edit-input fcst-adj-input';
+  input.value = (hasSavedValue || value !== 0) ? String(value) : '';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  var committed = false;
+  var commit = function() {
+    if (committed) return;
+    committed = true;
+    var nextValue = input.value === '' ? 0 : (Number(input.value) || 0);
+    App.commitFcstAdj(name, period, field, nextValue);
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') {
+      input.removeEventListener('blur', commit);
+      commit();
+    }
+    if (event.key === 'Escape') {
+      committed = true;
+      App.renderFcst();
+    }
+  });
+};
+
+App.commitFcstAdj = function(name, period, partKey, nextValue) {
+  var row = this.findFcstRow_(name, period);
+  if (!row || row.isTotal) {
+    this.renderFcst();
+    return;
+  }
+
+  row.metric = row.metric || {};
+  row.wow = row.wow || {};
+  var previousMetric = cloneFcstMetric_(row.metric.fcstAdjusted);
+  var nextMetric = cloneFcstMetric_(row.metric.fcstAdjusted);
+  if (partKey === 'net') {
+    nextMetric.net = nextValue;
+    nextMetric.newExp = 0;
+    nextMetric.churn = 0;
+  } else {
+    nextMetric[partKey] = nextValue;
+    nextMetric.net = (Number(nextMetric.newExp) || 0) + (Number(nextMetric.churn) || 0);
+  }
+
+  var wowMetric = cloneFcstMetric_(row.wow.fcstAdjusted);
+  wowMetric.net += nextMetric.net - previousMetric.net;
+  wowMetric.newExp += nextMetric.newExp - previousMetric.newExp;
+  wowMetric.churn += nextMetric.churn - previousMetric.churn;
+
+  row.metric.fcstAdjusted = nextMetric;
+  row.wow.fcstAdjusted = wowMetric;
+  row.hasFcstAdjustedSaved = true;
+  this.rebuildFcstAdjustedTotals_(period);
+  this.renderFcst();
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.error) alert('保存失敗: ' + result.error);
+    })
+    .withFailureHandler(function(error) {
+      alert('保存失敗: ' + ((error && error.message) || String(error)));
+    })
+    .saveFcstAdjusted2(_selectedDept, {
+      name: name,
+      period: period,
+      net: nextMetric.net,
+      newExp: nextMetric.newExp,
+      churn: nextMetric.churn
+    });
+};
+
+App.renderNoteCell_ = function(row, period) {
+  this.ensureFcstUiState_();
+  var note = String(row && row.note || '');
+  var key = (row && row.name || '') + '|' + period;
+  var expanded = !!this.state.expandedNoteKeys[key];
+  var isSnapshotMode = !!this.state.snapshotDate;
+  var contentHtml = expanded
+    ? '<div class="cell-detail-note-full' + (note ? '' : ' empty') + '">' + escapeHtml(note || '未入力') + '</div>'
+    : '<div class="cell-detail-note-preview' + (note ? '' : ' empty') + '">' + escapeHtml(note || '未入力') + '</div>';
+
+  var actionsHtml = '<div class="cell-detail-actions">';
+  actionsHtml += '<button class="cell-detail-btn" type="button" onclick="App.toggleNoteExpand(\'' + escapeHtml(row.name) + '\', \'' + escapeHtml(period) + '\')">' + (expanded ? '閉じる' : '詳細') + '</button>';
+  if (!isSnapshotMode) {
+    actionsHtml += '<button class="cell-detail-btn cell-detail-btn-input" type="button" onclick="App.openNoteModal(\'' + escapeHtml(row.name) + '\', \'' + escapeHtml(period) + '\')">入力</button>';
+  }
+  actionsHtml += '</div>';
+  return '<div class="cell-detail">' + contentHtml + actionsHtml + '</div>';
+};
+
+App.renderKeyDealCell_ = function(row, period) {
+  var deals = safeArray(row && row.metric && row.metric.keyDeals);
+  var preview = '';
+  if (deals.length === 1) {
+    preview = [deals[0].company, fmtNum(deals[0].monthlyMrr), deals[0].phase].filter(Boolean).join(' / ');
+  } else if (deals.length > 1) {
+    preview = (deals[0].company || 'Key Deal') + ' +' + (deals.length - 1) + '件';
+  }
+  var previewHtml = '<div class="cell-detail-preview' + (preview ? '' : ' empty') + '">' + escapeHtml(preview || '未設定') + '</div>';
+  var actionsHtml = '<div class="cell-detail-actions"><button class="cell-detail-btn" type="button" onclick="App.openKeyDealModal(\'' + escapeHtml(row.name) + '\', \'' + escapeHtml(period) + '\')">詳細</button></div>';
+  return '<div class="cell-detail">' + previewHtml + actionsHtml + '</div>';
+};
+
+App.openDetailModal_ = function(title, kicker, bodyHtml, footerHtml) {
+  var modal = document.getElementById('detail-modal');
+  if (!modal) return;
+  document.getElementById('detail-modal-title').textContent = title;
+  document.getElementById('detail-modal-kicker').textContent = kicker || '';
+  document.getElementById('detail-modal-body').innerHTML = bodyHtml || '';
+  document.getElementById('detail-modal-footer').innerHTML = footerHtml || '';
+  modal.classList.remove('hidden');
+};
+
+App.closeDetailModal = function() {
+  var modal = document.getElementById('detail-modal');
+  if (modal) modal.classList.add('hidden');
+};
+
+App.openKeyDealModal = function(name, period) {
+  var row = this.findFcstRow_(name, period);
+  if (!row) return;
+  var deals = safeArray(row.metric && row.metric.keyDeals);
+  var periodLabel = formatFcstPeriodLabel_(period, this.currentFcstPeriodOptions_());
+  var bodyHtml;
+  if (!deals.length) {
+    bodyHtml = '<div class="cell-detail-preview empty">Key Deal はありません</div>';
+  } else {
+    bodyHtml = '<div class="detail-section-title">Key Deal</div><div class="deal-list">' + deals.map(function(deal) {
+      var title = [deal.company, fmtNum(deal.monthlyMrr), deal.phase, fmtNum(deal.fcst)].filter(Boolean).join(' / ');
+      var titleHtml = escapeHtml(title);
+      if (deal.oppId) {
+        titleHtml = '<a href="' + escapeHtml(buildOpportunityUrl_(deal.oppId)) + '" target="_blank" class="deal-card-link">' + titleHtml + '</a>';
+      }
+      return '<div class="deal-card"><div class="deal-card-main">' + titleHtml + '</div><div class="deal-card-sub">' + escapeHtml((row.displayName || row.name || '') + ' / ' + periodLabel) + '</div></div>';
+    }).join('') + '</div>';
+  }
+  this.openDetailModal_('Key Deal', (row.displayName || row.name || '') + ' / ' + periodLabel, bodyHtml, '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>');
+};
+
+App.openNoteModal = function(name, period) {
+  var row = this.findFcstRow_(name, period);
+  if (!row) return;
+  var periodLabel = formatFcstPeriodLabel_(period, this.currentFcstPeriodOptions_());
+  var bodyHtml = '<div class="detail-section-title">備考・メモ</div>' +
+    '<textarea id="detail-note-textarea" class="notes-textarea" style="min-height:220px;" placeholder="備考・メモを入力">' + escapeHtml(row.note || '') + '</textarea>';
+  var footerHtml = '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>' +
+    '<button class="detail-btn-primary" type="button" onclick="App.saveNoteFromModal(\'' + escapeHtml(name) + '\', \'' + escapeHtml(period) + '\')">保存</button>';
+  this.openDetailModal_('備考・メモ', (row.displayName || row.name || '') + ' / ' + periodLabel, bodyHtml, footerHtml);
+};
+
+App.saveNoteFromModal = function(name, period) {
+  var textarea = document.getElementById('detail-note-textarea');
+  var row = this.findFcstRow_(name, period);
+  if (!textarea || !row) return;
+  var note = textarea.value || '';
+  row.note = note;
+  this.closeDetailModal();
+  this.renderFcst();
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.error) alert('保存失敗: ' + result.error);
+    })
+    .withFailureHandler(function(error) {
+      alert('保存失敗: ' + ((error && error.message) || String(error)));
+    })
+    .saveNote(_selectedDept, { name: name, period: period, note: note });
+};
+
+App.renderFcstSubHeader_ = function(metricDef, partKey, isFirstColumn) {
+  this.ensureFcstUiState_();
+  var labelMap = { net: 'Net', newExp: 'New+Exp', churn: 'Churn' };
+  var toggles = (((this.state.diffToggles || {})[metricDef.key] || {})[partKey] || {});
+  var classes = ['sub-header'];
+  if (partKey === 'net') classes.push('sub-header-net');
+  if (partKey === 'newExp') classes.push('sub-header-plus');
+  if (partKey === 'churn') classes.push('sub-header-minus');
+  if (isFirstColumn) classes.push('col-group-start');
+  var html = '<th class="' + classes.join(' ') + '">' + labelMap[partKey];
+  html += '<button class="diff-toggle-btn' + (toggles.wow ? ' active' : '') + '" type="button" onclick="App.toggleDiff(\'' + metricDef.key + '\', \'' + partKey + '\', \'wow\')">先週比</button>';
+  html += '<button class="diff-toggle-btn' + (toggles.target ? ' active' : '') + '" type="button" onclick="App.toggleDiff(\'' + metricDef.key + '\', \'' + partKey + '\', \'target\')">目標比</button>';
+  html += '</th>';
+  return html;
+};
+
+App.renderFcstMetricCell_ = function(row, period, metricDef, partKey) {
+  this.ensureFcstUiState_();
+  var metric = row.metric && row.metric[metricDef.key];
+  var baseHtml;
+  if (metricDef.editable && !row.isTotal && !this.state.snapshotDate) {
+    baseHtml = this.renderFcstAdjCell_(
+      row.name,
+      period,
+      partKey,
+      Number(safeMetricPart_(metric, partKey)) || 0,
+      !!row.hasFcstAdjustedSaved
+    );
+  } else {
+    baseHtml = renderMetricValue_(metric, partKey);
+  }
+
+  var toggles = (((this.state.diffToggles || {})[metricDef.key] || {})[partKey] || {});
+  var badges = '';
+  if (toggles.wow) badges += renderFcstDiffBadge_(safeMetricPart_(row.wow && row.wow[metricDef.key], partKey) || 0);
+  if (toggles.target) badges += renderFcstDiffBadge_(safeMetricPart_(diffFcstMetric_(metric, row.metric && row.metric.target), partKey) || 0);
+  return baseHtml + badges;
+};
+
+App.renderFcstModern_ = function() {
+  this.ensureFcstUiState_();
+  var data = this.state.initData;
+  if (!data) return;
+
+  var options = this.currentFcstPeriodOptions_();
+  var selectedQuarter = this.findQuarterOption_(this.state.selectedQuarterKey, options) || this.findQuarterForPeriod_(this.state.selectedPeriod, options) || options[0] || null;
+  if (selectedQuarter) this.state.selectedQuarterKey = selectedQuarter.key;
+
+  var validPeriods = selectedQuarter ? [selectedQuarter.key].concat(safeArray(selectedQuarter.months)) : [];
+  if (validPeriods.length && validPeriods.indexOf(this.state.selectedPeriod) === -1) this.state.selectedPeriod = selectedQuarter.key;
+
+  var period = this.state.selectedPeriod || this.pickDefaultPeriod(data);
+  var allRows = this.currentFcstRows_(period).filter(Boolean);
+  var memberRows = allRows.filter(function(row) { return !row.isTotal; });
+  var totalRows = allRows.filter(function(row) { return !!row.isTotal; });
+  var groups = {};
+  memberRows.forEach(function(row) {
+    var key = row.group || '未設定';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(row);
+  });
+
+  var groupNames = Object.keys(groups).sort();
+  var selectedGroup = this.state.selectedGroup || '部全体';
+  if (selectedGroup !== '部全体' && groupNames.indexOf(selectedGroup) === -1) {
+    selectedGroup = '部全体';
+    this.state.selectedGroup = selectedGroup;
+  }
+
+  var displayRows = [];
+  if (selectedGroup === '部全体') {
+    displayRows = totalRows.length ? totalRows : memberRows;
+  } else {
+    var groupTotal = totalRows.find(function(row) {
+      return row && row.totalKind === 'group' && String(row.group || '') === selectedGroup;
+    });
+    if (groupTotal) displayRows.push(groupTotal);
+    displayRows = displayRows.concat(groups[selectedGroup] || []);
+  }
+
+  var periodLabel = formatFcstPeriodLabel_(period, options);
+  var summaryRow = this.findFcstSummaryRow_(allRows, selectedGroup) || this.buildFcstSummaryFallback_(allRows, selectedGroup);
+  var metricDefs = fcstMetricDefs_();
+  var self = this;
+
+  var html = '<div class="fcst-view-shell"><div class="fcst-view-head">';
+  html += '<div class="view-toolbar">';
+  html += '<span class="view-toolbar-meta">部署: ' + escapeHtml((currentDeptConfig_() && currentDeptConfig_().label) || _selectedDept || '') + '</span>';
+  html += '<span class="view-toolbar-meta">表示期間: ' + escapeHtml(periodLabel || '') + '</span>';
+  html += '<button class="save-bar-btn" type="button" onclick="App.toggleFilterPanel(\'fcst\')">' + (this.state.fcstFiltersCollapsed ? 'フィルタを展開' : 'フィルタを閉じる') + '</button>';
+  html += '</div>';
+  html += this.renderFcstWeekNav_();
+
+  html += '<div class="view-filter-panel' + (this.state.fcstFiltersCollapsed ? ' collapsed' : '') + '">';
+  html += '<div class="filter-chip-row"><span class="filter-chip-label">対象Q:</span><div class="quarter-chips">';
+  options.forEach(function(option) {
+    html += '<button type="button" class="chip' + (selectedQuarter && selectedQuarter.key === option.key ? ' active' : '') + '" onclick="App.selectQuarter(\'' + escapeHtml(option.key) + '\')">' + escapeHtml(option.label || option.key) + '</button>';
+  });
+  html += '</div></div>';
+
+  html += '<div class="filter-chip-row"><span class="filter-chip-label">対象月:</span><div class="period-chips">';
+  if (selectedQuarter) {
+    html += '<button type="button" class="chip' + (period === selectedQuarter.key ? ' active' : '') + '" onclick="App.selectPeriod(\'' + escapeHtml(selectedQuarter.key) + '\')">' + escapeHtml(selectedQuarter.label || selectedQuarter.key) + '</button>';
+    safeArray(selectedQuarter.months).forEach(function(monthKey) {
+      html += '<button type="button" class="chip' + (period === monthKey ? ' active' : '') + '" onclick="App.selectPeriod(\'' + escapeHtml(monthKey) + '\')">' + escapeHtml(formatFcstPeriodLabel_(monthKey, options)) + '</button>';
+    });
+  }
+  html += '</div></div>';
+
+  html += '<div class="filter-chip-row"><span class="filter-chip-label">表示:</span><div class="group-chips">';
+  html += '<button type="button" class="chip' + (selectedGroup === '部全体' ? ' active' : '') + '" onclick="App.selectGroup(\'\u90e8\u5168\u4f53\')">部全体</button>';
+  groupNames.forEach(function(groupName) {
+    html += '<button type="button" class="chip' + (selectedGroup === groupName ? ' active' : '') + '" onclick="App.selectGroup(\'' + escapeHtml(groupName) + '\')">' + escapeHtml(groupName) + '</button>';
+  });
+  html += '</div></div></div></div>';
+
+  html += this.renderFcstSummaryCards_(summaryRow, periodLabel);
+  html += '<div class="section-title">FCST一覧 <span class="period-badge">' + escapeHtml(periodLabel || '') + '</span></div>';
+  html += '<div class="table-wrapper fcst-table-wrap"><table><thead><tr>';
+  html += '<th rowspan="2" class="col-group col-group-start th-person">担当者</th>';
+  html += '<th rowspan="2" class="col-group col-group-start th-target">目標</th>';
+  metricDefs.forEach(function(metricDef) {
+    var expanded = !!self.state.expandedMetrics[metricDef.key];
+    html += '<th colspan="' + (expanded ? '3' : '1') + '" class="col-group col-group-start">';
+    html += escapeHtml(metricDef.label);
+    html += '<button class="col-expand-btn" type="button" onclick="App.toggleMetricDetails(\'' + metricDef.key + '\')">' + (expanded ? '-' : '+') + '</button>';
+    html += '</th>';
+  });
+  html += '<th rowspan="2" class="col-group col-group-start th-keydeal keydeal-col">Key Deal</th>';
+  html += '<th rowspan="2" class="col-group col-group-start th-notes notes-col">備考・メモ</th>';
+  html += '</tr><tr>';
+  metricDefs.forEach(function(metricDef) {
+    var expanded = !!self.state.expandedMetrics[metricDef.key];
+    html += self.renderFcstSubHeader_(metricDef, 'net', true);
+    if (expanded) {
+      html += self.renderFcstSubHeader_(metricDef, 'newExp', false);
+      html += self.renderFcstSubHeader_(metricDef, 'churn', false);
+    }
+  });
+  html += '</tr></thead><tbody>';
+
+  displayRows.forEach(function(row) {
+    var displayName = row.displayName || row.name || row.group || '';
+    var rowClass = '';
+    if (row.isTotal && row.totalKind === 'department') rowClass = ' class="overall-total-row"';
+    else if (row.isTotal) rowClass = ' class="total-row"';
+    html += '<tr' + rowClass + '>';
+    html += '<td class="td-person">' + escapeHtml(row.isTotal ? displayName : '　' + displayName) + '</td>';
+    html += '<td class="td-target">' + renderMetricValue_(row.metric && row.metric.target, 'net') + '</td>';
+    metricDefs.forEach(function(metricDef) {
+      var expanded = !!self.state.expandedMetrics[metricDef.key];
+      html += '<td class="col-group-start">' + self.renderFcstMetricCell_(row, period, metricDef, 'net') + '</td>';
+      if (expanded) {
+        html += '<td>' + self.renderFcstMetricCell_(row, period, metricDef, 'newExp') + '</td>';
+        html += '<td>' + self.renderFcstMetricCell_(row, period, metricDef, 'churn') + '</td>';
+      }
+    });
+    html += '<td class="td-keydeal">' + self.renderKeyDealCell_(row, period) + '</td>';
+    html += '<td class="td-notes">' + self.renderNoteCell_(row, period) + '</td>';
+    html += '</tr>';
+  });
+
+  if (!displayRows.length) {
+    var colCount = 4;
+    metricDefs.forEach(function(metricDef) {
+      colCount += self.state.expandedMetrics[metricDef.key] ? 3 : 1;
+    });
+    html += '<tr><td colspan="' + colCount + '">表示できるデータがありません</td></tr>';
+  }
+
+  html += '</tbody></table></div></div>';
+  document.getElementById('fcst-content').innerHTML = html;
+};
+
+App.renderFcst = function() {
+  this.ensureFcstUiState_();
+  return this.renderFcstModern_();
+};
+
+App.syncTrendBlockOptions_ = function() {
+  var select = document.getElementById('trend-block-select');
+  if (!select) return;
+  var options = this.currentFcstPeriodOptions_();
+  if (!options || !options.length) return;
+  var quarter = options[0];
+  var built = [{ value: 'Q', label: (quarter && quarter.label ? quarter.label : 'Q合計') }];
+  safeArray(quarter && quarter.months).forEach(function(monthKey) {
+    var match = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
+    if (!match) return;
+    var monthNum = Number(match[2]);
+    built.push({ value: 'M' + monthNum, label: monthNum + '月' });
+  });
+  var currentValue = this.state.trendBlock || 'Q';
+  var valid = built.some(function(item) { return item.value === currentValue; });
+  if (!valid) {
+    currentValue = 'Q';
+    this.state.trendBlock = 'Q';
+  }
+  var currentHtml = built.map(function(item) {
+    return '<option value="' + escapeHtml(item.value) + '"' + (item.value === currentValue ? ' selected' : '') + '>' + escapeHtml(item.label) + '</option>';
+  }).join('');
+  if (select.innerHTML !== currentHtml) {
+    select.innerHTML = currentHtml;
+  }
+  if (select.value !== currentValue) select.value = currentValue;
+};
+
+App.renderTrendChart_ = function(points) {
+  var canvas = document.getElementById('trend-chart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (this.state.trendChart) { this.state.trendChart.destroy(); this.state.trendChart = null; }
+
+  var labels = points.map(function(p) { return p.label || p.date || ''; });
+  var radii = points.map(function(p) { return p.isLive ? 6 : 3; });
+  var styles = points.map(function(p) { return p.isLive ? 'rectRot' : 'circle'; });
+  var extract = function(key) {
+    return points.map(function(p) { return Number(p.metrics && p.metrics[key]) || 0; });
+  };
+
+  var segmentDash = {
+    borderDash: function(ctx) {
+      var a = points[ctx.p0DataIndex] || {};
+      var b = points[ctx.p1DataIndex] || {};
+      return (a.isBackfilled || b.isBackfilled) ? [6, 4] : undefined;
+    }
+  };
+
+  var datasets = [
+    { label: '目標', data: extract('target'), borderColor: '#f29900', backgroundColor: '#f29900', tension: 0.2, pointRadius: radii, pointStyle: styles, segment: segmentDash },
+    { label: '実績', data: extract('confirmed'), borderColor: '#5f6368', backgroundColor: '#5f6368', tension: 0.2, pointRadius: radii, pointStyle: styles, segment: segmentDash },
+    { label: 'FCST(調整後)', data: extract('fcstAdjusted'), borderColor: '#1a73e8', backgroundColor: '#1a73e8', tension: 0.2, pointRadius: radii, pointStyle: styles, segment: segmentDash },
+    { label: 'FCST(コミット)', data: extract('fcstCommit'), borderColor: '#0b8043', backgroundColor: '#0b8043', tension: 0.2, pointRadius: radii, pointStyle: styles, segment: segmentDash },
+    { label: '期待MRR', data: extract('expectedMrr'), borderColor: '#a142f4', backgroundColor: '#a142f4', tension: 0.2, pointRadius: radii, pointStyle: styles, segment: segmentDash }
+  ];
+
+  this.state.trendChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: labels, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            footer: function(items) {
+              if (!items || !items.length) return '';
+              var point = points[items[0].dataIndex];
+              if (!point) return '';
+              var lines = ['Key Deal: ' + (point.keyDealCount || 0) + '件'];
+              safeArray(point.keyDealPreview).slice(0, 3).forEach(function(deal) {
+                lines.push(' ・ ' + (deal.company || '-') + ' (' + fmtNum(deal.monthlyMrr) + ')');
+              });
+              return lines.join('\n');
+            }
+          }
+        }
+      },
+      scales: { y: { beginAtZero: false } }
+    }
+  });
+};
+
+App.renderTrendTable_ = function(points) {
+  var wrap = document.getElementById('trend-table-wrap');
+  if (!wrap) return;
+  if (!points.length) {
+    wrap.innerHTML = '<div class="trend-empty">データなし</div>';
+    return;
+  }
+  var header = '<thead><tr>' +
+    '<th>日付</th><th>目標</th><th>実績</th><th>FCST(調整後)</th><th>FCST(コミット)</th><th>期待MRR</th><th>KeyDeal件数</th>' +
+    '</tr></thead>';
+  var body = points.slice().reverse().map(function(p) {
+    var m = p.metrics || {};
+    var classes = [];
+    if (p.isLive) classes.push('trend-row-live');
+    if (p.isBackfilled) classes.push('trend-row-backfilled');
+    var classAttr = classes.length ? ' class="' + classes.join(' ') + '"' : '';
+    var snapshotKey = String(p.snapshotKey || '');
+    return '<tr' + classAttr + ' data-snapshot-key="' + escapeHtml(snapshotKey) + '" onclick="App.openTrendKeyDealModal_(\'' + escapeHtml(snapshotKey).replace(/'/g, '&#39;') + '\')">' +
+      '<td>' + escapeHtml(p.label || p.date || '') + '</td>' +
+      '<td>' + escapeHtml(fmtNum(m.target)) + '</td>' +
+      '<td>' + escapeHtml(fmtNum(m.confirmed)) + '</td>' +
+      '<td>' + escapeHtml(fmtNum(m.fcstAdjusted)) + '</td>' +
+      '<td>' + escapeHtml(fmtNum(m.fcstCommit)) + '</td>' +
+      '<td>' + escapeHtml(fmtNum(m.expectedMrr)) + '</td>' +
+      '<td>' + escapeHtml(String(p.keyDealCount || 0)) + '</td>' +
+    '</tr>';
+  }).join('');
+  wrap.innerHTML = '<table class="trend-table">' + header + '<tbody>' + body + '</tbody></table>';
+};
+
+App.openTrendKeyDealModal_ = function(snapshotKey) {
+  var self = this;
+  var deptKey = _selectedDept;
+  var periodKey = this.state.trendBlock || 'Q';
+  var periodLabel = formatFcstPeriodLabel_(periodKey, this.currentFcstPeriodOptions_()) || periodKey;
+  var points = safeArray(this.state.trendData && this.state.trendData.points);
+  var point = null;
+  for (var i = 0; i < points.length; i++) {
+    if (String(points[i].snapshotKey) === String(snapshotKey)) { point = points[i]; break; }
+  }
+  var title = (point && (point.label || point.date)) || snapshotKey || '週次スナップショット';
+  var kicker = (deptKey ? deptKey + ' / ' : '') + periodLabel;
+  this.openDetailModal_(title, kicker, '<div class="trend-empty">読み込み中...</div>', '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>');
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      self.renderTrendKeyDealModalBody_(result || {}, title, kicker);
+    })
+    .withFailureHandler(function(error) {
+      var msg = (error && error.message) || String(error);
+      self.openDetailModal_(title, kicker, '<div class="trend-empty">取得に失敗しました: ' + escapeHtml(msg) + '</div>', '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>');
+    })
+    .getTrendWeekDetails(deptKey, periodKey, snapshotKey);
+};
+
+App.renderTrendKeyDealModalBody_ = function(result, title, kicker) {
+  var metrics = (result && result.metrics) || {};
+  var keyDeals = safeArray(result && result.keyDeals);
+  var metricCards = [
+    { label: '目標', value: metrics.target },
+    { label: '実績', value: metrics.confirmed },
+    { label: 'FCST(調整後)', value: metrics.fcstAdjusted },
+    { label: 'FCST(コミット)', value: metrics.fcstCommit },
+    { label: '期待MRR', value: metrics.expectedMrr }
+  ].map(function(card) {
+    return '<div class="trend-stat"><div class="ts-label">' + escapeHtml(card.label) + '</div><div class="ts-val">' + escapeHtml(fmtNum(card.value)) + '</div></div>';
+  }).join('');
+
+  var dealsHtml;
+  if (!keyDeals.length) {
+    dealsHtml = '<div class="trend-empty">Key Deal なし</div>';
+  } else {
+    var rows = keyDeals.map(function(deal) {
+      var companyCell = escapeHtml(deal.company || '-');
+      if (deal.oppId) {
+        companyCell = '<a href="' + escapeHtml(buildOpportunityUrl_(deal.oppId)) + '" target="_blank" rel="noopener">' + companyCell + '</a>';
+      }
+      return '<tr>' +
+        '<td>' + companyCell + '</td>' +
+        '<td>' + escapeHtml(fmtNum(deal.monthlyMrr)) + '</td>' +
+        '<td>' + escapeHtml(deal.phase || '-') + '</td>' +
+        '<td>' + escapeHtml(fmtNum(deal.fcst)) + '</td>' +
+      '</tr>';
+    }).join('');
+    dealsHtml = '<table class="trend-keydeal-table"><thead><tr><th>会社名</th><th>月額MRR</th><th>フェーズ</th><th>FCST</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  var bodyHtml = '<div class="trend-metrics-grid">' + metricCards + '</div>' +
+    '<div class="detail-section-title">Key Deal' + (keyDeals.length ? ' (' + keyDeals.length + '件)' : '') + '</div>' +
+    dealsHtml;
+  this.openDetailModal_(title, kicker, bodyHtml, '<button class="detail-btn-secondary" type="button" onclick="App.closeDetailModal()">閉じる</button>');
+};
+
 window.addEventListener('error', function(event) {
-  renderBootError_(event.error || event.message || 'Unknown error');
+  renderBootError_(event.error || event.message || event);
 });
 
 window.addEventListener('unhandledrejection', function(event) {
   renderBootError_(event.reason || 'Unhandled promise rejection');
 });
 
-document.addEventListener('DOMContentLoaded', function() {
-  try {
-    _deptConfig = parseEmbeddedJson_('gas-dept-config-json', {});
-    _embeddedInitData = parseEmbeddedJson_('gas-embedded-init-data-json', null);
-    initPage_();
-  } catch (error) {
-    renderBootError_(error);
-  }
-});
+function bootClient_() {
+  App.boot();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootClient_);
+} else {
+  bootClient_();
+}
 </script>

@@ -3,3 +3,6 @@ node_modules/**
 .git/**
 .gitignore
 OPP_LIST_DESIGN.md
+_clasp_tmp/**
+__tmp_js_extract.js
+debug.log

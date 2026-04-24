@@ -1,30 +1,36 @@
 function OppListSnapshot_createWeekly(deptKey) {
-  var rows = OppListReader_getLiveRows(deptKey).rows || [];
-  var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-  if (!sheet) {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    sheet = ss.insertSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-    sheet.getRange(1, 1, 1, 5).setValues([['snapshot_at', 'snapshot_date', 'opp_id', 'dept', 'payload_json']]);
-  }
-
-  var now = new Date();
-  var dateStr = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
-  var appendRows = (rows || []).map(function(row) {
-    var payload = JSON.parse(JSON.stringify(row));
-    payload.snapshotDate = dateStr;
-    // Task 4 guard: omit proposalProductIds for depts without proposalProducts feature
-    if (!DEPT_CONFIG[deptKey].features.proposalProducts) {
-      delete payload.proposalProductIds;
+  var lock = LockService.getSpreadsheetLock();
+  lock.waitLock(10000);
+  try {
+    var rows = OppListReader_getLiveRows(deptKey).rows || [];
+    var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
+    if (!sheet) {
+      var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      sheet = ss.insertSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
+      sheet.getRange(1, 1, 1, 5).setValues([['snapshot_at', 'snapshot_date', 'opp_id', 'dept', 'payload_json']]);
     }
-    return [now, dateStr, row.oppId || '', deptKey, JSON.stringify(payload)];
-  });
 
-  OppListSnapshot_deleteByDate_(deptKey, sheet, dateStr);
-  if (appendRows.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, 5).setValues(appendRows);
+    var now = new Date();
+    var dateStr = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
+    var appendRows = (rows || []).map(function(row) {
+      var payload = JSON.parse(JSON.stringify(row));
+      payload.snapshotDate = dateStr;
+      // Task 4 guard: omit proposalProductIds for depts without proposalProducts feature
+      if (!isProposalProductsEnabled_(deptKey)) {
+        delete payload.proposalProductIds;
+      }
+      return [now, dateStr, row.oppId || '', deptKey, JSON.stringify(payload)];
+    });
+
+    OppListSnapshot_deleteByDate_(deptKey, sheet, dateStr);
+    if (appendRows.length) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, 5).setValues(appendRows);
+    }
+    OppListSnapshot_trimOld_(deptKey, sheet);
+    return { ok: true, date: dateStr, count: appendRows.length };
+  } finally {
+    lock.releaseLock();
   }
-  OppListSnapshot_trimOld_(deptKey, sheet);
-  return { ok: true, date: dateStr, count: appendRows.length };
 }
 
 function OppListSnapshot_getSnapshotDates(deptKey) {
@@ -76,14 +82,14 @@ function OppListSnapshot_setupWeeklyTrigger() {
 
 function OppListSnapshot_deleteByDate_(deptKey, sheet, dateStr) {
   if (sheet.getLastRow() < 2) return;
-  for (var row = sheet.getLastRow(); row >= 2; row--) {
-    var rowValues = sheet.getRange(row, 2, 1, 3).getValues()[0];
+  var values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 3).getValues();
+  var deleteRows = [];
+  values.forEach(function(rowValues, idx) {
     var rowDate = String(rowValues[0] || '').trim();
     var rowDept = String(rowValues[2] || '').trim();
-    if (rowDate === dateStr && rowDept === deptKey) {
-      sheet.deleteRow(row);
-    }
-  }
+    if (rowDate === dateStr && rowDept === deptKey) deleteRows.push(idx + 2);
+  });
+  OppListSnapshot_deleteRows_(sheet, deleteRows);
 }
 
 function OppListSnapshot_trimOld_(deptKey, sheet) {
@@ -91,10 +97,34 @@ function OppListSnapshot_trimOld_(deptKey, sheet) {
   if (dates.length <= 52) return;
   var keep = {};
   dates.slice(0, 52).forEach(function(dateStr) { keep[dateStr] = true; });
-  for (var row = sheet.getLastRow(); row >= 2; row--) {
-    var rowValues = sheet.getRange(row, 2, 1, 3).getValues()[0];
+  var values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 3).getValues();
+  var deleteRows = [];
+  values.forEach(function(rowValues, idx) {
     var dateStr = String(rowValues[0] || '').trim();
     var rowDept = String(rowValues[2] || '').trim();
-    if (rowDept === deptKey && dateStr && !keep[dateStr]) sheet.deleteRow(row);
+    if (rowDept === deptKey && dateStr && !keep[dateStr]) deleteRows.push(idx + 2);
+  });
+  OppListSnapshot_deleteRows_(sheet, deleteRows);
+}
+
+function OppListSnapshot_deleteRows_(sheet, rowNumbers) {
+  if (!rowNumbers || !rowNumbers.length) return;
+
+  var sorted = rowNumbers.slice().sort(function(a, b) { return b - a; });
+  var previous = sorted[0];
+  var count = 1;
+
+  for (var i = 1; i < sorted.length; i++) {
+    var rowNumber = sorted[i];
+    if (rowNumber === previous - 1) {
+      previous = rowNumber;
+      count++;
+      continue;
+    }
+    sheet.deleteRows(previous, count);
+    previous = rowNumber;
+    count = 1;
   }
+
+  sheet.deleteRows(previous, count);
 }

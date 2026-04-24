@@ -1,7 +1,7 @@
 function migrateToSharedArchitecture() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  [FCST_ADJUSTED_SHEET_NAME, TARGET_SHEET_NAME, MONTHLY_TARGET_MASTER_SHEET_NAME].forEach(function(name) {
+  [FCST_ADJUSTED_SHEET_NAME].forEach(function(name) {
     var sheet = ss.getSheetByName(name);
     if (!sheet) return;
 
@@ -49,10 +49,8 @@ function migrateToSharedArchitecture() {
     Logger.log('Created: ' + OPP_LIST_SNAPSHOT_SHEET_NAME);
   }
 
-  if (!ss.getSheetByName(MONTHLY_TARGET_MASTER_SHEET_NAME)) {
-    ss.insertSheet(MONTHLY_TARGET_MASTER_SHEET_NAME);
-    Logger.log('Created: ' + MONTHLY_TARGET_MASTER_SHEET_NAME);
-  }
+  MasterSchema_setupSheets();
+  Logger.log('Created/updated master sheets: ' + [ORG_MASTER_SHEET_NAME, TARGET_MASTER_SHEET_NAME, ASSIGNMENT_MASTER_SHEET_NAME].join(', '));
 
   Logger.log('Migration complete.');
 }
