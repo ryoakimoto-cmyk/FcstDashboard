@@ -500,8 +500,21 @@ function refreshSfDataAndGetOpportunities(deptKey) {
 }
 
 function createSnapshot(deptKey) {
+  if (!deptKey) {
+    var allFcstResults = getDeptKeys_().map(function(key) {
+      var result = createSnapshot(key) || {};
+      var entry = { deptKey: key };
+      Object.keys(result).forEach(function(prop) { entry[prop] = result[prop]; });
+      return entry;
+    });
+    return {
+      ok: !allFcstResults.some(function(entry) { return !!entry.error; }),
+      results: allFcstResults
+    };
+  }
+
+  var fcstResult;
   try {
-    if (!deptKey) return runFcstSnapshotForAllDepts();
     var masterContext = AssignmentMaster_getContext(deptKey);
     var result = SfDataReader_getAggregated(deptKey, masterContext);
     var fcstState = FcstAdjusted_getState(deptKey);
@@ -514,13 +527,46 @@ function createSnapshot(deptKey) {
         if (!member[p]) member[p] = {};
         member[p].fcstAdjusted = fcstAdj[key] || { net: 0, newExp: 0, churn: 0 };
       });
-      return { ok: true, results: results };
-    }
+    });
     var live = AggregatedCache_read(deptKey) || AggregatedCache_refresh(deptKey);
     var input = FcstSnapshot_buildSnapshotInputFromLive_(live);
-    return FcstSnapshot_create(deptKey, input.members, input.notesMap, input.periodKeys);
+    fcstResult = FcstSnapshot_create(deptKey, input.members, input.notesMap, input.periodKeys);
   } catch (e) {
-    return { error: e && e.message ? e.message : String(e) };
+    fcstResult = { error: e && e.message ? e.message : String(e) };
+  }
+
+  SnapshotExecutionLog_record_({
+    kind: 'fcst',
+    action: 'createSnapshot',
+    deptKey: deptKey,
+    ok: !fcstResult.error,
+    skipped: !!fcstResult.skipped,
+    count: Number(fcstResult.count) || 0,
+    snapshotDate: String(fcstResult.date || '').trim(),
+    snapshotAt: String(fcstResult.snapshotAt || '').trim(),
+    captureMode: String(fcstResult.captureMode || '').trim(),
+    error: fcstResult.error || ''
+  });
+  Logger.log('FCST snapshot execution: dept=' + deptKey +
+    ' ok=' + (!fcstResult.error) +
+    ' skipped=' + (!!fcstResult.skipped) +
+    ' count=' + (Number(fcstResult.count) || 0) +
+    ' date=' + String(fcstResult.date || '') +
+    ' snapshotAt=' + String(fcstResult.snapshotAt || '') +
+    ' captureMode=' + String(fcstResult.captureMode || '') +
+    (fcstResult.error ? ' error=' + String(fcstResult.error) : ''));
+  return fcstResult;
+}
+
+function createSnapshotBySheet(sheetKey) {
+  try {
+    var result = SnapshotManual_runBySheet_(sheetKey, createSnapshot);
+    SnapshotManual_logResult_('fcst', result);
+    return result;
+  } catch (e) {
+    var errorResult = { error: e && e.message ? e.message : String(e), sheetKey: SnapshotManual_normalizeSheetKey_(sheetKey) };
+    SnapshotManual_logResult_('fcst', errorResult);
+    return errorResult;
   }
 }
 
@@ -529,15 +575,260 @@ function setupSnapshotTrigger(deptKey) {
 }
 
 function createOppSnapshot(deptKey) {
+  if (!deptKey) {
+    var allOppResults = OppSnapshot_getDeptKeys_().map(function(key) {
+      var result = createOppSnapshot(key) || {};
+      var entry = { deptKey: key };
+      Object.keys(result).forEach(function(prop) { entry[prop] = result[prop]; });
+      return entry;
+    });
+    return {
+      ok: !allOppResults.some(function(entry) { return !!entry.error; }),
+      results: allOppResults
+    };
+  }
+
+  var oppResult;
   try {
-    if (!deptKey) {
-      getDeptKeys_().forEach(function(key) {
-        try { OppListSnapshot_createWeekly(key); } catch (e) { Logger.log('OppListSnapshot failed for ' + key + ': ' + e.message); }
-      });
-      return { ok: true };
+    oppResult = OppListSnapshot_createWeekly(deptKey);
+  } catch (e) {
+    oppResult = { error: e.message };
+  }
+
+  SnapshotExecutionLog_record_({
+    kind: 'opp',
+    action: 'createOppSnapshot',
+    deptKey: deptKey,
+    ok: !oppResult.error,
+    skipped: !!oppResult.skipped,
+    count: Number(oppResult.count) || 0,
+    snapshotDate: String(oppResult.date || '').trim(),
+    snapshotAt: String(oppResult.snapshotAt || '').trim(),
+    error: oppResult.error || ''
+  });
+  Logger.log('Opp snapshot execution: dept=' + deptKey +
+    ' ok=' + (!oppResult.error) +
+    ' skipped=' + (!!oppResult.skipped) +
+    ' count=' + (Number(oppResult.count) || 0) +
+    ' date=' + String(oppResult.date || '') +
+    ' snapshotAt=' + String(oppResult.snapshotAt || '') +
+    (oppResult.error ? ' error=' + String(oppResult.error) : ''));
+  return oppResult;
+}
+
+function createOppSnapshotBySheet(sheetKey) {
+  try {
+    var result = SnapshotManual_runBySheet_(sheetKey, createOppSnapshot, OppSnapshot_getDeptKeysBySheet_);
+    SnapshotManual_logResult_('opp', result);
+    return result;
+  } catch (e) {
+    var errorResult = { error: e && e.message ? e.message : String(e), sheetKey: SnapshotManual_normalizeSheetKey_(sheetKey) };
+    SnapshotManual_logResult_('opp', errorResult);
+    return errorResult;
+  }
+}
+
+function SnapshotManual_runBySheet_(sheetKey, runner, deptKeyResolver) {
+  var normalizedSheetKey = SnapshotManual_normalizeSheetKey_(sheetKey);
+  if (!normalizedSheetKey) {
+    throw new Error('sheetKey は SS / SSCS / BO / CO のいずれかを指定してください');
+  }
+
+  var deptKeys = typeof deptKeyResolver === 'function'
+    ? deptKeyResolver(normalizedSheetKey)
+    : SnapshotManual_getDeptKeysBySheet_(normalizedSheetKey);
+  if (!deptKeys.length) {
+    var source = typeof DEPT_CONFIG_CACHE_SOURCE_ === 'string' ? DEPT_CONFIG_CACHE_SOURCE_ : '';
+    var totalDeptCount = typeof getDeptKeys_ === 'function' ? getDeptKeys_().length : 0;
+    return {
+      ok: false,
+      error: '対象部門が見つかりません source=' + source + ' total=' + totalDeptCount + ' sheet=' + normalizedSheetKey,
+      sheetKey: normalizedSheetKey,
+      deptKeys: [],
+      results: []
+    };
+  }
+
+  var results = deptKeys.map(function(deptKey) {
+    var result = runner(deptKey) || {};
+    var entry = { deptKey: deptKey };
+    Object.keys(result).forEach(function(key) {
+      entry[key] = result[key];
+    });
+    if (result && result.error) Logger.log('Snapshot manual run failed: ' + normalizedSheetKey + ' / ' + deptKey + ' / ' + result.error);
+    return entry;
+  });
+
+  return {
+    ok: !results.some(function(entry) { return !!entry.error; }),
+    sheetKey: normalizedSheetKey,
+    deptKeys: deptKeys,
+    results: results
+  };
+}
+
+function SnapshotManual_logResult_(kind, result) {
+  var label = kind === 'opp' ? 'Opp snapshot' : 'FCST snapshot';
+  if (!result) {
+    Logger.log(label + ' manual run result: empty');
+    return;
+  }
+
+  if (result.error) {
+    Logger.log(label + ' manual run failed: sheet=' + String(result.sheetKey || '') +
+      ' error=' + String(result.error));
+  }
+
+  Logger.log(label + ' manual run: sheet=' + String(result.sheetKey || '') +
+    ' ok=' + (!!result.ok) +
+    ' depts=' + (result.deptKeys || []).join(','));
+
+  if (!(result.results || []).length) {
+    Logger.log(label + ' manual run details: no result rows');
+  }
+
+  (result.results || []).forEach(function(entry) {
+    Logger.log(label + ' detail: dept=' + String(entry.deptKey || '') +
+      ' ok=' + (!entry.error) +
+      ' count=' + (Number(entry.count) || 0) +
+      ' date=' + String(entry.date || entry.snapshotAt || '') +
+      (entry.error ? ' error=' + String(entry.error) : ''));
+  });
+}
+
+function SnapshotManual_notifyResult_(kind, result) {
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  } catch (e) {
+    return;
+  }
+  if (!ss || typeof ss.toast !== 'function') return;
+
+  var label = kind === 'opp' ? '案件Snapshot' : 'FCST Snapshot';
+  var message = SnapshotManual_buildToastMessage_(result);
+  ss.toast(message, label, 10);
+}
+
+function SnapshotManual_buildToastMessage_(result) {
+  if (!result) return '結果を取得できませんでした';
+  if (result.error) return String(result.error);
+  if (!result.deptKeys || !result.deptKeys.length) return '対象部門がありません';
+
+  var parts = [];
+  parts.push('sheet=' + String(result.sheetKey || ''));
+
+  (result.results || []).forEach(function(entry) {
+    var text = String(entry.deptKey || '') + ':';
+    if (entry.error) {
+      text += 'error';
+    } else {
+      text += String(Number(entry.count) || 0) + '件';
+      if (entry.date || entry.snapshotAt) text += '@' + String(entry.date || entry.snapshotAt);
     }
-    return OppListSnapshot_createWeekly(deptKey);
-  } catch (e) { return { error: e.message }; }
+    parts.push(text);
+  });
+
+  return parts.join(' / ');
+}
+
+function SnapshotExecutionLog_record_(entry) {
+  try {
+    var sheet = SnapshotExecutionLog_getOrCreateSheet_();
+    if (!sheet) return;
+
+    var now = new Date();
+    var deptKey = String(entry && entry.deptKey || '').trim();
+    var cfg = deptKey ? getDeptConfig_(deptKey) : null;
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 13).setValues([[
+      Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+      String(entry && entry.kind || '').trim(),
+      String(entry && entry.action || '').trim(),
+      String(entry && entry.captureMode || '').trim(),
+      String(entry && entry.requestedSheetKey || '').trim(),
+      cfg && cfg.sfSheetKey ? String(cfg.sfSheetKey) : '',
+      deptKey,
+      entry && entry.ok ? 'TRUE' : 'FALSE',
+      entry && entry.skipped ? 'TRUE' : 'FALSE',
+      Number(entry && entry.count) || 0,
+      String(entry && entry.snapshotDate || '').trim(),
+      String(entry && entry.snapshotAt || '').trim(),
+      String(entry && entry.error || '').trim()
+    ]]);
+  } catch (e) {
+    Logger.log('SnapshotExecutionLog failed: ' + (e && e.message ? e.message : e));
+  }
+}
+
+function SnapshotExecutionLog_getOrCreateSheet_() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('SnapshotExecutionLog');
+  if (!sheet) {
+    sheet = ss.insertSheet('SnapshotExecutionLog');
+  }
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, 13).setValues([[
+      'executed_at',
+      'kind',
+      'action',
+      'capture_mode',
+      'requested_sheet_key',
+      'sheet_key',
+      'dept_key',
+      'ok',
+      'skipped',
+      'count',
+      'snapshot_date',
+      'snapshot_at',
+      'error'
+    ]]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function SnapshotManual_normalizeSheetKey_(sheetKey) {
+  var key = String(sheetKey || '').trim().toUpperCase();
+  return ['SS', 'SSCS', 'BO', 'CO'].indexOf(key) !== -1 ? key : '';
+}
+
+function SnapshotManual_getDeptKeysBySheet_(sheetKey) {
+  return getDeptKeys_().filter(function(deptKey) {
+    var cfg = getDeptConfig_(deptKey);
+    return !!(cfg && cfg.sfSheetKey === sheetKey);
+  });
+}
+
+function manualCreateFcstSnapshot_SS() {
+  return createSnapshotBySheet('SS');
+}
+
+function manualCreateFcstSnapshot_SSCS() {
+  return createSnapshotBySheet('SSCS');
+}
+
+function manualCreateFcstSnapshot_BO() {
+  return createSnapshotBySheet('BO');
+}
+
+function manualCreateFcstSnapshot_CO() {
+  return createSnapshotBySheet('CO');
+}
+
+function manualCreateOppSnapshot_SS() {
+  return createOppSnapshotBySheet('SS');
+}
+
+function manualCreateOppSnapshot_SSCS() {
+  return createOppSnapshotBySheet('SSCS');
+}
+
+function manualCreateOppSnapshot_BO() {
+  return createOppSnapshotBySheet('BO');
+}
+
+function manualCreateOppSnapshot_CO() {
+  return createOppSnapshotBySheet('CO');
 }
 
 function getOppSnapshotData(deptKey, dateStr) {
@@ -556,4 +847,33 @@ function authorizeCoefficientRefresh(deptKey) {
   var result = triggerSfDataRefresh_({ skipThrottle: true });
   Logger.log(JSON.stringify(result));
   return result;
+}
+
+// Opportunity snapshots use group_name as deptKey.
+function OppSnapshot_getDeptKeys_() {
+  var monthKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var seen = {};
+
+  return OrgMasterReader_getRows().reduce(function(list, row) {
+    if (!row) return list;
+    if (row.startMonth && row.startMonth > monthKey) return list;
+    if (row.endMonth && row.endMonth < monthKey) return list;
+
+    var deptKey = String(row.groupName || '').trim();
+    var sheetKey = DeptConfig_resolveSfSheetKey_(row.divisionCode, row.departmentCode);
+    if (!deptKey || !sheetKey || seen[deptKey]) return list;
+
+    seen[deptKey] = true;
+    list.push(deptKey);
+    return list;
+  }, []).sort();
+}
+
+function OppSnapshot_getDeptKeysBySheet_(sheetKey) {
+  var normalizedSheetKey = SnapshotManual_normalizeSheetKey_(sheetKey);
+  return OppSnapshot_getDeptKeys_().filter(function(deptKey) {
+    var row = OppListReader_getOrgDeptRow_(deptKey);
+    if (!row) return false;
+    return DeptConfig_resolveSfSheetKey_(row.divisionCode, row.departmentCode) === normalizedSheetKey;
+  });
 }

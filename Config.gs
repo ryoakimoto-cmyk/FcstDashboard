@@ -25,6 +25,7 @@ const LEGACY_DEPT_SHEET_PREFIXES = [
 ];
 
 const SSCS_COLUMN_MAP = {
+  '案件CS担当': 'ユーザー',
   '案件CS担当部署': '担当部署',
   'CS_Key Deal フラグ': 'Key Deal フラグ',
   'CS_FCST(コミット)(換算値)': 'FCST(コミット)(換算値)',
@@ -95,15 +96,25 @@ function resetDeptConfigCache_() {
 function getDeptConfigMap_() {
   if (DEPT_CONFIG_CACHE_) return DEPT_CONFIG_CACHE_;
 
-  var fromAssignment = DeptConfig_buildMapFromAssignmentMaster_();
-  if (Object.keys(fromAssignment).length) {
-    DEPT_CONFIG_CACHE_ = fromAssignment;
-    DEPT_CONFIG_CACHE_SOURCE_ = 'assignment';
-    return DEPT_CONFIG_CACHE_;
+  try {
+    var fromAssignment = DeptConfig_buildMapFromAssignmentMaster_();
+    if (fromAssignment && Object.keys(fromAssignment).length) {
+      DEPT_CONFIG_CACHE_ = fromAssignment;
+      DEPT_CONFIG_CACHE_SOURCE_ = 'assignment';
+      return DEPT_CONFIG_CACHE_;
+    }
+  } catch (err) {
+    console.error('DeptConfig_buildMapFromAssignmentMaster_ failed: ' + (err && err.message));
   }
 
-  DEPT_CONFIG_CACHE_ = DeptConfig_buildMapFromOrgAndTarget_();
-  DEPT_CONFIG_CACHE_SOURCE_ = 'derived';
+  try {
+    DEPT_CONFIG_CACHE_ = DeptConfig_buildMapFromOrgAndTarget_() || {};
+    DEPT_CONFIG_CACHE_SOURCE_ = 'derived';
+  } catch (err) {
+    console.error('DeptConfig_buildMapFromOrgAndTarget_ failed: ' + (err && err.message));
+    DEPT_CONFIG_CACHE_ = {};
+    DEPT_CONFIG_CACHE_SOURCE_ = 'empty';
+  }
   return DEPT_CONFIG_CACHE_;
 }
 

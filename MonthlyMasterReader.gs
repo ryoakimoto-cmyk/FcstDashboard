@@ -33,10 +33,6 @@ function MonthlyMasterReader_getContext(deptKey) {
     }
   });
 
-  if (!Object.keys(users).length) {
-    return MonthlyMasterReader_buildUserFallback_(deptKey);
-  }
-
   return {
     users: users,
     monthlyUsers: monthlyUsers,
@@ -63,29 +59,6 @@ function MonthlyMasterReader_getRows_(deptKey) {
     list.push({ headerMap: headerMap, values: values });
     return list;
   }, []);
-}
-
-function MonthlyMasterReader_buildUserFallback_(deptKey) {
-  var users = {};
-
-  UserReader_getDeptUsers(deptKey).forEach(function(row) {
-    var sourceUserName = String(row && (row.userName || row.displayName) || '').trim();
-    if (!sourceUserName) return;
-    users[sourceUserName] = {
-      sourceUserName: sourceUserName,
-      displayName: String(row && (row.displayName || row.userName) || sourceUserName).trim(),
-      dept: String(row && (row.deptKey || deptKey) || deptKey || '').trim(),
-      group: '',
-      groupCode: '',
-      sortOrder: 0
-    };
-  });
-
-  return {
-    users: users,
-    monthlyUsers: {},
-    targets: {}
-  };
 }
 
 function MonthlyMasterReader_getDisplayFlag_(headerMap, row) {

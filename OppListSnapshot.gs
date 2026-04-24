@@ -1,8 +1,12 @@
 function OppListSnapshot_createWeekly(deptKey) {
-  var lock = LockService.getSpreadsheetLock();
+  var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var rows = OppListReader_getLiveRows(deptKey).rows || [];
+    var liveResult = OppListReader_getLiveRows(deptKey) || {};
+    if (liveResult.error) {
+      return { ok: false, count: 0, error: String(liveResult.error || '') };
+    }
+    var rows = liveResult.rows || [];
     var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
     if (!sheet) {
       var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -27,7 +31,12 @@ function OppListSnapshot_createWeekly(deptKey) {
       sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, 5).setValues(appendRows);
     }
     OppListSnapshot_trimOld_(deptKey, sheet);
-    return { ok: true, date: dateStr, count: appendRows.length };
+    return {
+      ok: true,
+      date: dateStr,
+      snapshotAt: Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
+      count: appendRows.length
+    };
   } finally {
     lock.releaseLock();
   }

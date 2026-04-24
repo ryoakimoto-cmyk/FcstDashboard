@@ -20,13 +20,6 @@ function AssignmentMaster_getDepartmentUsers(deptKey) {
     if (sourceUserName) names[sourceUserName] = true;
   });
 
-  if (!Object.keys(names).length) {
-    UserReader_getDeptUsers(deptKey).forEach(function(row) {
-      var sourceUserName = String(row && (row.userName || row.displayName) || '').trim();
-      if (sourceUserName) names[sourceUserName] = true;
-    });
-  }
-
   return Object.keys(names).sort();
 }
 
@@ -199,6 +192,71 @@ function MasterCompat_hasAnyKey_(headerMap, keys) {
   });
 }
 
+function AssignmentMaster_buildHeaderMap_(headers) {
+  var map = {};
+  (headers || []).forEach(function(header, index) {
+    var key = String(header == null ? '' : header).trim();
+    if (key && !Object.prototype.hasOwnProperty.call(map, key)) {
+      map[key] = index;
+    }
+  });
+  return map;
+}
+
+function AssignmentMaster_valueByKeys_(row, headerMap, keys) {
+  if (!row || !headerMap || !keys) return '';
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    if (Object.prototype.hasOwnProperty.call(headerMap, key)) {
+      var index = headerMap[key];
+      if (index >= 0 && index < row.length) return row[index];
+    }
+  }
+  return '';
+}
+
+function AssignmentMaster_formatCell_(value) {
+  if (value == null) return '';
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone() || 'Asia/Tokyo', 'yyyy-MM-dd');
+  }
+  return String(value);
+}
+
+function AssignmentMaster_toBoolean_(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  if (typeof value === 'number') return value !== 0;
+  var text = String(value).trim().toLowerCase();
+  if (!text) return false;
+  return text === 'true' || text === '1' || text === 'yes' || text === 'y' ||
+         text === 'on' || text === '有効' || text === '表示' || text === '○' || text === '◯';
+}
+
+function AssignmentMaster_normalizeMonth_(value) {
+  if (value == null || value === '') return '';
+  if (value instanceof Date) {
+    var year = value.getFullYear();
+    var month = value.getMonth() + 1;
+    return year + '-' + (month < 10 ? '0' + month : String(month));
+  }
+  var text = String(value).trim();
+  if (!text) return '';
+  var m = text.match(/^(\d{4})[-\/\.年](\d{1,2})/);
+  if (m) {
+    var mm = parseInt(m[2], 10);
+    if (mm >= 1 && mm <= 12) {
+      return m[1] + '-' + (mm < 10 ? '0' + mm : String(mm));
+    }
+  }
+  var m2 = text.match(/^(\d{4})(\d{2})$/);
+  if (m2) {
+    var mm2 = parseInt(m2[2], 10);
+    if (mm2 >= 1 && mm2 <= 12) return m2[1] + '-' + m2[2];
+  }
+  return '';
+}
+
 function invalidateDeptCaches_(deptKey, options) {
   CacheLayer_invalidate(deptKey);
   return {
@@ -206,4 +264,28 @@ function invalidateDeptCaches_(deptKey, options) {
     deptKey: String(deptKey || '').trim(),
     options: options || {}
   };
+}
+
+// Opportunity snapshots use group_name as deptKey.
+// Org master does not have display_flag.
+function OrgMasterReader_getRows() {
+  return MasterCompat_readSheetRows_(ORG_MASTER_SHEET_NAME, function(row, headerMap) {
+    var groupName = MasterCompat_readText_(row, headerMap, ['group_name', 'groupName']);
+    var groupCode = MasterCompat_readText_(row, headerMap, ['group_code', 'groupCode', 'group']);
+    var departmentCode = MasterCompat_readText_(row, headerMap, ['department_code', 'departmentCode', 'dept']);
+    var divisionCode = MasterCompat_readText_(row, headerMap, ['division_code', 'divisionCode', 'division']);
+    if (!groupName || !departmentCode || !divisionCode) return null;
+
+    return {
+      groupName: groupName,
+      groupCode: groupCode,
+      groupLabel: groupName,
+      departmentCode: departmentCode,
+      departmentName: MasterCompat_readText_(row, headerMap, ['department_name', 'departmentName']) || departmentCode,
+      divisionCode: divisionCode,
+      divisionName: MasterCompat_readText_(row, headerMap, ['division_name', 'divisionName']) || divisionCode,
+      startMonth: MasterCompat_readMonth_(row, headerMap, ['start_month', 'startMonth']) || '0000-01',
+      endMonth: MasterCompat_readMonth_(row, headerMap, ['end_month', 'endMonth']) || '9999-12'
+    };
+  });
 }

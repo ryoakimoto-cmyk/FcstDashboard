@@ -1,7 +1,3 @@
-function OppListReader_getDeptUserNames_(deptKey) {
-  return AssignmentMaster_getDepartmentUsers(deptKey);
-}
-
 function OppListReader_getLastUpdated(deptKey) {
   var sheet = getSfDataSheet_(deptKey);
   if (!sheet) return '';
@@ -16,13 +12,14 @@ function OppListReader_getLiveRows(deptKey) {
   var lastCol = sheet.getLastColumn();
   if (lastRow < 3) return { rows: [], lastUpdated: '' };
 
-  var deptUserNames = OppListReader_getDeptUserNames_(deptKey).map(function(name) {
-    return String(name || '').trim();
-  }).filter(Boolean);
-  var deptUserMap = {};
-  deptUserNames.forEach(function(name) {
-    deptUserMap[name] = true;
-  });
+  var deptFilter = OppListReader_getDeptFilter_(deptKey);
+  if (deptFilter.error) {
+    return {
+      rows: [],
+      lastUpdated: OppListReader_extractLastUpdated_(sheet.getRange(1, 1)),
+      error: deptFilter.error
+    };
+  }
 
   var headers = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
   if (isSscsDept_(deptKey)) headers = normalizeSSCSHeaders_(headers);
@@ -35,8 +32,10 @@ function OppListReader_getLiveRows(deptKey) {
     var dealName = OppListReader_valueByKeys_(row, headerMap, ['案件名']);
     if (!oppId || !dealName) return;
 
+    var rowDept = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['担当部署'])).trim();
+    if (!OppListReader_matchesDept_(deptFilter, rowDept)) return;
+
     var subOwner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['ユーザー', 'サブオーナー', '担当者'])).trim();
-    if (deptUserNames.length && !deptUserMap[subOwner]) return;
 
     oppId = String(oppId).trim();
     var proposalIds = {
@@ -49,7 +48,7 @@ function OppListReader_getLiveRows(deptKey) {
     rows.push({
       oppId: oppId,
       completedMonth: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['完了予定月'])),
-      dept: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['担当部署'])),
+      dept: rowDept,
       type: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['種別'])),
       subOwner: subOwner,
       phase: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['フェーズ'])),
@@ -80,6 +79,46 @@ function OppListReader_getLiveRows(deptKey) {
     lastUpdated: OppListReader_extractLastUpdated_(sheet.getRange(1, 1)),
     rows: rows
   };
+}
+
+function OppListReader_getDeptFilter_(deptKey) {
+  var row = OppListReader_getOrgDeptRow_(deptKey);
+  if (!row) {
+    return { error: '組織マスタにgroup_nameがありません dept=' + String(deptKey || '') };
+  }
+
+  var normalizedGroupName = OppListReader_normalizeDept_(row.groupName);
+  if (!normalizedGroupName) {
+    return { error: '組織マスタのgroup_nameが空です dept=' + String(deptKey || '') };
+  }
+
+  return {
+    row: row,
+    value: normalizedGroupName
+  };
+}
+
+function OppListReader_getOrgDeptRow_(deptKey) {
+  var key = OppListReader_normalizeDept_(deptKey);
+  if (!key) return null;
+
+  var monthKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var rows = OrgMasterReader_getRows().filter(function(row) {
+    if (!row) return false;
+    if (OppListReader_normalizeDept_(row.groupName) !== key) return false;
+    if (row.startMonth && row.startMonth > monthKey) return false;
+    if (row.endMonth && row.endMonth < monthKey) return false;
+    return true;
+  }).sort(function(left, right) {
+    return String(right.startMonth || '').localeCompare(String(left.startMonth || ''));
+  });
+
+  return rows.length ? rows[0] : null;
+}
+
+function OppListReader_matchesDept_(deptFilter, rowDept) {
+  var normalized = OppListReader_normalizeDept_(rowDept);
+  return !!(normalized && deptFilter && deptFilter.value === normalized);
 }
 
 function OppListReader_buildHeaderMap_(headers) {
@@ -126,6 +165,10 @@ function OppListReader_normalize_(text) {
     .replace(/\s+/g, '')
     .replace(/[()（）]/g, '')
     .toLowerCase();
+}
+
+function OppListReader_normalizeDept_(text) {
+  return OppListReader_normalize_(text);
 }
 
 function OppListReader_extractLastUpdated_(cellOrText) {

@@ -14,13 +14,14 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
   var options = meta || {};
   var periods = periodKeys || [];
   var existingValues = sheet.getLastRow() > 0 ? sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues() : [];
+  var dateKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd');
   var timestampKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
   var captureMode = FcstSnapshot_normalizeCaptureMode_(options.captureMode);
 
   if (!options.force) {
     for (var p = 0; p < periods.length; p++) {
       if (FcstSnapshot_hasRowAt_(deptKey, timestampKey, periods[p], existingValues)) {
-        return { ok: true, skipped: true, count: 0 };
+        return { ok: true, skipped: true, count: 0, date: dateKey, snapshotAt: timestampKey, captureMode: captureMode };
       }
     }
   }
@@ -68,7 +69,7 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
   }
   FcstSnapshot_trimOld_(deptKey, sheet);
-  return { ok: true, skipped: false, count: rows.length };
+  return { ok: true, skipped: false, count: rows.length, date: dateKey, snapshotAt: timestampKey, captureMode: captureMode };
 }
 
 function FcstSnapshot_normalizeCaptureMode_(captureMode) {

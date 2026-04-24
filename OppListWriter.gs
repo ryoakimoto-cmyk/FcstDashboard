@@ -8,7 +8,7 @@ function OppListWriter_saveDrafts(deptKey, changes) {
     };
   }
 
-  var lock = LockService.getSpreadsheetLock();
+  var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     var exportRes = OppListWriter_upsertExportWaiting_(list);
@@ -31,7 +31,7 @@ function OppListWriter_saveOppSfValue(deptKey, p) {
   var fieldName = String(p && p.fieldName || '').trim();
   if (!oppId || !fieldName) return { error: 'oppId and fieldName are required' };
 
-  var lock = LockService.getSpreadsheetLock();
+  var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     var sheet = getSharedSheet(EXPORT_WAITING_SHEET_NAME);
@@ -265,7 +265,7 @@ function OppListWriter_rowsEqual_(left, right) {
 
 function saveDiffOppList(deptKey, dirtyRows, userEmail, timestamp) {
   if (!dirtyRows || dirtyRows.length === 0) return { status: 'no_changes' };
-  var lock = LockService.getSpreadsheetLock();
+  var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);

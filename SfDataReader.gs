@@ -8,7 +8,7 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
   var lastRow = sheet.getLastRow();
   var lastCol = Math.max(sheet.getLastColumn(), 57);
   var headers = lastRow >= 2 ? sheet.getRange(2, 1, 1, lastCol).getValues()[0] : [];
-  if (isSscsDept_(deptKey)) headers = normalizeSSCSHeaders_(headers);
+  if (deptKey === 'SSSMBCS') headers = normalizeSSCSHeaders_(headers);
   var headerMap = SfDataReader_buildHeaderMap_(headers);
   var rows = lastRow <= 2 ? [] : sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
   var membersByName = {};
@@ -21,18 +21,16 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     var monthKey = FcstPeriods_formatMonthKey_(date);
     monthKeyMap[monthKey] = true;
 
-    var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['ユーザー'], 3)).trim();
+    var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', '担当名'], 3)).trim();
     if (!sourceName) return;
 
     var user = SfDataReader_resolveUser_(context, sourceName, monthKey);
     var member = membersByName[sourceName] || SfDataReader_createMember_(
       sourceName,
       user.displayName || sourceName,
-      user.groupName || user.group || '',
+      user.group || '',
       user.dept || '',
-      false,
-      user.groupCode || '',
-      ''
+      false
     );
     member.displayName = user.displayName || member.displayName || member.name;
     member.group = user.group || member.group || '';
@@ -44,14 +42,15 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     var metric = SfDataReader_getOrCreateMonthMetric_(member, monthKey);
     var typeValue = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['種別', '案件種別'], 24)).trim();
     var bucket = typeValue === 'New+Exp' ? 'newExp' : typeValue === 'Churn' ? 'churn' : null;
+    var fcstCommitValue = SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38);
 
-    SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)', 'FCST(コミット)', 'FCST（コミット）'], 38));
+    SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, fcstCommitValue);
     metric.fcstMin += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MIN)(換算値)', 'FCST(MIN)', 'FCST（MIN）'], 39));
     metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)(換算値)', 'FCST(MAX)', 'FCST（MAX）'], 40));
     SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR'], 10));
     SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['Expected MRR', 'ExpectedMRR'], 37));
     SfDataReader_addBreakdownValue_(metric.received, bucket, SfDataReader_valueByKeys_(row, headerMap, ['受領'], 53));
-    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理'], 54));
+    SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理', '債権管理回収'], 54));
     SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['債権管理Lite', '債権管理 Lite'], 55));
     SfDataReader_addBreakdownValue_(metric.expense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['経費'], 56));
 
@@ -157,7 +156,7 @@ function SfDataReader_valueByKeys_(row, headerMap, keys, fallbackIndex) {
 function SfDataReader_normalize_(text) {
   return String(text || '')
     .replace(/\s+/g, '')
-    .replace(/[()繝ｻ]/g, '')
+    .replace(/[()（）]/g, '')
     .toLowerCase();
 }
 
@@ -179,15 +178,13 @@ function SfDataReader_formatCell_(value) {
   return value === null || value === undefined ? '' : String(value);
 }
 
-function SfDataReader_createMember_(name, displayName, group, dept, isTotal, groupCode, totalKind) {
+function SfDataReader_createMember_(name, displayName, group, dept, isTotal) {
   return {
     name: name,
     displayName: displayName || name,
     group: group,
-    groupCode: groupCode || '',
     dept: dept,
     isTotal: isTotal,
-    totalKind: totalKind || '',
     sortOrder: 0,
     monthMap: {}
   };
@@ -233,6 +230,7 @@ function SfDataReader_applyTargets_(member, targets, periodOptions) {
     });
   });
 }
+
 function SfDataReader_buildGroupTotals_(members, periodOptions) {
   var totals = {};
 
@@ -275,6 +273,7 @@ function SfDataReader_buildOverallTotal_(members, periodOptions, deptKey) {
   SfDataReader_buildPeriods_(total, periodOptions);
   return total;
 }
+
 function SfDataReader_buildPeriods_(member, periodOptions) {
   (periodOptions || []).forEach(function(option) {
     var months = option.months || [];
@@ -407,14 +406,15 @@ function SfDataReader_toBoolean_(value) {
 
 function SfDataReader_stripLegalForm_(name) {
   return String(name || '')
-    .replace(/譬ｪ蠑丈ｼ夂､ｾ/g, '')
-    .replace(/譛蛾剞莨夂､ｾ/g, '')
-    .replace(/蜷亥酔莨夂､ｾ/g, '')
-    .replace(/荳闊ｬ遉ｾ蝗｣豕穂ｺｺ/g, '')
-    .replace(/荳闊ｬ雋｡蝗｣豕穂ｺｺ/g, '')
-    .replace(/蜈ｬ逶顔､ｾ蝗｣豕穂ｺｺ/g, '')
-    .replace(/蜈ｬ逶願ｲ｡蝗｣豕穂ｺｺ/g, '')
-    .replace(/[()繝ｻ]/g, ' ')
+    .replace(/株式会社/g, '')
+    .replace(/有限会社/g, '')
+    .replace(/合同会社/g, '')
+    .replace(/一般社団法人/g, '')
+    .replace(/一般財団法人/g, '')
+    .replace(/公益社団法人/g, '')
+    .replace(/公益財団法人/g, '')
+    .replace(/[()（）]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
+
