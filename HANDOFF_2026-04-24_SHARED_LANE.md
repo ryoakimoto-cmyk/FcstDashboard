@@ -10,7 +10,7 @@ The recent snapshot / FCST / opp work is integrated in the main worktree and ref
 
 Release status:
 
-- git commit: `d044a57`
+- git commit: `389e143`
 - git push: done
 - `clasp push -f`: done
 
@@ -36,6 +36,19 @@ Validation:
 Not done:
 
 - manual GAS verification after the latest frontend changes
+
+## Operational notes
+
+- Do not rely on `clasp run` in this project. It returns `Unable to run script function. Please make sure you have permission to run the script function.` even for existing debug functions. Use Apps Script editor manual execution for GAS functions, then check Apps Script execution logs and the spreadsheet log sheets.
+- `clasp push -f`, `clasp deployments`, and `clasp versions` are usable after `clasp login`, but PowerShell may block `clasp.ps1`. Use `cmd /c clasp ...` from this workspace when needed.
+- Apps Script manual snapshot functions are `manualCreateFcstSnapshot_SS`, `manualCreateFcstSnapshot_SSCS`, `manualCreateFcstSnapshot_BO`, `manualCreateFcstSnapshot_CO`, `manualCreateOppSnapshot_SS`, `manualCreateOppSnapshot_SSCS`, `manualCreateOppSnapshot_BO`, and `manualCreateOppSnapshot_CO`.
+- Snapshot execution output should be checked in both Apps Script execution logs and the spreadsheet sheet `SnapshotExecutionLog`.
+
+Recent follow-up:
+
+- `389e143 Fix opp snapshot group sheet resolution` fixes opportunity snapshot reads for `deptKey = group_name`. Before this, `manualCreateOppSnapshot_BO` passed group names such as `BOAMEA`, but the SF sheet resolver expected department codes, so rows could be saved as `ok=true count=0`.
+- The same fix also fills `requested_sheet_key` and `sheet_key` in `SnapshotExecutionLog` for new manual snapshot runs.
+- A temporary diagnostic helper exists: `debugOppSnapshotDeptMapping_BO`. Run it from the Apps Script editor only if counts are still zero; it reports organization master group names versus `SFデータ更新_BO` `担当部署` values.
 
 ## Backend changes already implemented
 
