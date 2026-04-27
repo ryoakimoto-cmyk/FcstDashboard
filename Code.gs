@@ -129,6 +129,94 @@ function debug_getClientInitMeta_BOCS() {
   return debug_getClientInitMeta('BOCS');
 }
 
+function debugOppSnapshotDeptMapping_BO() {
+  return debugOppSnapshotDeptMapping_('BO');
+}
+
+function debugOppSnapshotDeptMapping_(sheetKey) {
+  var normalizedSheetKey = SnapshotManual_normalizeSheetKey_(sheetKey);
+  var monthKey = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var orgRows = OrgMasterReader_getRows().filter(function(row) {
+    if (!row) return false;
+    if (row.startMonth && row.startMonth > monthKey) return false;
+    if (row.endMonth && row.endMonth < monthKey) return false;
+    return DeptConfig_resolveSfSheetKey_(row.divisionCode, row.departmentCode) === normalizedSheetKey;
+  }).map(function(row) {
+    return {
+      groupName: String(row.groupName || '').trim(),
+      groupCode: String(row.groupCode || '').trim(),
+      departmentCode: String(row.departmentCode || '').trim(),
+      departmentName: String(row.departmentName || '').trim(),
+      divisionCode: String(row.divisionCode || '').trim(),
+      startMonth: String(row.startMonth || '').trim(),
+      endMonth: String(row.endMonth || '').trim()
+    };
+  });
+
+  var sheetName = normalizedSheetKey === 'SS' ? SF_DATA_SHEET_SS :
+    normalizedSheetKey === 'SSCS' ? SF_DATA_SHEET_SSCS :
+    normalizedSheetKey === 'CO' ? SF_DATA_SHEET_CO :
+    SF_DATA_SHEET_BO;
+  var sheet = getSharedSheet(sheetName);
+  if (!sheet) return { error: 'SF sheet not found: ' + sheetName };
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  var headers = lastRow >= 2 ? sheet.getRange(2, 1, 1, lastCol).getValues()[0] : [];
+  if (normalizedSheetKey === 'SSCS') headers = normalizeSSCSHeaders_(headers);
+  var headerMap = OppListReader_buildHeaderMap_(headers);
+  var deptIdx = headerMap[OppListReader_normalize_('担当部署')];
+  var oppIdIdx = headerMap[OppListReader_normalize_('案件 ID')];
+  var nameIdx = headerMap[OppListReader_normalize_('案件名')];
+  var values = lastRow >= 3 ? sheet.getRange(3, 1, lastRow - 2, lastCol).getValues() : [];
+  var counts = {};
+  var totalRowsWithOpp = 0;
+  values.forEach(function(row) {
+    var oppId = oppIdIdx === undefined ? '' : OppListReader_formatCell_(row[oppIdIdx]).trim();
+    var name = nameIdx === undefined ? '' : OppListReader_formatCell_(row[nameIdx]).trim();
+    if (!oppId || !name) return;
+    totalRowsWithOpp++;
+    var dept = deptIdx === undefined ? '' : OppListReader_formatCell_(row[deptIdx]).trim();
+    if (!dept) return;
+    counts[dept] = (counts[dept] || 0) + 1;
+  });
+  var topSfDeptValues = Object.keys(counts).map(function(value) {
+    return { value: value, count: counts[value] };
+  }).sort(function(a, b) { return b.count - a.count; }).slice(0, 80);
+
+  var groupNames = {};
+  var departmentCodes = {};
+  var departmentNames = {};
+  orgRows.forEach(function(row) {
+    if (row.groupName) groupNames[row.groupName] = true;
+    if (row.departmentCode) departmentCodes[row.departmentCode] = true;
+    if (row.departmentName) departmentNames[row.departmentName] = true;
+  });
+  var exactGroupMatches = topSfDeptValues.filter(function(row) { return !!groupNames[row.value]; });
+  var exactDepartmentCodeMatches = topSfDeptValues.filter(function(row) { return !!departmentCodes[row.value]; });
+  var exactDepartmentNameMatches = topSfDeptValues.filter(function(row) { return !!departmentNames[row.value]; });
+
+  var result = {
+    sheetKey: normalizedSheetKey,
+    sheetName: sheetName,
+    lastRow: lastRow,
+    headerIndexes: {
+      deptIdx: deptIdx,
+      oppIdIdx: oppIdIdx,
+      nameIdx: nameIdx
+    },
+    orgRows: orgRows,
+    totalRowsWithOpp: totalRowsWithOpp,
+    totalUniqueSfDept: topSfDeptValues.length,
+    topSfDeptValues: topSfDeptValues,
+    exactGroupMatches: exactGroupMatches,
+    exactDepartmentCodeMatches: exactDepartmentCodeMatches,
+    exactDepartmentNameMatches: exactDepartmentNameMatches
+  };
+  Logger.log(JSON.stringify(result));
+  return result;
+}
+
 function rebuildAssignmentMaster() {
   var result = AssignmentMaster_build();
   resetDeptConfigCache_();
@@ -499,7 +587,7 @@ function refreshSfDataAndGetOpportunities(deptKey) {
   }
 }
 
-function createSnapshot(deptKey) {
+function createSnapshot(deptKey, requestedSheetKey) {
   if (!deptKey) {
     var allFcstResults = getDeptKeys_().map(function(key) {
       var result = createSnapshot(key) || {};
@@ -545,6 +633,7 @@ function createSnapshot(deptKey) {
     snapshotDate: String(fcstResult.date || '').trim(),
     snapshotAt: String(fcstResult.snapshotAt || '').trim(),
     captureMode: String(fcstResult.captureMode || '').trim(),
+    requestedSheetKey: requestedSheetKey || '',
     error: fcstResult.error || ''
   });
   Logger.log('FCST snapshot execution: dept=' + deptKey +
@@ -560,7 +649,10 @@ function createSnapshot(deptKey) {
 
 function createSnapshotBySheet(sheetKey) {
   try {
-    var result = SnapshotManual_runBySheet_(sheetKey, createSnapshot);
+    var normalizedSheetKey = SnapshotManual_normalizeSheetKey_(sheetKey);
+    var result = SnapshotManual_runBySheet_(normalizedSheetKey, function(deptKey) {
+      return createSnapshot(deptKey, normalizedSheetKey);
+    });
     SnapshotManual_logResult_('fcst', result);
     return result;
   } catch (e) {
@@ -574,7 +666,7 @@ function setupSnapshotTrigger(deptKey) {
   try { return FcstSnapshot_setupWeeklyTrigger(); } catch (e) { return { error: e.message }; }
 }
 
-function createOppSnapshot(deptKey) {
+function createOppSnapshot(deptKey, requestedSheetKey) {
   if (!deptKey) {
     var allOppResults = OppSnapshot_getDeptKeys_().map(function(key) {
       var result = createOppSnapshot(key) || {};
@@ -604,6 +696,7 @@ function createOppSnapshot(deptKey) {
     count: Number(oppResult.count) || 0,
     snapshotDate: String(oppResult.date || '').trim(),
     snapshotAt: String(oppResult.snapshotAt || '').trim(),
+    requestedSheetKey: requestedSheetKey || '',
     error: oppResult.error || ''
   });
   Logger.log('Opp snapshot execution: dept=' + deptKey +
@@ -618,7 +711,10 @@ function createOppSnapshot(deptKey) {
 
 function createOppSnapshotBySheet(sheetKey) {
   try {
-    var result = SnapshotManual_runBySheet_(sheetKey, createOppSnapshot, OppSnapshot_getDeptKeysBySheet_);
+    var normalizedSheetKey = SnapshotManual_normalizeSheetKey_(sheetKey);
+    var result = SnapshotManual_runBySheet_(normalizedSheetKey, function(deptKey) {
+      return createOppSnapshot(deptKey, normalizedSheetKey);
+    }, OppSnapshot_getDeptKeysBySheet_);
     SnapshotManual_logResult_('opp', result);
     return result;
   } catch (e) {
@@ -740,13 +836,18 @@ function SnapshotExecutionLog_record_(entry) {
     var now = new Date();
     var deptKey = String(entry && entry.deptKey || '').trim();
     var cfg = deptKey ? getDeptConfig_(deptKey) : null;
+    var sheetKey = cfg && cfg.sfSheetKey ? String(cfg.sfSheetKey) : '';
+    if (!sheetKey && typeof OppListReader_getOrgDeptRow_ === 'function') {
+      var orgRow = OppListReader_getOrgDeptRow_(deptKey);
+      if (orgRow) sheetKey = DeptConfig_resolveSfSheetKey_(orgRow.divisionCode, orgRow.departmentCode);
+    }
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, 13).setValues([[
       Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
       String(entry && entry.kind || '').trim(),
       String(entry && entry.action || '').trim(),
       String(entry && entry.captureMode || '').trim(),
       String(entry && entry.requestedSheetKey || '').trim(),
-      cfg && cfg.sfSheetKey ? String(cfg.sfSheetKey) : '',
+      sheetKey,
       deptKey,
       entry && entry.ok ? 'TRUE' : 'FALSE',
       entry && entry.skipped ? 'TRUE' : 'FALSE',

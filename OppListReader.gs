@@ -5,21 +5,27 @@ function OppListReader_getLastUpdated(deptKey) {
 }
 
 function OppListReader_getLiveRows(deptKey) {
-  var sheet = getSfDataSheet_(deptKey);
-  if (!sheet) return { rows: [], lastUpdated: '' };
-
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow < 3) return { rows: [], lastUpdated: '' };
-
   var deptFilter = OppListReader_getDeptFilter_(deptKey);
   if (deptFilter.error) {
     return {
       rows: [],
-      lastUpdated: OppListReader_extractLastUpdated_(sheet.getRange(1, 1)),
+      lastUpdated: '',
       error: deptFilter.error
     };
   }
+
+  var sheet = OppListReader_getSfDataSheetForDept_(deptKey, deptFilter.row);
+  if (!sheet) {
+    return {
+      rows: [],
+      lastUpdated: '',
+      error: 'SFデータシートが見つかりません dept=' + String(deptKey || '')
+    };
+  }
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 3) return { rows: [], lastUpdated: OppListReader_extractLastUpdated_(sheet.getRange(1, 1)) };
 
   var headers = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
   if (isSscsDept_(deptKey)) headers = normalizeSSCSHeaders_(headers);
@@ -100,6 +106,16 @@ function OppListReader_getDeptFilter_(deptKey) {
     row: row,
     value: normalizedGroupName
   };
+}
+
+function OppListReader_getSfDataSheetForDept_(deptKey, orgRow) {
+  var sheet = getSfDataSheet_(deptKey);
+  if (sheet) return sheet;
+  if (!orgRow) return null;
+
+  var sfSheetKey = DeptConfig_resolveSfSheetKey_(orgRow.divisionCode, orgRow.departmentCode);
+  var sheetName = DeptConfig_getSfSheetNameByKey_(sfSheetKey);
+  return sheetName ? getSharedSheet(sheetName) : null;
 }
 
 function OppListReader_getOrgDeptRow_(deptKey) {
