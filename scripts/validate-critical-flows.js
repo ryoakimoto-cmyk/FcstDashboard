@@ -19,6 +19,14 @@ function assertNotIncludes(haystack, needle, message) {
   }
 }
 
+function assertNoMojibake(name, source) {
+  const mojibake = /[隱繧繝騾謐荳譛蜈莠驛螟髮]/;
+  const match = source.match(mojibake);
+  if (match) {
+    throw new Error(`${name}: possible mojibake character "${match[0]}"`);
+  }
+}
+
 function assertCount(haystack, needle, expected, message) {
   const actual = haystack.split(needle).length - 1;
   if (actual !== expected) {
@@ -128,6 +136,7 @@ const oppListReader = read('OppListReader.gs');
 ].forEach((token) => assertIncludes(oppListReader, token, 'opp list reader mapping incomplete for opp history v2'));
 
 const client = read('js.html');
+assertNoMojibake('js.html', client);
 ['isDepartmentTotalMember_', 'isGroupTotalMember_', 'getMemberGroupLabel_'].forEach((token) => {
   assertIncludes(client, token, 'FCST client total handling incomplete');
 });
@@ -154,7 +163,8 @@ assertCount(client, 'function displayMemberName(member)', 1, 'duplicate member d
 assertCount(client, 'function renderTopPage_()', 1, 'duplicate top page renderer');
 
 const mrr = read('mrr-index.html');
-['MRR進捗ダッシュボード', '読込中...', '全部署', 'getMrrDashboardData();'].forEach((token) => {
+assertNoMojibake('mrr-index.html', mrr);
+['MRR進捗ダッシュボード', '読み込み中...', '全部署', 'getMrrDashboardData();'].forEach((token) => {
   assertIncludes(mrr, token, 'MRR template markers missing');
 });
 
@@ -164,10 +174,18 @@ const mrr = read('mrr-index.html');
   "switchDivision('BO')",
   '.getMrrDashboardData(division);',
   'labels: D.weeks.map(getWeekLabel_)',
-  'Array.isArray(metric.keyDealsData) && metric.keyDealsData.length'
+  'Array.isArray(metric.keyDealsData) && metric.keyDealsData.length',
+  'function buildMetricDatasets_(rows)',
+  'metricDefinitions: Array.isArray(result && result.metricDefinitions)'
 ].forEach((token) => {
   assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
 });
+assertCount(
+  mrr,
+  'metricDefinitions: Array.isArray(result && result.metricDefinitions)',
+  2,
+  'all active MRR result normalizers must preserve metric definitions'
+);
 
 const mrrDashboard = read('MrrDashboard.gs');
 [
@@ -186,11 +204,16 @@ const mrrSnapshot = read('MrrSnapshotDashboard.gs');
   'function MrrDashboard_getBoData_()',
   "totalDeptKey: 'BO'",
   "allLabel: 'BO全体'",
-  'FcstSnapshot_getDataByDate(deptKey, snapshotDate)',
-  'OppListSnapshot_getByDate(deptKey, snapshotDate)',
-  'SharedAppState_isDepartmentTotal_(member, deptKey)',
+  'function MrrDashboard_readBoFcstSnapshots_(deptKeys)',
+  'function MrrDashboard_readBoOppSnapshots_(deptKeys)',
+  'getRange(1, 1, sheet.getLastRow(), 4).getValues()',
+  'getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues()',
+  'SharedAppState_isDepartmentTotal_({',
+  'function MrrDashboard_getBoMetricDefinitions_()',
+  "key: 'fcstAdjusted'",
+  "key: 'fcstMax'",
   'keyDealsData: keyDealsData',
-  'MrrDashboard_pickSnapshotPeriodKey_',
+  'MrrDashboard_pickSnapshotPeriodKeyFromKeys_',
   'MrrDashboard_formatLegacyDeals_'
 ].forEach((token) => {
   assertIncludes(mrrSnapshot, token, 'BO MRR snapshot path incomplete');

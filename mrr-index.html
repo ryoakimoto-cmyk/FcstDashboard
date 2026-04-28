@@ -360,6 +360,7 @@ function normalizeResult_(result) {
     division: (result && result.division) || currentDivision,
     totalDeptKey: (result && result.totalDeptKey) || 'SS',
     allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
+    metricDefinitions: Array.isArray(result && result.metricDefinitions) ? result.metricDefinitions.slice() : [],
     weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
     weekLabels: result && result.weekLabels ? result.weekLabels : {},
     depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
@@ -829,6 +830,7 @@ function normalizeResult_(result) {
     division: (result && result.division) || currentDivision,
     totalDeptKey: (result && result.totalDeptKey) || 'SS',
     allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
+    metricDefinitions: Array.isArray(result && result.metricDefinitions) ? result.metricDefinitions.slice() : [],
     weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
     weekLabels: result && result.weekLabels ? result.weekLabels : {},
     depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
@@ -841,7 +843,7 @@ function bootstrap_() {
 }
 
 function loadDivisionData_(division) {
-  showLoading_('隱ｭ霎ｼ荳ｭ...');
+  showLoading_('読み込み中...');
   updateDivisionTabs_();
   google.script.run
     .withSuccessHandler(function(result) {
@@ -857,7 +859,7 @@ function loadDivisionData_(division) {
       render();
     })
     .withFailureHandler(function(err) {
-      showLoading_('繧ｨ繝ｩ繝ｼ: ' + getErrorMessage_(err));
+      showLoading_('エラー: ' + getErrorMessage_(err));
     })
     .getMrrDashboardData(division);
 }
@@ -914,6 +916,95 @@ function updateWeekLabel() {
   label.textContent = getWeekLabel_(getSelectedWeek_()) || '-';
 }
 
+function getMetricDefinitions_() {
+  return (D && Array.isArray(D.metricDefinitions) && D.metricDefinitions.length)
+    ? D.metricDefinitions
+    : [];
+}
+
+function renderCards() {
+  var area = document.getElementById('cards');
+  if (!area) return;
+
+  if (!D.weeks.length) {
+    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">データなし</div></div>';
+    return;
+  }
+
+  var data = currentView === 'weekly'
+    ? getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_())
+    : getDeptData(getSelectedWeek_(), getAllDeptLabel_());
+  var definitions = getMetricDefinitions_();
+  if (!definitions.length) {
+    renderDefaultCards_(area, data);
+    return;
+  }
+
+  var target = Number(data.target) || 0;
+  var html = definitions.map(function(def) {
+    var value = Number(data[def.key]) || 0;
+    var sub = '';
+    var subClass = 'val-neutral';
+    if (def.key !== 'target' && target) {
+      var diff = value - target;
+      sub = 'vs 目標 ' + (diff >= 0 ? '+' : '') + fmt(diff);
+      subClass = diff >= 0 ? 'val-pos' : 'val-neg';
+    }
+    return buildCardHtml_(def.label || def.key, fmt(value), sub, valClass_(value), subClass);
+  }).join('');
+
+  if (target) {
+    var actual = Number(data.confirmed || data.actual) || 0;
+    var rate = ((actual / target) * 100).toFixed(1) + '%';
+    html += buildCardHtml_('達成率', rate, '', parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral');
+  }
+  area.innerHTML = html;
+}
+
+function renderDefaultCards_(area, data) {
+  var target = Number(data.target) || 0;
+  var actual = Number(data.actual) || 0;
+  var fcst = Number(data.fcst) || 0;
+  var expected = Number(data.expectedMrr) || 0;
+  var diffActual = actual - target;
+  var diffFcst = fcst - target;
+  var rate = target ? ((actual / target) * 100).toFixed(1) + '%' : '-';
+
+  area.innerHTML = [
+    buildCardHtml_('目標', fmt(target), ''),
+    buildCardHtml_('実績', fmt(actual), 'vs 目標 ' + (diffActual >= 0 ? '+' : '') + fmt(diffActual), valClass_(actual), valClass_(diffActual)),
+    buildCardHtml_('期待MRR', fmt(expected), '', valClass_(expected)),
+    buildCardHtml_('FCST', fmt(fcst), 'vs 目標 ' + (diffFcst >= 0 ? '+' : '') + fmt(diffFcst), valClass_(fcst), valClass_(diffFcst)),
+    buildCardHtml_('達成率', rate, '', rate !== '-' && parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral')
+  ].join('');
+}
+
+function buildMetricDatasets_(rows) {
+  var definitions = getMetricDefinitions_();
+  if (!definitions.length) {
+    definitions = [
+      { key: 'target', label: '目標', type: 'line', color: '#ea4335', dash: true },
+      { key: 'actual', label: '実績', type: 'bar', color: '#1a73e8' },
+      { key: 'expectedMrr', label: '期待MRR', type: 'bar', color: '#34a853' },
+      { key: 'fcst', label: 'FCST', type: 'bar', color: '#fbbc04' }
+    ];
+  }
+  return definitions.map(function(def) {
+    var isLine = def.type === 'line' || def.key === 'target';
+    return {
+      label: def.label || def.key,
+      data: rows.map(function(row) { return Number(row[def.key]) || 0; }),
+      type: isLine ? 'line' : 'bar',
+      borderColor: def.color || '#5f6368',
+      backgroundColor: isLine ? 'transparent' : ((def.color || '#5f6368') + '66'),
+      borderWidth: isLine ? 2 : 1,
+      borderDash: def.dash ? [8, 4] : [],
+      pointRadius: isLine ? 0 : undefined,
+      tension: 0
+    };
+  });
+}
+
 function renderChart() {
   var canvas = document.getElementById('mainChart');
   if (!canvas || !D || !D.weeks.length) return;
@@ -928,40 +1019,7 @@ function renderChart() {
       type: 'bar',
       data: {
         labels: D.weeks.map(getWeekLabel_),
-        datasets: [
-          {
-            label: 'Target',
-            data: rows.map(function(row) { return row.target || 0; }),
-            type: 'line',
-            borderColor: '#ea4335',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            borderDash: [8, 4],
-            pointRadius: 0,
-            tension: 0
-          },
-          {
-            label: 'Actual',
-            data: rows.map(function(row) { return row.actual || 0; }),
-            backgroundColor: 'rgba(26,115,232,0.72)',
-            borderColor: '#1a73e8',
-            borderWidth: 1
-          },
-          {
-            label: 'Expected MRR',
-            data: rows.map(function(row) { return row.expectedMrr || 0; }),
-            backgroundColor: 'rgba(52,168,83,0.72)',
-            borderColor: '#34a853',
-            borderWidth: 1
-          },
-          {
-            label: 'FCST',
-            data: rows.map(function(row) { return row.fcst || 0; }),
-            backgroundColor: 'rgba(251,188,4,0.72)',
-            borderColor: '#fbbc04',
-            borderWidth: 1
-          }
-        ]
+        datasets: buildMetricDatasets_(rows)
       },
       options: Object.assign(options, {
         onClick: function(_, elements) {
@@ -986,38 +1044,7 @@ function renderChart() {
     type: 'bar',
     data: {
       labels: D.depts,
-      datasets: [
-        {
-          label: 'Target',
-          data: targets,
-          type: 'line',
-          borderColor: '#ea4335',
-          backgroundColor: 'transparent',
-          borderWidth: 0,
-          pointRadius: 0
-        },
-        {
-          label: 'Actual',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).actual || 0; }),
-          backgroundColor: 'rgba(26,115,232,0.72)',
-          borderColor: '#1a73e8',
-          borderWidth: 1
-        },
-        {
-          label: 'Expected MRR',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).expectedMrr || 0; }),
-          backgroundColor: 'rgba(52,168,83,0.72)',
-          borderColor: '#34a853',
-          borderWidth: 1
-        },
-        {
-          label: 'FCST',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).fcst || 0; }),
-          backgroundColor: 'rgba(251,188,4,0.72)',
-          borderColor: '#fbbc04',
-          borderWidth: 1
-        }
-      ]
+      datasets: buildMetricDatasets_(D.depts.map(function(dept) { return getDeptData(week, dept); }))
     },
     options: Object.assign(options, {
       onClick: function(_, elements) {
