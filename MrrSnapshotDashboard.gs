@@ -51,6 +51,7 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
   var deptSet = MrrDashboard_toSet_(deptKeys);
   var values = sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
   var latestByDeptDate = {};
+  var buckets = {};
 
   values.forEach(function(row) {
     var date = row[0];
@@ -88,17 +89,35 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
       payload = {};
     }
 
-    if (!MrrDashboard_isDepartmentTotalPayload_(payload, deptKey)) return;
+    var bucket = MrrDashboard_getFcstSnapshotBucket_(buckets, deptKey, dateStr, period);
+    if (MrrDashboard_isDepartmentTotalPayload_(payload, deptKey)) {
+      bucket.totalPayload = payload;
+      return;
+    }
+    if (MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey)) {
+      bucket.sumPayload = MrrDashboard_addFcstPayload_(bucket.sumPayload, payload);
+      bucket.sumCount++;
+    }
+  });
 
-    if (!context.metricsByDeptDate[deptKey]) context.metricsByDeptDate[deptKey] = {};
-    if (!context.metricsByDeptDate[deptKey][dateStr]) {
-      context.metricsByDeptDate[deptKey][dateStr] = { periods: {}, periodKeys: [] };
-    }
-    context.metricsByDeptDate[deptKey][dateStr].periods[period] = payload;
-    if (context.metricsByDeptDate[deptKey][dateStr].periodKeys.indexOf(period) === -1) {
-      context.metricsByDeptDate[deptKey][dateStr].periodKeys.push(period);
-    }
-    context.dates[dateStr] = true;
+  Object.keys(buckets).forEach(function(deptKey) {
+    Object.keys(buckets[deptKey]).forEach(function(dateStr) {
+      Object.keys(buckets[deptKey][dateStr]).forEach(function(period) {
+        var bucket = buckets[deptKey][dateStr][period];
+        var payload = bucket.totalPayload || (bucket.sumCount ? bucket.sumPayload : null);
+        if (!payload) return;
+
+        if (!context.metricsByDeptDate[deptKey]) context.metricsByDeptDate[deptKey] = {};
+        if (!context.metricsByDeptDate[deptKey][dateStr]) {
+          context.metricsByDeptDate[deptKey][dateStr] = { periods: {}, periodKeys: [] };
+        }
+        context.metricsByDeptDate[deptKey][dateStr].periods[period] = payload;
+        if (context.metricsByDeptDate[deptKey][dateStr].periodKeys.indexOf(period) === -1) {
+          context.metricsByDeptDate[deptKey][dateStr].periodKeys.push(period);
+        }
+        context.dates[dateStr] = true;
+      });
+    });
   });
 
   return context;
@@ -218,6 +237,19 @@ function MrrDashboard_parseDeptFromSnapshotName_(nameRaw, deptSet) {
   return deptSet[deptKey] ? deptKey : '';
 }
 
+function MrrDashboard_getFcstSnapshotBucket_(buckets, deptKey, dateStr, period) {
+  if (!buckets[deptKey]) buckets[deptKey] = {};
+  if (!buckets[deptKey][dateStr]) buckets[deptKey][dateStr] = {};
+  if (!buckets[deptKey][dateStr][period]) {
+    buckets[deptKey][dateStr][period] = {
+      totalPayload: null,
+      sumPayload: MrrDashboard_emptyFcstPayload_(),
+      sumCount: 0
+    };
+  }
+  return buckets[deptKey][dateStr][period];
+}
+
 function MrrDashboard_isDepartmentTotalPayload_(payload, deptKey) {
   var meta = (payload && payload.__meta) || {};
   if (!meta.isTotal) return false;
@@ -229,6 +261,66 @@ function MrrDashboard_isDepartmentTotalPayload_(payload, deptKey) {
     groupCode: meta.groupCode || '',
     dept: meta.dept || deptKey
   }, deptKey);
+}
+
+function MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey) {
+  var meta = (payload && payload.__meta) || {};
+  if (meta.isTotal) return false;
+  var text = String(nameRaw || '');
+  var idx = text.indexOf(':');
+  var name = idx >= 0 ? text.slice(idx + 1) : text;
+  if (!name || name === String(deptKey || '') || name === SHARED_ALL_GROUP_LABEL) return false;
+  if (/全体$/.test(name) || /グループ$/.test(name)) return false;
+  return true;
+}
+
+function MrrDashboard_emptyFcstPayload_() {
+  return {
+    target: MrrDashboard_emptyBreakdown_(),
+    fcstAdjusted: MrrDashboard_emptyBreakdown_(),
+    fcstCommit: MrrDashboard_emptyBreakdown_(),
+    confirmed: MrrDashboard_emptyBreakdown_(),
+    expectedMrr: MrrDashboard_emptyBreakdown_(),
+    fcstMax: 0,
+    received: MrrDashboard_emptyBreakdown_(),
+    debtMgmt: MrrDashboard_emptyBreakdown_(),
+    debtMgmtLite: MrrDashboard_emptyBreakdown_(),
+    expense: MrrDashboard_emptyBreakdown_()
+  };
+}
+
+function MrrDashboard_emptyBreakdown_() {
+  return { net: 0, newExp: 0, churn: 0 };
+}
+
+function MrrDashboard_addFcstPayload_(sum, payload) {
+  sum = sum || MrrDashboard_emptyFcstPayload_();
+  [
+    'target',
+    'fcstAdjusted',
+    'fcstCommit',
+    'confirmed',
+    'expectedMrr',
+    'received',
+    'debtMgmt',
+    'debtMgmtLite',
+    'expense'
+  ].forEach(function(key) {
+    MrrDashboard_addBreakdownTo_(sum[key], payload && payload[key]);
+  });
+  sum.fcstMax += Number(payload && payload.fcstMax) || 0;
+  return sum;
+}
+
+function MrrDashboard_addBreakdownTo_(target, value) {
+  if (!target) return;
+  if (typeof value === 'number') {
+    target.net += Number(value) || 0;
+    return;
+  }
+  target.net += Number(value && value.net) || 0;
+  target.newExp += Number(value && value.newExp) || 0;
+  target.churn += Number(value && value.churn) || 0;
 }
 
 function MrrDashboard_pickSnapshotPeriodKeyFromKeys_(periodKeys, snapshotDate) {

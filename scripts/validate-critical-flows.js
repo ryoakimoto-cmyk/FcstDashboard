@@ -200,6 +200,7 @@ const mrrDashboard = read('MrrDashboard.gs');
 });
 
 const mrrSnapshot = read('MrrSnapshotDashboard.gs');
+assertNoMojibake('MrrSnapshotDashboard.gs', mrrSnapshot);
 [
   'function MrrDashboard_getBoData_()',
   "totalDeptKey: 'BO'",
@@ -209,6 +210,9 @@ const mrrSnapshot = read('MrrSnapshotDashboard.gs');
   'getRange(1, 1, sheet.getLastRow(), 4).getValues()',
   'getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues()',
   'SharedAppState_isDepartmentTotal_({',
+  'function MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey)',
+  'function MrrDashboard_addFcstPayload_(sum, payload)',
+  'var payload = bucket.totalPayload || (bucket.sumCount ? bucket.sumPayload : null);',
   'function MrrDashboard_getBoMetricDefinitions_()',
   "key: 'fcstAdjusted'",
   "key: 'fcstMax'",
