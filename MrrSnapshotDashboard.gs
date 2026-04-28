@@ -118,38 +118,46 @@ function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics) {
     status: 'ok',
     periodKey: validated.periodKey,
     repaired: !!validated.repaired,
+    source: validated.source || '',
     membersCount: validated.membersCount
   });
   return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, validated.periodKey);
 }
 
 function MrrDashboard_getValidatedCurrentInitData_(deptKey) {
-  var first = MrrDashboard_readCurrentInitData_(deptKey, false);
-  var checked = MrrDashboard_validateCurrentInitData_(deptKey, first.live);
-  if (checked.ok) return checked;
-
-  var refreshed = MrrDashboard_readCurrentInitData_(deptKey, true);
-  var rechecked = MrrDashboard_validateCurrentInitData_(deptKey, refreshed.live);
-  rechecked.repaired = rechecked.ok;
-  if (!rechecked.ok) {
-    rechecked.initialReason = checked.reason || '';
-    rechecked.error = refreshed.error || checked.error || '';
-  }
-  return rechecked;
+  var cached = MrrDashboard_readCurrentInitData_(deptKey);
+  var checked = MrrDashboard_validateCurrentInitData_(deptKey, cached.live);
+  checked.source = cached.source || '';
+  if (!checked.ok && cached.error) checked.error = cached.error;
+  return checked;
 }
 
-function MrrDashboard_readCurrentInitData_(deptKey, refresh) {
+function MrrDashboard_readCurrentInitData_(deptKey) {
+  var live = null;
+  var source = '';
+  var errors = [];
+
   try {
-    return {
-      live: refresh ? AppDataCache_refreshInitData(deptKey) : AppDataCache_getInitData(deptKey),
-      error: ''
-    };
+    live = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
+    if (live) source = 'script_cache';
   } catch (e) {
-    return {
-      live: null,
-      error: String(e && e.message ? e.message : e)
-    };
+    errors.push(String(e && e.message ? e.message : e));
   }
+
+  if (!live) {
+    try {
+      live = AggregatedCache_read(deptKey);
+      if (live) source = 'aggregated_cache';
+    } catch (e2) {
+      errors.push(String(e2 && e2.message ? e2.message : e2));
+    }
+  }
+
+  return {
+    live: live,
+    source: source,
+    error: errors.join(' / ')
+  };
 }
 
 function MrrDashboard_validateCurrentInitData_(deptKey, live) {
@@ -159,6 +167,7 @@ function MrrDashboard_validateCurrentInitData_(deptKey, live) {
     status: 'error',
     reason: '',
     error: '',
+    source: '',
     live: live || null,
     member: null,
     periodKey: '',
@@ -218,6 +227,7 @@ function MrrDashboard_addCurrentDiagnostic_(diagnostics, item) {
     initialReason: String(item && item.initialReason || ''),
     periodKey: String(item && item.periodKey || ''),
     repaired: !!(item && item.repaired),
+    source: String(item && item.source || ''),
     membersCount: Number(item && item.membersCount || 0) || 0
   });
 }

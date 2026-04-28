@@ -297,7 +297,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'function MrrDashboard_validateCurrentInitData_(deptKey, live)',
   "reason = 'department_total_missing'",
   'function MrrDashboard_readCurrentOppDeals_(deptKeys, periodByDept)',
-  'AppDataCache_getInitData(deptKey)',
+  "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })",
+  'AggregatedCache_read(deptKey)',
   'AppDataCache_getOpportunities(deptKey)',
   "weekLabels[MRR_DASHBOARD_LIVE_KEY] = '現在';",
   'function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit)',
@@ -329,5 +330,10 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
 ].forEach((token) => {
   assertIncludes(mrrSnapshot, token, 'MRR shared snapshot path incomplete');
 });
+assertNotIncludes(
+  mrrSnapshot,
+  'AppDataCache_refreshInitData(deptKey)',
+  'MRR initial current data must not perform live refresh during user loading'
+);
 
 console.log('critical flow checks passed');
