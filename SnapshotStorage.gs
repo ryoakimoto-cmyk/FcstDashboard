@@ -166,6 +166,7 @@ function SnapshotStorage_getFreshStartPlan() {
     mainSheetsToDelete: [],
     dbFilesToTrash: [],
     unregisteredDbFileCandidates: [],
+    unregisteredDbFileSearchSkipped: true,
     scriptPropertiesToClear: []
   };
   var seenFileIds = {};
@@ -190,15 +191,6 @@ function SnapshotStorage_getFreshStartPlan() {
     var activeFileId = SnapshotStorage_getActiveFileId_(sheetName);
     SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
       SnapshotStorage_addFreshStartDbFile_(result, sheetName, fileId, fileId === activeFileId, true, seenFileIds);
-    });
-  });
-  SnapshotStorage_findDbFilesByName_().forEach(function(file) {
-    var id = file.getId();
-    if (seenFileIds[id]) return;
-    result.unregisteredDbFileCandidates.push({
-      fileId: id,
-      fileName: file.getName(),
-      fileUrl: file.getUrl()
     });
   });
 
@@ -311,11 +303,6 @@ function SnapshotStorage_addFreshStartDbFile_(result, sheetName, fileId, active,
     entry.rows = sheet ? sheet.getLastRow() : 0;
   } catch (e) {
     entry.error = e && e.message ? e.message : String(e);
-    try {
-      var file = DriveApp.getFileById(id);
-      entry.fileName = file.getName();
-      entry.fileUrl = file.getUrl();
-    } catch (ignored) {}
   }
 
   result.dbFilesToTrash.push(entry);
@@ -334,19 +321,6 @@ function SnapshotStorage_findDbOwnedSheet_(spreadsheet, preferredSheetName) {
     if (candidate) return candidate;
   }
   return null;
-}
-
-function SnapshotStorage_findDbFilesByName_() {
-  var files = [];
-  try {
-    var iterator = DriveApp.searchFiles("title contains 'FcstDashboard DB - ' and trashed = false");
-    while (iterator.hasNext()) {
-      files.push(iterator.next());
-    }
-  } catch (e) {
-    Logger.log('SnapshotStorage DB file search failed: ' + (e && e.message ? e.message : e));
-  }
-  return files;
 }
 
 function SnapshotStorage_recordIndex_(sheetName, spreadsheet, sheet, active) {

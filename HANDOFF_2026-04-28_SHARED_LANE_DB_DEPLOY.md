@@ -71,7 +71,7 @@ Fresh-start cleanup helpers are available:
 - `manualArmSnapshotStorageFreshStartCleanup()`: arms cleanup for 10 minutes and returns the current cleanup plan.
 - `manualCleanupSnapshotStorageForFreshStart()`: after arming, deletes the old main-spreadsheet DB-owned sheets/index, trashes registered DB files, and clears snapshot storage script properties.
 
-`SnapshotExecutionLog` is not deleted by cleanup because it is an operations log in the main spreadsheet. Unregistered DB-looking files found by Drive name search are listed as candidates only and are not automatically trashed.
+`SnapshotExecutionLog` is not deleted by cleanup because it is an operations log in the main spreadsheet. `SnapshotStorage_getFreshStartPlan()` does not run Drive-wide file search; cleanup only targets DB files registered in script properties. If unregistered test DB files exist, inspect and delete them manually in Drive.
 
 ## Manual verification
 
