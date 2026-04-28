@@ -145,7 +145,12 @@ if (mrrBuild.includes('meta.dept || rowDeptKey') || mrrBuild.includes('metaDeptK
 assertIncludes(mrrDashboard, "var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];", 'MRR dashboard must include CO as a first-class division');
 assertIncludes(mrrDashboard, "if (sfSheetKey === 'CO') return 'CO';", 'MRR dashboard must classify CO departments');
 assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
-assertIncludes(mrrDashboard, "var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v5';", 'MRR dashboard cache key must change when aggregation eligibility changes');
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v6';", 'MRR dashboard cache key must change when snapshot grouping changes');
+assertIncludes(mrrBuild, 'key: dateKey', 'MRR dashboard must group snapshot weeks by date, not minute');
+assertIncludes(mrrBuild, 'division.data[periodKey][dateKey]', 'MRR dashboard data buckets must use date keys');
+if (mrrBuild.includes("var timestampKey = Utilities.formatDate(snapshotAt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')")) {
+  throw new Error('MRR dashboard snapshot grouping must not depend on minute-level timestamps');
+}
 assertMatches(
   getFunctionBody(mrrDashboard, 'getMrrDashboardData'),
   /(data\.divisions\s*&&\s*data\.divisions\.length|Array\.isArray\(data\.divisions\)\s*&&\s*data\.divisions\.length)/,
@@ -169,6 +174,23 @@ const fcstSnapshotCreateAt = getFunctionBody(fcstSnapshot, 'FcstSnapshot_createA
 assertIncludes(fcstSnapshot, 'function FcstSnapshot_buildPayloadMeta_', 'FCST snapshot must centralize write metadata shape');
 const fcstPayloadMeta = getFunctionBody(fcstSnapshot, 'FcstSnapshot_buildPayloadMeta_');
 assertIncludes(fcstSnapshotCreateAt, 'payload.__meta = FcstSnapshot_buildPayloadMeta_(member, options)', 'FCST snapshot writes must use normalized minimal metadata');
+assertIncludes(fcstSnapshotCreateAt, 'FcstSnapshot_getLatestMetricMap_(deptKey, dateKey)', 'FCST snapshot week-over-week baseline must exclude the same snapshot date');
+assertIncludes(fcstSnapshotCreateAt, 'FcstSnapshot_deleteByDate_(deptKey, sheet, dateKey)', 'FCST snapshot writes must replace same dept/date rows before appending');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_deleteByDate_', 'FCST snapshot must have date-level dedupe deletion');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_getLatestDateKey_', 'FCST snapshot must resolve previous snapshots by date');
+if (fcstSnapshot.includes('function FcstSnapshot_hasRowAt_')) {
+  throw new Error('FCST snapshot creation must not use minute-level duplicate checks');
+}
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendData'),
+  'snapshotMap[dateKey]',
+  'FCST trend data must collapse snapshots by date'
+);
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendWeekDetails'),
+  "Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') !== snapshotKey",
+  'FCST trend detail lookup must use date keys'
+);
 assertIncludes(fcstPayloadMeta, 'meta.totalKind = totalKind', 'FCST snapshot write metadata must include row type');
 assertIncludes(fcstPayloadMeta, 'if (group) meta.group = group', 'FCST snapshot write metadata must include historical group when present');
 ['isTotal:', 'dept:', 'name:', 'captureMode:', 'groupCode:'].forEach((token) => {

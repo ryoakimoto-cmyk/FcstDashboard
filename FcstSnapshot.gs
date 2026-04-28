@@ -6,20 +6,11 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
   var snapshotDate = (snapshotAt instanceof Date && !isNaN(snapshotAt)) ? new Date(snapshotAt.getTime()) : new Date();
   var options = meta || {};
   var periods = periodKeys || [];
-  var existingValues = FcstSnapshot_getAllValues_(4);
   var dateKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd');
   var timestampKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
   var captureMode = FcstSnapshot_normalizeCaptureMode_(options.captureMode);
 
-  if (!options.force) {
-    for (var p = 0; p < periods.length; p++) {
-      if (FcstSnapshot_hasRowAt_(deptKey, timestampKey, periods[p], existingValues)) {
-        return { ok: true, skipped: true, count: 0, date: dateKey, snapshotAt: timestampKey, captureMode: captureMode };
-      }
-    }
-  }
-
-  var prevMetricMap = FcstSnapshot_getLatestMetricMap_(deptKey);
+  var prevMetricMap = FcstSnapshot_getLatestMetricMap_(deptKey, dateKey);
   var notes = notesMap || {};
   var rows = [];
   var metricKeys = ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'confirmed', 'expectedMrr'];
@@ -50,6 +41,9 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
   });
 
   if (rows.length) {
+    FcstSnapshot_getSheets_().forEach(function(sheet) {
+      FcstSnapshot_deleteByDate_(deptKey, sheet, dateKey);
+    });
     var writeResult = SnapshotStorage_appendRows_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), rows);
     FcstSnapshot_trimOld_(deptKey, writeResult.sheet);
     return {
@@ -70,6 +64,10 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
 
 function FcstSnapshot_headers_() {
   return ['日時', '担当者', '期間', 'データ'];
+}
+
+function FcstSnapshot_getSheets_() {
+  return SnapshotStorage_getReadSheets_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_());
 }
 
 function FcstSnapshot_getAllValues_(columnCount) {
@@ -193,18 +191,6 @@ function FcstSnapshot_getMondayAt3AM_(date) {
   return monday;
 }
 
-function FcstSnapshot_hasRowAt_(deptKey, timestampKey, periodKey, valuesOpt) {
-  var values = valuesOpt || [];
-  return values.some(function(row) {
-    var d = row[0];
-    var nameRaw = String(row[1] || '').trim();
-    if (!(d instanceof Date) || isNaN(d)) return false;
-    if (!nameRaw.startsWith(deptKey + ':')) return false;
-    if (String(row[2] || '').trim() !== String(periodKey || '').trim()) return false;
-    return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') === timestampKey;
-  });
-}
-
 function FcstSnapshot_hasDateRow_(deptKey, dateKey, valuesOpt) {
   var values = valuesOpt || [];
   return values.some(function(row) {
@@ -238,19 +224,23 @@ function FcstSnapshot_autoRecoverWeeklyIfMissing_(deptKey) {
   FcstSnapshot_createAt_(deptKey, input.members, input.notesMap, input.periodKeys, monday, { captureMode: 'auto-recovery' });
 }
 
-function FcstSnapshot_getLatestMetricMap_(deptKey) {
+function FcstSnapshot_getLatestMetricMap_(deptKey, beforeDateKey) {
   var values = FcstSnapshot_getAllValues_(4);
   if (!values.length) return {};
-  var latestKey = FcstSnapshot_getLatestTimestampKey_(deptKey, values);
+  var latestKey = FcstSnapshot_getLatestDateKey_(deptKey, values, beforeDateKey);
   if (!latestKey) return {};
   var metricMap = {};
-  values.forEach(function(row) {
+  values.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var d = row[0];
     if (!(d instanceof Date) || isNaN(d)) return;
     var nameRaw = String(row[1] || '').trim();
     if (!nameRaw.startsWith(deptKey + ':')) return;
     var name = nameRaw.slice(deptKey.length + 1);
-    if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') !== latestKey) return;
+    if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') !== latestKey) return;
     var period = String(row[2] || '').trim();
     var metric;
     try {
@@ -273,7 +263,7 @@ function FcstSnapshot_trimOld_(deptKey, sheet) {
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
     if (!nameRaw.startsWith(deptKey + ':')) return;
-    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
     if (seenDates.indexOf(key) === -1) seenDates.push(key);
   });
   seenDates.sort(function(a, b) { return a < b ? -1 : a > b ? 1 : 0; });
@@ -284,21 +274,59 @@ function FcstSnapshot_trimOld_(deptKey, sheet) {
     var nameRaw = String(allValues[i - 1][1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) continue;
     if (!nameRaw.startsWith(deptKey + ':')) continue;
-    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
     if (key === oldKey) sheet.deleteRow(i);
   }
+}
+
+function FcstSnapshot_deleteByDate_(deptKey, sheet, dateKey) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 1) return;
+  var allValues = sheet.getRange(1, 1, lastRow, 2).getValues();
+  var deleteRows = [];
+  for (var i = 0; i < allValues.length; i++) {
+    var d = allValues[i][0];
+    var nameRaw = String(allValues[i][1] || '').trim();
+    if (!(d instanceof Date) || isNaN(d)) continue;
+    if (!nameRaw.startsWith(deptKey + ':')) continue;
+    if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') === dateKey) deleteRows.push(i + 1);
+  }
+  FcstSnapshot_deleteRows_(sheet, deleteRows);
+}
+
+function FcstSnapshot_deleteRows_(sheet, rowNumbers) {
+  if (!rowNumbers || !rowNumbers.length) return;
+  var sorted = rowNumbers.slice().sort(function(a, b) { return b - a; });
+  var start = sorted[0];
+  var count = 1;
+  for (var i = 1; i < sorted.length; i++) {
+    var rowNumber = sorted[i];
+    if (rowNumber === start - 1) {
+      start = rowNumber;
+      count++;
+      continue;
+    }
+    sheet.deleteRows(start, count);
+    start = rowNumber;
+    count = 1;
+  }
+  sheet.deleteRows(start, count);
 }
 
 function FcstSnapshot_getWeekOverWeek(deptKey) {
   var values = FcstSnapshot_getAllValues_(4);
   if (!values.length) return {};
   var dateKeys = [];
-  values.forEach(function(row) {
+  values.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
     if (!nameRaw.startsWith(deptKey + ':')) return;
-    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
     if (dateKeys.indexOf(key) === -1) dateKeys.push(key);
   });
   dateKeys.sort(function(a, b) { return b < a ? -1 : b > a ? 1 : 0; });
@@ -307,13 +335,17 @@ function FcstSnapshot_getWeekOverWeek(deptKey) {
   var prevKey = dateKeys[1];
   var latestMap = {};
   var prevMap = {};
-  values.forEach(function(row) {
+  values.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
     if (!nameRaw.startsWith(deptKey + ':')) return;
     var name = nameRaw.slice(deptKey.length + 1);
-    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
     var period = String(row[2] || '').trim();
     var mapKey = name + '|' + period;
     var metric;
@@ -348,7 +380,11 @@ function FcstSnapshot_getSnapshotDates(deptKey) {
   if (!values.length) return [];
   var seen = {};
   var dates = [];
-  values.forEach(function(row) {
+  values.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
@@ -545,7 +581,11 @@ function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
   };
   var snapshotMap = {};
 
-  values.forEach(function(row) {
+  values.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
@@ -561,15 +601,14 @@ function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
     }
 
     if (!FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw)) return;
-    var timestampKey = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
-    snapshotMap[timestampKey] = { payload: payload, date: d };
+    var dateKey = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
+    snapshotMap[dateKey] = { payload: payload, date: d };
   });
 
-  Object.keys(snapshotMap).sort().forEach(function(timestampKey) {
-    var entry = snapshotMap[timestampKey] || {};
+  Object.keys(snapshotMap).sort().forEach(function(dateKey) {
+    var entry = snapshotMap[dateKey] || {};
     var payload = entry.payload || {};
     var label = Utilities.formatDate(entry.date, 'Asia/Tokyo', 'M/d');
-    var dateKey = timestampKey.slice(0, 10);
     var metrics = FcstSnapshot_extractTrendMetrics_(payload);
     var keyDeals = Array.isArray(payload.keyDeals) ? payload.keyDeals : [];
 
@@ -581,7 +620,7 @@ function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
     data.series.confirmed.push(metrics.confirmed);
     data.series.expectedMrr.push(metrics.expectedMrr);
     data.points.push({
-      snapshotKey: timestampKey,
+      snapshotKey: dateKey,
       date: dateKey,
       label: label,
       isLive: false,
@@ -641,7 +680,12 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
 
   if (!targetPeriod) return result;
 
-  var values = FcstSnapshot_getAllValues_(4);
+  var values = FcstSnapshot_getAllValues_(4).slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  });
+  var matchedPayload = null;
 
   for (var i = 0; i < values.length; i++) {
     var row = values[i];
@@ -650,7 +694,7 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
     if (!(d instanceof Date) || isNaN(d)) continue;
     if (!nameRaw.startsWith(deptKey + ':')) continue;
     if (String(row[2] || '').trim() !== targetPeriod) continue;
-    if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') !== snapshotKey) continue;
+    if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') !== snapshotKey) continue;
 
     var payload;
     try {
@@ -660,11 +704,15 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
     }
 
     if (!FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw)) continue;
+    matchedPayload = payload;
+  }
+
+  if (matchedPayload) {
     return {
       snapshotKey: snapshotKey,
       isLive: false,
-      metrics: FcstSnapshot_extractTrendMetrics_(payload),
-      keyDeals: FcstSnapshot_normalizeKeyDeals_(payload.keyDeals)
+      metrics: FcstSnapshot_extractTrendMetrics_(matchedPayload),
+      keyDeals: FcstSnapshot_normalizeKeyDeals_(matchedPayload.keyDeals)
     };
   }
 
@@ -704,6 +752,21 @@ function FcstSnapshot_getLatestTimestampKey_(deptKey, values) {
     if (!(d instanceof Date) || isNaN(d)) return;
     if (deptKey && !nameRaw.startsWith(deptKey + ':')) return;
     var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+    if (!latestKey || key > latestKey) latestKey = key;
+  });
+  return latestKey;
+}
+
+function FcstSnapshot_getLatestDateKey_(deptKey, values, beforeDateKey) {
+  var latestKey = '';
+  var upperBound = String(beforeDateKey || '').trim();
+  (values || []).forEach(function(row) {
+    var d = row[0];
+    var nameRaw = String(row[1] || '').trim();
+    if (!(d instanceof Date) || isNaN(d)) return;
+    if (deptKey && !nameRaw.startsWith(deptKey + ':')) return;
+    var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
+    if (upperBound && key >= upperBound) return;
     if (!latestKey || key > latestKey) latestKey = key;
   });
   return latestKey;

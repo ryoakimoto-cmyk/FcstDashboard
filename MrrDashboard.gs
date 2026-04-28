@@ -1,6 +1,6 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v5';
-var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2', 'snapshotData:v4'];
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v6';
+var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2', 'snapshotData:v4', 'snapshotData:v5'];
 var MRR_DASHBOARD_TOTAL_KEY = 'total';
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_NUMERIC_METRIC_KEYS = {
@@ -39,7 +39,11 @@ function MrrDashboard_buildFromSnapshots_() {
   var oppRows = OppListSnapshot_getAllValues_(5);
   var dealsByDivisionDate = MrrDashboard_buildDealsByDivisionDate_(oppRows, catalog);
 
-  fcstRows.forEach(function(row) {
+  fcstRows.slice().sort(function(a, b) {
+    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
+    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
+    return ad - bd;
+  }).forEach(function(row) {
     var snapshotAt = row[0];
     if (!(snapshotAt instanceof Date) || isNaN(snapshotAt)) return;
 
@@ -56,21 +60,20 @@ function MrrDashboard_buildFromSnapshots_() {
 
     var divisionKey = deptMeta.divisionKey;
     var division = MrrDashboard_ensureDivision_(divisions, divisionKey, deptMeta.divisionLabel);
-    var timestampKey = Utilities.formatDate(snapshotAt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     var dateKey = Utilities.formatDate(snapshotAt, 'Asia/Tokyo', 'yyyy-MM-dd');
 
     MrrDashboard_addWeek_(division, {
-      key: timestampKey,
+      key: dateKey,
       date: dateKey,
       label: Utilities.formatDate(snapshotAt, 'Asia/Tokyo', 'M/d'),
-      timestamp: timestampKey
+      timestamp: dateKey
     });
     MrrDashboard_addPeriod_(division, periodKey);
     MrrDashboard_addDept_(division, deptMeta);
 
     if (!division.data[periodKey]) division.data[periodKey] = {};
-    if (!division.data[periodKey][timestampKey]) division.data[periodKey][timestampKey] = {};
-    division.data[periodKey][timestampKey][deptKey] = MrrDashboard_extractMetrics_(payload);
+    if (!division.data[periodKey][dateKey]) division.data[periodKey][dateKey] = {};
+    division.data[periodKey][dateKey][deptKey] = MrrDashboard_extractMetrics_(payload);
   });
 
   Object.keys(divisions).forEach(function(divisionKey) {
