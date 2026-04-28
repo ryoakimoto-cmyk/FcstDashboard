@@ -17,9 +17,13 @@ function AggregatedCache_readMany(deptKeys) {
 
   var values = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
   keys.forEach(function(deptKey) {
-    var map = AggregatedCache_decodeMap_(deptKey, values);
-    var data = AggregatedCache_buildResultFromMap_(map);
-    if (data) result[deptKey] = data;
+    try {
+      var map = AggregatedCache_decodeMap_(deptKey, values);
+      var data = AggregatedCache_buildResultFromMap_(map);
+      if (data) result[deptKey] = data;
+    } catch (e) {
+      Logger.log('AggregatedCache_readMany skipped ' + deptKey + ': ' + (e && e.message ? e.message : e));
+    }
   });
   return result;
 }
@@ -275,7 +279,12 @@ function AggregatedCache_decodeValue_(key, value) {
   if (key === 'lastUpdated' || key === 'cachedAt' || key === 'sfLastUpdated') {
     return String(value || '');
   }
-  return AggregatedCache_parseJson_(value, null);
+  try {
+    return AggregatedCache_parseJson_(value, null);
+  } catch (e) {
+    Logger.log('AggregatedCache JSON decode failed: key=' + key + ' / ' + (e && e.message ? e.message : e));
+    return null;
+  }
 }
 
 function AggregatedCache_getSfLastUpdated_(deptKey) {

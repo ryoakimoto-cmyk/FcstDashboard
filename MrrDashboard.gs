@@ -165,7 +165,12 @@ function MrrDashboard_cacheReadChunked_(cache, key) {
     if (!chunk) return null;
     parts.push(chunk);
   }
-  return JSON.parse(parts.join(''));
+  try {
+    return JSON.parse(parts.join(''));
+  } catch (e) {
+    MrrDashboard_cacheRemoveChunked_(cache, key);
+    return null;
+  }
 }
 
 function MrrDashboard_cacheRemoveChunked_(cache, key) {

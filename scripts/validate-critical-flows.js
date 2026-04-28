@@ -39,6 +39,7 @@ assertIncludes(cacheLayer, "var CACHE_PREFIX = 'fcst:';", 'cache prefix changed'
 assertIncludes(cacheLayer, 'var CACHE_TTL_DEFAULT_SECONDS = 300;', 'shared cache default TTL must stay at 5 minutes');
 assertIncludes(cacheLayer, 'function CacheLayer_getTtl_(dataKey)', 'shared cache TTL helper missing');
 assertIncludes(cacheLayer, 'function CacheLayer_removeChunked_(cache, key)', 'chunked cache invalidation missing');
+assertIncludes(cacheLayer, 'CacheLayer_removeChunked_(cache, key);', 'corrupt chunked cache must be removed on JSON parse failure');
 assertIncludes(cacheLayer, "'initData'", 'initData cache invalidation missing');
 assertIncludes(cacheLayer, "'oppList'", 'oppList cache invalidation missing');
 assertIncludes(cacheLayer, 'persistToSheet === false', 'ephemeral cache option missing');
@@ -54,6 +55,8 @@ const aggregatedCache = read('AggregatedCache.gs');
 assertIncludes(aggregatedCache, 'MrrDashboard_prewarmCurrentCache();', 'MRR current cache must be prewarmed by the 5-minute cache job');
 assertIncludes(aggregatedCache, 'function AggregatedCache_readMany(deptKeys)', 'bulk aggregated cache read helper missing');
 assertIncludes(aggregatedCache, 'function AggregatedCache_buildResultFromMap_(map)', 'aggregated cache decode builder missing');
+assertIncludes(aggregatedCache, 'Logger.log(\'AggregatedCache JSON decode failed:', 'aggregated cache JSON decode failures must not break MRR load');
+assertIncludes(aggregatedCache, 'Logger.log(\'AggregatedCache_readMany skipped \' + deptKey', 'bulk cache read must skip corrupt dept cache entries');
 [
   "prefix + 'members'",
   "prefix + 'adjusted'",
@@ -302,6 +305,7 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'function MrrDashboard_readCurrentCacheMap_(deptKeys)',
   "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })",
   'AggregatedCache_readMany(missing)',
+  'bulkError = String(e1 && e1.message ? e1.message : e1);',
   "CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false })",
   'AppDataCache_getOpportunities(deptKey)',
   "weekLabels[MRR_DASHBOARD_LIVE_KEY] = '現在';",

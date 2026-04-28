@@ -84,7 +84,10 @@ function CacheLayer_readChunked_(cache, key) {
     if (!chunk) return null;
     parts.push(chunk);
   }
-  try { return JSON.parse(parts.join('')); } catch(e) { return null; }
+  try { return JSON.parse(parts.join('')); } catch(e) {
+    CacheLayer_removeChunked_(cache, key);
+    return null;
+  }
 }
 
 function CacheLayer_removeChunked_(cache, key) {

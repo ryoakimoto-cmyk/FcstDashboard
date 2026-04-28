@@ -128,13 +128,20 @@ function MrrDashboard_readCurrentCacheMap_(deptKeys) {
   });
 
   if (missing.length) {
-    var bulk = AggregatedCache_readMany(missing);
+    var bulk = {};
+    var bulkError = '';
+    try {
+      bulk = AggregatedCache_readMany(missing);
+    } catch (e1) {
+      bulkError = String(e1 && e1.message ? e1.message : e1);
+      bulk = {};
+    }
     missing.forEach(function(deptKey) {
       if (bulk && bulk[deptKey]) {
         result[deptKey] = { live: bulk[deptKey], source: 'aggregated_cache', error: '' };
         try { CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false }); } catch (e2) {}
       } else if (!result[deptKey]) {
-        result[deptKey] = { live: null, source: '', error: '' };
+        result[deptKey] = { live: null, source: '', error: bulkError };
       }
     });
   }
