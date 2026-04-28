@@ -835,26 +835,47 @@ function MrrDashboard_getCurrentPeriodFilterByDept_(deptKeys, periodKey) {
 
 function MrrDashboard_readCurrentOppDeals_(deptKeys, periodFilterByDept) {
   var deals = [];
-  (deptKeys || []).forEach(function(deptKey) {
-    var result = AppDataCache_getOpportunities(deptKey);
-    if (!result || result.error) {
-      throw new Error('MRR current Opp source failed: ' + deptKey + ' / ' + (result && result.error ? result.error : 'empty payload'));
-    }
+  var sheetContexts = MrrDashboard_getCurrentOppSheetContexts_(deptKeys);
+  sheetContexts.forEach(function(context) {
+    var sheet = context.sheet;
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 3 || lastCol < 1) return;
 
-    var targetFilter = periodFilterByDept && periodFilterByDept[deptKey];
-    (result.rows || []).forEach(function(row) {
-      if (!row || row.keyDeal !== true) return;
-      if (!MrrDashboard_periodFilterMatches_(targetFilter, row.completedMonth)) return;
+    var headers = sheet.getRange(2, 1, 1, lastCol).getValues()[0];
+    if (context.deptKeys.indexOf('SSSMBCS') !== -1) headers = normalizeSSCSHeaders_(headers);
+    var headerMap = OppListReader_buildHeaderMap_(headers);
+    var values = sheet.getRange(3, 1, lastRow - 2, lastCol).getValues();
+    var deptUserMaps = MrrDashboard_getDeptUserMaps_(context.deptKeys);
+    var unionFilter = MrrDashboard_mergePeriodFilters_(periodFilterByDept, context.deptKeys);
+
+    values.forEach(function(row) {
+      if (MrrDashboard_isTrueBoolean_(OppListReader_valueByKeys_(row, headerMap, ['KeyDeal_最新'])) !== true) return;
+
+      var resolvedDeptKey = MrrDashboard_resolveCurrentOppDeptKey_(row, headerMap, context.deptKeys, deptUserMaps);
+      if (!resolvedDeptKey && !context.includeUnresolvedRows) return;
+
+      var completedMonth = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['完了予定月']));
+      var targetFilter = resolvedDeptKey && periodFilterByDept && periodFilterByDept[resolvedDeptKey]
+        ? periodFilterByDept[resolvedDeptKey]
+        : unionFilter;
+      if (!MrrDashboard_periodFilterMatches_(targetFilter, completedMonth)) return;
+
+      var oppId = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['ID', '案件ID'])).trim();
+      var dealName = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['案件名'])).trim();
+      if (!oppId || !dealName) return;
+      var owner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', 'ユーザー'])).trim();
+      var sourceDept = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['担当部署'])).trim();
 
       deals.push({
-        dept: MrrDashboard_getDeptLabel_(deptKey),
-        company: String(row.dealName || ''),
-        mrr: Number(row.mrr) || 0,
-        phase: String(row.phase || ''),
-        yomi: Number(row.fcstCommit) || 0,
-        oppId: String(row.oppId || ''),
-        completedMonth: String(row.completedMonth || ''),
-        owner: String(row.subOwner || '')
+        dept: resolvedDeptKey ? MrrDashboard_getDeptLabel_(resolvedDeptKey) : (sourceDept || context.division || ''),
+        company: dealName,
+        mrr: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR', '金額（LK＋新ソリューション）(換算値)', '月額(換算値)'])),
+        phase: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['フェーズ_変換', 'フェーズ'])),
+        yomi: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(コミット)_最新', 'FCST(コミット)(換算値)'])),
+        oppId: oppId,
+        completedMonth: completedMonth,
+        owner: owner
       });
     });
   });
@@ -863,6 +884,75 @@ function MrrDashboard_readCurrentOppDeals_(deptKeys, periodFilterByDept) {
     return Math.abs(right.mrr) - Math.abs(left.mrr);
   });
   return deals;
+}
+
+function MrrDashboard_getCurrentOppSheetContexts_(deptKeys) {
+  var bySheetName = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    var cfg = DEPT_CONFIG[deptKey];
+    if (!cfg || !cfg.sfSheet) return;
+    if (!bySheetName[cfg.sfSheet]) {
+      bySheetName[cfg.sfSheet] = {
+        sheetName: cfg.sfSheet,
+        sheet: getSharedSheet(cfg.sfSheet),
+        deptKeys: [],
+        division: cfg.division || ''
+      };
+    }
+    bySheetName[cfg.sfSheet].deptKeys.push(deptKey);
+  });
+
+  return Object.keys(bySheetName).map(function(sheetName) {
+    var context = bySheetName[sheetName];
+    if (!context.sheet) throw new Error('MRR current Opp source sheet missing: ' + sheetName);
+    context.includeUnresolvedRows = context.deptKeys.length > 1;
+    return context;
+  });
+}
+
+function MrrDashboard_getDeptUserMaps_(deptKeys) {
+  var maps = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    maps[deptKey] = {};
+    OppListReader_getDeptUserNames_(deptKey).forEach(function(name) {
+      name = String(name || '').trim();
+      if (name) maps[deptKey][name] = true;
+    });
+  });
+  return maps;
+}
+
+function MrrDashboard_resolveCurrentOppDeptKey_(row, headerMap, deptKeys, deptUserMaps) {
+  var owner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', 'ユーザー'])).trim();
+  for (var i = 0; i < (deptKeys || []).length; i++) {
+    var deptKey = deptKeys[i];
+    if (owner && deptUserMaps && deptUserMaps[deptKey] && deptUserMaps[deptKey][owner]) return deptKey;
+  }
+
+  var sourceDept = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['担当部署'])).trim();
+  for (var j = 0; j < (deptKeys || []).length; j++) {
+    var key = deptKeys[j];
+    if (sourceDept === key || sourceDept.indexOf(key) === 0 || sourceDept === MrrDashboard_getDeptLabel_(key)) return key;
+  }
+
+  return '';
+}
+
+function MrrDashboard_mergePeriodFilters_(periodFilterByDept, deptKeys) {
+  var merged = { periodKey: '', months: {} };
+  (deptKeys || []).forEach(function(deptKey) {
+    var filter = periodFilterByDept && periodFilterByDept[deptKey];
+    if (!filter) return;
+    if (!merged.periodKey) merged.periodKey = filter.periodKey || '';
+    Object.keys(filter.months || {}).forEach(function(monthKey) {
+      merged.months[monthKey] = true;
+    });
+  });
+  return merged;
+}
+
+function MrrDashboard_isTrueBoolean_(value) {
+  return value === true || String(value || '').trim().toUpperCase() === 'TRUE';
 }
 
 function MrrDashboard_emptyMetric_() {

@@ -420,6 +420,7 @@ var chartFilter = null;
 var dealSortKey = '';
 var dealSortAsc = true;
 var dealCache = {};
+var dealErrorCache = {};
 var loadingDealKey = '';
 var loadingHistory = false;
 var snapshotLoadError = '';
@@ -509,6 +510,7 @@ function loadCurrentData_(division) {
   snapshotLoadError = '';
   snapshotHistoryLoaded = false;
   dealCache = {};
+  dealErrorCache = {};
   loadingDealKey = '';
   showLoading_('現在値を読み込み中...');
   google.script.run
@@ -1051,6 +1053,10 @@ function renderDeals() {
 
   var context = getDealContext_();
   var cacheKey = [currentDivision, context.week, context.dept, selectedPeriod || ''].join('|');
+  if (dealErrorCache[cacheKey]) {
+    area.innerHTML = '<div class="empty-state">Key Deal 取得エラー: ' + escapeHtml_(dealErrorCache[cacheKey]) + '</div>';
+    return;
+  }
   if (!dealCache[cacheKey]) {
     if (loadingDealKey !== cacheKey) loadDeals_(cacheKey, context);
     area.innerHTML = '<div class="empty-state">Key Deal を読み込み中...</div>';
@@ -1116,11 +1122,13 @@ function loadDeals_(cacheKey, context) {
   google.script.run
     .withSuccessHandler(function(result) {
       dealCache[cacheKey] = Array.isArray(result && result.deals) ? result.deals : [];
+      delete dealErrorCache[cacheKey];
       loadingDealKey = '';
       renderDeals();
     })
-    .withFailureHandler(function() {
+    .withFailureHandler(function(err) {
       dealCache[cacheKey] = [];
+      dealErrorCache[cacheKey] = getErrorMessage_(err);
       loadingDealKey = '';
       renderDeals();
     })
