@@ -1,5 +1,13 @@
 # Development Guardrails
 
+## Parallel agent default
+
+- For urgent cross-cutting fixes, default to parallel agent work when the user requests implementation or investigation and the work spans multiple files, layers, lanes, or likely root causes.
+- Split work into independent tracks when possible: server/data contract, client/UI behavior, cache/storage behavior, and validation/deploy safety.
+- The main agent owns integration, final code review, validation, deployment, and user-facing status. Subagents are for bounded investigation or disjoint implementation only.
+- Close or stop subagents after their result is consumed unless there is a clear reason to reuse the same context.
+- Do not use subagents to bypass lane ownership, write-scope rules, or required impact disclosure. If a fix crosses lanes, surface the boundary explicitly before editing.
+
 Last updated: 2026-04-28
 
 ## Fallback 判定の追加ルール

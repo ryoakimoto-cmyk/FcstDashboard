@@ -316,7 +316,7 @@
   <div class="choice-panel">
     <p class="choice-kicker">MRR DASHBOARD</p>
     <h2 class="choice-title">表示する事業部を選択</h2>
-    <p class="choice-note">選択後は専用URLに切り替わります。初期表示では各事業部ごとに直近2日付のスナップショットだけを読み込みます。</p>
+    <p class="choice-note">選択後は専用URLに切り替わります。初期表示では現在値だけを読み込み、履歴は必要な時だけ追加取得します。</p>
     <div class="choice-grid" id="choiceGrid"></div>
   </div>
 </section>
@@ -379,6 +379,7 @@ var dealCache = {};
 var loadingDealKey = '';
 var loadingHistory = false;
 var snapshotLoadError = '';
+var snapshotHistoryLoaded = false;
 var MRR_LIVE_WEEK_KEY = 'live';
 
 function getInitialDivision_() {
@@ -460,6 +461,7 @@ function buildDivisionTabs_() {
 function loadCurrentData_(division) {
   loadingHistory = false;
   snapshotLoadError = '';
+  snapshotHistoryLoaded = false;
   dealCache = {};
   loadingDealKey = '';
   showLoading_('現在値を読み込み中...');
@@ -474,32 +476,11 @@ function loadCurrentData_(division) {
       updateWeekLabel();
       hideLoading_();
       render();
-      prepareInitialSnapshots_();
     })
     .withFailureHandler(function(err) {
       showLoading_('エラー: ' + getErrorMessage_(err));
     })
     .getMrrDashboardCurrentData(division);
-}
-
-function prepareInitialSnapshots_() {
-  if (!D || loadingHistory) return;
-  loadingHistory = true;
-  snapshotLoadError = '';
-  renderHistoryMeta_();
-  google.script.run
-    .withSuccessHandler(function(result) {
-      mergeDashboardData_(normalizeResult_(result || {}));
-      loadingHistory = false;
-      updateWeekLabel();
-      render();
-    })
-    .withFailureHandler(function(err) {
-      loadingHistory = false;
-      snapshotLoadError = getErrorMessage_(err);
-      renderHistoryMeta_();
-    })
-    .getMrrDashboardData(currentDivision, '');
 }
 
 function loadSnapshotData_(division, beforeDate) {
@@ -509,6 +490,7 @@ function loadSnapshotData_(division, beforeDate) {
   google.script.run
     .withSuccessHandler(function(result) {
       mergeDashboardData_(normalizeResult_(result || {}));
+      snapshotHistoryLoaded = true;
       currentDivision = D.division || division;
       chartFilter = null;
       updateDivisionTabs_();
@@ -637,7 +619,12 @@ function switchView(view) {
 }
 
 function loadMoreSnapshots_() {
-  if (!D || loadingHistory || !D.history || !D.history.hasMore || !D.history.oldestDate) return;
+  if (!D || loadingHistory) return;
+  if (!snapshotHistoryLoaded) {
+    loadSnapshotData_(currentDivision, '');
+    return;
+  }
+  if (!D.history || !D.history.hasMore || !D.history.oldestDate) return;
   loadSnapshotData_(currentDivision, D.history.oldestDate);
 }
 
@@ -653,16 +640,24 @@ function renderHistoryMeta_() {
   var meta = document.getElementById('historyMeta');
   var button = document.getElementById('loadMoreBtn');
   if (!meta || !button) return;
-  var snapshotCount = D.weeks.filter(function(week) { return week !== MRR_LIVE_WEEK_KEY; }).length;
+  var snapshotCount = getSnapshotCount_();
   var parts = [(D.divisionLabel || D.division)];
   if (D.weeks.indexOf(MRR_LIVE_WEEK_KEY) !== -1) parts.push('現在値表示中');
-  parts.push('スナップショット: ' + snapshotCount + '日付');
+  parts.push('スナップショット: ' + (snapshotHistoryLoaded ? snapshotCount + '日付' : '未読込'));
   var currentWarnings = getCurrentDiagnosticWarnings_();
   if (currentWarnings.length) parts.push('現在値警告: ' + currentWarnings.join(', '));
   if (loadingHistory) parts.push('スナップショット準備中');
   if (snapshotLoadError) parts.push('履歴エラー: ' + snapshotLoadError);
   meta.textContent = parts.join(' / ');
-  button.classList.toggle('hidden', loadingHistory || !(D.history && D.history.hasMore));
+  button.textContent = !snapshotHistoryLoaded ? '履歴を読み込む' : 'さらに過去を読み込む';
+  var canLoadMore = D.history && D.history.hasMore && D.history.oldestDate;
+  button.classList.toggle('hidden', loadingHistory || !(!snapshotHistoryLoaded || canLoadMore));
+}
+
+function getSnapshotCount_() {
+  return D && Array.isArray(D.weeks)
+    ? D.weeks.filter(function(week) { return week !== MRR_LIVE_WEEK_KEY; }).length
+    : 0;
 }
 
 function getCurrentDiagnosticWarnings_() {

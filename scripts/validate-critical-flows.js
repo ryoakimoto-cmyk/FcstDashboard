@@ -221,14 +221,18 @@ assertNoMojibake('mrr-index.html', mrr);
   'onclick="goDivision_(\\\'',
   'window.top.location.href = url.toString();',
   '.getMrrDashboardCurrentData(division);',
-  'function prepareInitialSnapshots_()',
-  ".getMrrDashboardData(currentDivision, '');",
+  'var snapshotHistoryLoaded = false;',
+  'snapshotHistoryLoaded = false;',
+  'snapshotHistoryLoaded = true;',
   'function loadSnapshotData_(division, beforeDate)',
+  "loadSnapshotData_(currentDivision, '');",
   ".getMrrDashboardData(division, beforeDate || '');",
   '.getMrrDashboardDeals(currentDivision, context.week, context.dept);',
   'diagnostics: result.diagnostics || { current: [] }',
   'function getCurrentDiagnosticWarnings_()',
+  'function getSnapshotCount_()',
   'function loadMoreSnapshots_()',
+  "button.textContent = !snapshotHistoryLoaded ? '履歴を読み込む' : 'さらに過去を読み込む';",
   'Key Deal を読み込み中',
   'labels: D.weeks.map(getWeekLabel_)',
   'function buildMetricDatasets_(rows)',
@@ -236,6 +240,7 @@ assertNoMojibake('mrr-index.html', mrr);
 ].forEach((token) => {
   assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
 });
+assertNotIncludes(mrr, 'prepareInitialSnapshots_();', 'MRR initial render must not auto-load snapshots');
 assertCount(
   mrr,
   'metricDefinitions: Array.isArray(result.metricDefinitions)',
