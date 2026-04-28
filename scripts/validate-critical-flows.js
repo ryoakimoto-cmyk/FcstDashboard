@@ -318,6 +318,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'function MrrDashboard_readCurrentCacheMap_(deptKeys)',
   'function MrrDashboard_getCurrentPeriodOptions_(deptKeys, currentCache)',
   'function MrrDashboard_resolvePeriodKey_(periodOptions, periodKey)',
+  'function MrrDashboard_getDefaultPeriodKey_(periodOptions)',
+  'FcstPeriods_getQuarterKeyFromMonthKey_(todayMonthKey)',
   'function MrrDashboard_periodFilterMatches_(filter, completedMonth)',
   "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })",
   'AggregatedCache_readMany(missing)',
@@ -354,7 +356,11 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
 ].forEach((token) => {
   assertIncludes(mrrSnapshot, token, 'MRR shared snapshot path incomplete');
 });
-assertNotIncludes(mrrSnapshot, 'Utilities.formatDate(new Date()', 'MRR period selection must use FCST target period, not today');
+assertIncludes(
+  mrrSnapshot,
+  "return Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM');",
+  'MRR default target quarter must be derived from today only when no period is selected'
+);
 assertNotIncludes(
   mrrSnapshot,
   'AppDataCache_refreshInitData(deptKey)',

@@ -257,7 +257,21 @@ function MrrDashboard_resolvePeriodKey_(periodOptions, periodKey) {
   if (requested) {
     return validKeys.indexOf(requested) !== -1 ? requested : '';
   }
+  return MrrDashboard_getDefaultPeriodKey_(periodOptions);
+}
+
+function MrrDashboard_getDefaultPeriodKey_(periodOptions) {
+  var todayMonthKey = MrrDashboard_getTodayMonthKey_();
+  var currentQuarterKey = FcstPeriods_getQuarterKeyFromMonthKey_(todayMonthKey);
+  if (MrrDashboard_findPeriodOption_(periodOptions, currentQuarterKey).key) {
+    return currentQuarterKey;
+  }
   return periodOptions && periodOptions[0] ? String(periodOptions[0].key || '') : '';
+}
+
+function MrrDashboard_getTodayMonthKey_() {
+  var today = new Date();
+  return Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM');
 }
 
 function MrrDashboard_getQuarterKeyForPeriod_(periodOptions, periodKey) {
