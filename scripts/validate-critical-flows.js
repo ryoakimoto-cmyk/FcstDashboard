@@ -30,11 +30,41 @@ function assertCount(haystack, needle, expected, message) {
   }
 }
 
+function assertMatches(haystack, pattern, message) {
+  if (!pattern.test(haystack)) {
+    throw new Error(message + `: missing pattern ${pattern}`);
+  }
+}
+
+function getFunctionBody(source, name) {
+  const signature = `function ${name}`;
+  const start = source.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`missing function ${name}`);
+  }
+  const open = source.indexOf('{', start);
+  if (open === -1) {
+    throw new Error(`missing function body for ${name}`);
+  }
+
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    if (source[i] === '}') depth--;
+    if (depth === 0) return source.slice(open + 1, i);
+  }
+  throw new Error(`unterminated function body for ${name}`);
+}
+
 const cacheLayer = read('CacheLayer.gs');
 assertIncludes(cacheLayer, "var CACHE_PREFIX = 'fcst:';", 'cache prefix changed');
 assertIncludes(cacheLayer, "'initData'", 'initData cache invalidation missing');
 assertIncludes(cacheLayer, "'oppList'", 'oppList cache invalidation missing');
 assertIncludes(cacheLayer, 'persistToSheet === false', 'ephemeral cache option missing');
+const cacheLayerRemove = getFunctionBody(cacheLayer, 'CacheLayer_remove');
+assertIncludes(cacheLayerRemove, "key + ':chunks'", 'CacheLayer_remove must delete chunk count cache');
+assertIncludes(cacheLayerRemove, "key + ':chunk:' + i", 'CacheLayer_remove must delete chunk body cache');
+assertIncludes(cacheLayerRemove, 'cache.removeAll(keys)', 'CacheLayer_remove must remove base and chunk cache keys');
 
 const appDataCache = read('AppDataCache.gs');
 assertIncludes(appDataCache, "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })", 'initData cache read path missing');
@@ -71,6 +101,11 @@ const snapshotStorage = read('SnapshotStorage.gs');
 assertIncludes(snapshotStorage, 'function SnapshotStorage_getDbFolder_', 'snapshot DB source folder resolver missing');
 assertIncludes(snapshotStorage, 'DriveApp.getFileById(SPREADSHEET_ID)', 'snapshot DB files must resolve the source spreadsheet folder');
 assertIncludes(snapshotStorage, '.moveTo(dbFolder)', 'snapshot DB files must be moved to the source spreadsheet folder');
+assertIncludes(getFunctionBody(snapshotStorage, 'SnapshotStorage_getReadSheets_'), 'SnapshotStorage_getReadFileIds_(sheetName)', 'snapshot reads must include registered and active DB files');
+const snapshotReadFileIds = getFunctionBody(snapshotStorage, 'SnapshotStorage_getReadFileIds_');
+assertIncludes(snapshotReadFileIds, 'SnapshotStorage_getFileIds_(sheetName)', 'snapshot read file ID list must include registered DB files');
+assertIncludes(snapshotReadFileIds, 'SnapshotStorage_getActiveFileId_(sheetName)', 'snapshot read file ID list must include active DB file');
+assertIncludes(getFunctionBody(snapshotStorage, 'SnapshotStorage_buildWriteResult_'), 'SnapshotStorage_registerFileId_(sheet.getName(), ss.getId())', 'snapshot writes must register the active DB file ID');
 if (snapshotStorage.includes('googleapis.com/drive/v3')) {
   throw new Error('SnapshotStorage must avoid Drive API enablement dependency');
 }
@@ -82,6 +117,12 @@ assertIncludes(mrrDashboard, 'OppListSnapshot_getAllValues_(5)', 'MRR dashboard 
 assertIncludes(mrrDashboard, "source: 'snapshot'", 'MRR dashboard must report snapshot source');
 assertIncludes(mrrDashboard, "MrrDashboard_divisionKey_(cfg)", 'MRR dashboard must map SSCS departments into the SS division');
 assertIncludes(mrrDashboard, ".setTitle('MRR進捗ダッシュボード')", 'MRR dashboard server title must be valid UTF-8');
+assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
+assertMatches(
+  getFunctionBody(mrrDashboard, 'getMrrDashboardData'),
+  /(data\.divisions\s*&&\s*data\.divisions\.length|Array\.isArray\(data\.divisions\)\s*&&\s*data\.divisions\.length)/,
+  'MRR dashboard must not 5-minute-cache an empty divisions result'
+);
 if (mrrDashboard.includes('MRR_SHEET_ID') || mrrDashboard.includes('SpreadsheetApp.openById(MRR_SHEET_ID)')) {
   throw new Error('MRR dashboard must not read the legacy fixed MRR spreadsheet');
 }

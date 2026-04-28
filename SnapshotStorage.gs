@@ -6,7 +6,7 @@ const SNAPSHOT_STORAGE_INDEX_HEADERS = ['created_at', 'sheet_name', 'file_id', '
 function SnapshotStorage_getReadSheets_(sheetName, headers) {
   var sheets = [];
 
-  SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
+  SnapshotStorage_getReadFileIds_(sheetName).forEach(function(fileId) {
     try {
       var ss = SpreadsheetApp.openById(fileId);
       var sheet = ss.getSheetByName(sheetName);
@@ -184,6 +184,7 @@ function SnapshotStorage_countCells_(spreadsheet) {
 
 function SnapshotStorage_buildWriteResult_(sheet, rolledOver) {
   var ss = sheet.getParent();
+  SnapshotStorage_registerFileId_(sheet.getName(), ss.getId());
   SnapshotStorage_recordIndex_(sheet.getName(), ss, sheet, true);
   return {
     sheet: sheet,
@@ -449,6 +450,34 @@ function SnapshotStorage_getFileIds_(sheetName) {
     return Array.isArray(parsed) ? parsed.filter(function(id) { return !!String(id || '').trim(); }) : [];
   } catch (e) {
     return [];
+  }
+}
+
+function SnapshotStorage_getReadFileIds_(sheetName) {
+  var seen = {};
+  var ids = [];
+  SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
+    var id = String(fileId || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    ids.push(id);
+  });
+
+  var activeFileId = SnapshotStorage_getActiveFileId_(sheetName);
+  if (activeFileId && !seen[activeFileId]) {
+    seen[activeFileId] = true;
+    ids.push(activeFileId);
+  }
+  return ids;
+}
+
+function SnapshotStorage_registerFileId_(sheetName, fileId) {
+  var id = String(fileId || '').trim();
+  if (!id) return;
+  var ids = SnapshotStorage_getFileIds_(sheetName);
+  if (ids.indexOf(id) === -1) {
+    ids.push(id);
+    SnapshotStorage_setFileIds_(sheetName, ids);
   }
 }
 

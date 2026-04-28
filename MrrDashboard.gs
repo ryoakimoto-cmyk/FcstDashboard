@@ -1,5 +1,6 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v1';
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v2';
+var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1'];
 var MRR_DASHBOARD_TOTAL_KEY = '__total__';
 
 function mrrDashboard_doGet_() {
@@ -13,8 +14,17 @@ function getMrrDashboardData() {
   if (cached) return cached;
 
   var data = MrrDashboard_buildFromSnapshots_();
-  CacheLayer_write(MRR_DASHBOARD_CACHE_DEPT, MRR_DASHBOARD_CACHE_KEY, data, { persistToSheet: false });
+  if (data && data.divisions && data.divisions.length) {
+    CacheLayer_write(MRR_DASHBOARD_CACHE_DEPT, MRR_DASHBOARD_CACHE_KEY, data, { persistToSheet: false });
+  }
   return data;
+}
+
+function MrrDashboard_invalidateCache_() {
+  if (typeof CacheLayer_remove !== 'function') return;
+  [MRR_DASHBOARD_CACHE_KEY].concat(MRR_DASHBOARD_OLD_CACHE_KEYS || []).forEach(function(key) {
+    CacheLayer_remove(MRR_DASHBOARD_CACHE_DEPT, key);
+  });
 }
 
 function MrrDashboard_buildFromSnapshots_() {

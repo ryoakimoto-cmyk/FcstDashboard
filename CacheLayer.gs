@@ -43,6 +43,19 @@ function CacheLayer_write(deptKey, dataKey, value, options) {
   try { AggregatedCache_writeKey(deptKey, dataKey, value); } catch(e) {}
 }
 
+function CacheLayer_remove(deptKey, dataKey) {
+  var cache = CacheService.getScriptCache();
+  var key = CacheLayer_buildKey_(deptKey, dataKey);
+  var keys = [key, key + ':chunks'];
+  var chunkCount = parseInt(cache.get(key + ':chunks') || '0', 10);
+  if (!isNaN(chunkCount) && chunkCount > 0) {
+    for (var i = 0; i < chunkCount; i++) {
+      keys.push(key + ':chunk:' + i);
+    }
+  }
+  cache.removeAll(keys);
+}
+
 function CacheLayer_buildKey_(deptKey, dataKey) {
   return CACHE_PREFIX + deptKey + ':' + dataKey;
 }

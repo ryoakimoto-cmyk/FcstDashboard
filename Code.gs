@@ -640,6 +640,9 @@ function createSnapshot(deptKey, requestedSheetKey) {
     storageRolledOver: !!fcstResult.storageRolledOver,
     error: fcstResult.error || ''
   });
+  if (!fcstResult.error && typeof MrrDashboard_invalidateCache_ === 'function') {
+    MrrDashboard_invalidateCache_();
+  }
   Logger.log('FCST snapshot execution: dept=' + deptKey +
     ' ok=' + (!fcstResult.error) +
     ' skipped=' + (!!fcstResult.skipped) +
@@ -707,6 +710,9 @@ function createOppSnapshot(deptKey, requestedSheetKey) {
     storageRolledOver: !!oppResult.storageRolledOver,
     error: oppResult.error || ''
   });
+  if (!oppResult.error && typeof MrrDashboard_invalidateCache_ === 'function') {
+    MrrDashboard_invalidateCache_();
+  }
   Logger.log('Opp snapshot execution: dept=' + deptKey +
     ' ok=' + (!oppResult.error) +
     ' skipped=' + (!!oppResult.skipped) +
