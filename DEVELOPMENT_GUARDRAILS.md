@@ -47,6 +47,13 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - deploy 後は `clasp deployments` で production deployment の version を確認し、ユーザーに version と影響範囲を報告する。
 - エラー修正時に安直な fallback で握りつぶさない。原因となる欠落・契約不一致を正規経路で直し、再発防止の検証を追加する。
 
+## Apps Script Version Rules
+
+- `clasp version` で新規versionを作成する前に、Apps Scriptのプロジェクト履歴で最古の不要versionを1つ削除する。
+- version上限に到達してから気づく運用にしない。`clasp versions` で件数を確認し、上限付近または上限到達時は先に削除してからversion作成する。
+- `clasp` にはversion削除コマンドがないため、削除はApps Scriptエディタのプロジェクト履歴画面で行う。
+- 削除してよいのはproduction deploymentや直近rollback候補に使っていない古いversionだけ。削除前後に `clasp deployments` でproduction deploymentのversionを確認する。
+
 ## Snapshot DB Folder Rules
 
 - Snapshot DB ファイルは元ファイル `SPREADSHEET_ID` と同じ親フォルダへ作成する。
