@@ -1,4 +1,7 @@
 var CACHE_PREFIX = 'fcst:';
+var CACHE_VERSION_BY_KEY = {
+  oppList: 'v2'
+};
 var CACHE_TTL_DEFAULT_SECONDS = 300;
 var CACHE_TTL_SECONDS_BY_KEY = {
   initData: 300,
@@ -57,7 +60,8 @@ function CacheLayer_write(deptKey, dataKey, value, options) {
 }
 
 function CacheLayer_buildKey_(deptKey, dataKey) {
-  return CACHE_PREFIX + deptKey + ':' + dataKey;
+  var version = CACHE_VERSION_BY_KEY[dataKey] ? ':' + CACHE_VERSION_BY_KEY[dataKey] : '';
+  return CACHE_PREFIX + deptKey + ':' + dataKey + version;
 }
 
 function CacheLayer_getTtl_(dataKey) {

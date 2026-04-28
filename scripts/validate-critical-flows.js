@@ -38,6 +38,8 @@ const cacheLayer = read('CacheLayer.gs');
 assertIncludes(cacheLayer, "var CACHE_PREFIX = 'fcst:';", 'cache prefix changed');
 assertIncludes(cacheLayer, 'var CACHE_TTL_DEFAULT_SECONDS = 300;', 'shared cache default TTL must stay at 5 minutes');
 assertIncludes(cacheLayer, 'function CacheLayer_getTtl_(dataKey)', 'shared cache TTL helper missing');
+assertIncludes(cacheLayer, 'CACHE_VERSION_BY_KEY', 'shared cache key version map missing');
+assertIncludes(cacheLayer, "oppList: 'v2'", 'oppList cache version must invalidate stale reader mappings');
 assertIncludes(cacheLayer, 'function CacheLayer_removeChunked_(cache, key)', 'chunked cache invalidation missing');
 assertIncludes(cacheLayer, 'CacheLayer_removeChunked_(cache, key);', 'corrupt chunked cache must be removed on JSON parse failure');
 assertIncludes(cacheLayer, "'initData'", 'initData cache invalidation missing');
@@ -179,6 +181,11 @@ const oppListReader = read('OppListReader.gs');
   'scheduleDate:',
   'closeDate:',
   'confidence:',
+  "'ユーザー'",
+  "'KeyDeal_最新'",
+  "'FCST(コミット)_最新'",
+  "'金額（LK＋新ソリューション）(換算値)'",
+  "'パーセント (%)'",
   'function OppListReader_toNullableNumber_(value)'
 ].forEach((token) => assertIncludes(oppListReader, token, 'opp list reader mapping incomplete for opp history v2'));
 

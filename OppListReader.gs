@@ -32,7 +32,7 @@ function OppListReader_getLiveRows(deptKey) {
     var dealName = OppListReader_valueByKeys_(row, headerMap, ['案件名']);
     if (!oppId || !dealName) return;
 
-    var subOwner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者'])).trim();
+    var subOwner = OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['サブオーナー', '担当者', 'ユーザー'])).trim();
     if (deptUserNames.length && !deptUserMap[subOwner]) return;
 
     oppId = String(oppId).trim();
@@ -50,19 +50,19 @@ function OppListReader_getLiveRows(deptKey) {
       type: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['種別'])),
       subOwner: subOwner,
       phase: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['フェーズ'])),
-      forecast: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['Forecast'])),
+      forecast: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['Forecast', 'フォーキャスト', 'フォーキャスト_変換'])),
       scheduleDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['予定日'])),
       closeDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['確定日', '受注日'])),
       scheduleOrCloseDate: OppListReader_formatCell_(OppListReader_valueByKeys_(row, headerMap, ['予定日 / 確定日'])),
       confidence: OppListReader_toNullableNumber_(OppListReader_valueByKeys_(row, headerMap, ['確度', '確度(%)', '確度 (%)'])),
       dealName: OppListReader_formatCell_(dealName),
-      allocationPercent: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['計上割合 (%)'])),
-      mrr: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['MRR'])),
-      initialCost: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['初期費用'])),
+      allocationPercent: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['計上割合 (%)', 'パーセント (%)'])),
+      mrr: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['MRR', '受注MRR', '金額（LK＋新ソリューション）(換算値)', '月額(換算値)'])),
+      initialCost: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['初期費用', '初期費用額(換算値)', '金額（初期費用額合計）(換算値)'])),
       keyDeal: OppListReader_toBoolean_(OppListReader_valueByKeys_(row, headerMap, ['KeyDeal_最新'])),
-      fcstCommit: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(コミット)(換算値)'])),
-      fcstMin: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(MIN)(換算値)'])),
-      fcstMax: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(MAX)(換算値)'])),
+      fcstCommit: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(コミット)_最新', 'FCST(コミット)(換算値)'])),
+      fcstMin: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(MIN)_最新', 'FCST(MIN)(換算値)'])),
+      fcstMax: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['FCST(MAX)_最新', 'FCST(MAX)(換算値)'])),
       received: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['月額_受領'])),
       debtMgmt: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['月額_債権管理'])),
       debtMgmtLite: OppListReader_toNumber_(OppListReader_valueByKeys_(row, headerMap, ['月額_債権管理 Lite'])),
