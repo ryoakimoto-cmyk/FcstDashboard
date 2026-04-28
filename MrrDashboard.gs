@@ -1,6 +1,6 @@
 var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;
 var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;
-var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v7:mrr:';
+var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v8:mrr:';
 var MRR_DASHBOARD_CACHE_CHUNK_SIZE = 85000;
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_ALL_DIVISION = 'COO';
@@ -47,8 +47,39 @@ function getMrrDashboardCurrentData(division) {
     currentOnly: true,
     limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
   });
-  MrrDashboard_cachePut_(cacheKey, result);
+  if (MrrDashboard_isCurrentResultCacheable_(result)) {
+    MrrDashboard_cachePut_(cacheKey, result);
+  }
   return result;
+}
+
+function MrrDashboard_prewarmCurrentCache() {
+  var result = { ok: true, warmed: {}, errors: {} };
+  MrrDashboard_getDivisionChoices_().forEach(function(choice) {
+    var key = choice && choice.key;
+    if (!key) return;
+    try {
+      var payload = getMrrDashboardCurrentData(key);
+      result.warmed[key] = {
+        weeks: payload && payload.weeks ? payload.weeks.length : 0,
+        diagnostics: payload && payload.diagnostics ? payload.diagnostics.current || [] : []
+      };
+    } catch (e) {
+      result.ok = false;
+      result.errors[key] = String(e && e.message ? e.message : e);
+    }
+  });
+  return result;
+}
+
+function MrrDashboard_isCurrentResultCacheable_(result) {
+  if (!result || !Array.isArray(result.weeks)) return false;
+  if (result.weeks.indexOf(MRR_DASHBOARD_LIVE_KEY) === -1) return false;
+  var diagnostics = result.diagnostics && result.diagnostics.current;
+  if (!Array.isArray(diagnostics)) return true;
+  return diagnostics.every(function(item) {
+    return item && item.status === 'ok';
+  });
 }
 
 function getMrrDashboardChoices() {

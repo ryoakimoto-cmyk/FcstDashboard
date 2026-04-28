@@ -51,6 +51,7 @@ assertIncludes(appDataCache, 'function AppDataCache_getData_(deptKey, dataKey)',
 assertIncludes(appDataCache, 'function AppDataCache_warmDept_(deptKey)', 'shared warmup helper missing');
 
 const aggregatedCache = read('AggregatedCache.gs');
+assertIncludes(aggregatedCache, 'MrrDashboard_prewarmCurrentCache();', 'MRR current cache must be prewarmed by the 5-minute cache job');
 [
   "prefix + 'members'",
   "prefix + 'adjusted'",
@@ -225,6 +226,8 @@ assertNoMojibake('mrr-index.html', mrr);
   'function loadSnapshotData_(division, beforeDate)',
   ".getMrrDashboardData(division, beforeDate || '');",
   '.getMrrDashboardDeals(currentDivision, context.week, context.dept);',
+  'diagnostics: result.diagnostics || { current: [] }',
+  'function getCurrentDiagnosticWarnings_()',
   'function loadMoreSnapshots_()',
   'Key Deal を読み込み中',
   'labels: D.weeks.map(getWeekLabel_)',
@@ -251,6 +254,8 @@ const mrrDashboard = read('MrrDashboard.gs');
   'tmpl.mrrWebAppUrl = webAppUrl || \'\';',
   'function getMrrDashboardData(division, beforeDate)',
   'function getMrrDashboardCurrentData(division)',
+  'function MrrDashboard_prewarmCurrentCache()',
+  'function MrrDashboard_isCurrentResultCacheable_(result)',
   'function getMrrDashboardChoices()',
   'function MrrDashboard_getSelectedDivisionKeys_(selection)',
   'MrrDashboard_getSnapshotData_(selection, {',
@@ -281,8 +286,11 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'opts.currentOnly',
   'opts.currentOnly || opts.includeCurrent',
   'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
-  'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey)',
-  'function MrrDashboard_buildCurrentDeptMetric_(deptKey)',
+  'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey, diagnostics)',
+  'function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics)',
+  'function MrrDashboard_getValidatedCurrentInitData_(deptKey)',
+  'function MrrDashboard_validateCurrentInitData_(deptKey, live)',
+  "reason = 'department_total_missing'",
   'function MrrDashboard_readCurrentOppDeals_(deptKeys, periodByDept)',
   'AppDataCache_getInitData(deptKey)',
   'AppDataCache_getOpportunities(deptKey)',

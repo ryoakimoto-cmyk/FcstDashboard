@@ -148,6 +148,11 @@ function AggregatedCache_runScheduledUpdate() {
   Object.keys(DEPT_CONFIG).forEach(function(dk) {
     AppDataCache_warmDept_(dk);
   });
+  try {
+    MrrDashboard_prewarmCurrentCache();
+  } catch (e) {
+    Logger.log('MRR current cache prewarm failed: ' + (e && e.message ? e.message : e));
+  }
   CacheService.getScriptCache().put('lastScheduledUpdate', String(Date.now()), 7200);
 }
 

@@ -537,6 +537,7 @@ function normalizeResult_(result) {
     weekLabels: result.weekLabels || {},
     depts: Array.isArray(result.depts) ? result.depts.slice() : [],
     data: result.data || {},
+    diagnostics: result.diagnostics || { current: [] },
     history: result.history || { hasMore: false, oldestDate: '' }
   };
 }
@@ -558,6 +559,10 @@ function mergeDashboardData_(incoming) {
       D.data[week][dept] = incoming.data[week][dept];
     });
   });
+  if (incoming.diagnostics && Array.isArray(incoming.diagnostics.current) && incoming.diagnostics.current.length) {
+    D.diagnostics = D.diagnostics || {};
+    D.diagnostics.current = incoming.diagnostics.current.slice();
+  }
   D.history = incoming.history || D.history;
   currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
 }
@@ -652,10 +657,24 @@ function renderHistoryMeta_() {
   var parts = [(D.divisionLabel || D.division)];
   if (D.weeks.indexOf(MRR_LIVE_WEEK_KEY) !== -1) parts.push('現在値表示中');
   parts.push('スナップショット: ' + snapshotCount + '日付');
+  var currentWarnings = getCurrentDiagnosticWarnings_();
+  if (currentWarnings.length) parts.push('現在値警告: ' + currentWarnings.join(', '));
   if (loadingHistory) parts.push('スナップショット準備中');
   if (snapshotLoadError) parts.push('履歴エラー: ' + snapshotLoadError);
   meta.textContent = parts.join(' / ');
   button.classList.toggle('hidden', loadingHistory || !(D.history && D.history.hasMore));
+}
+
+function getCurrentDiagnosticWarnings_() {
+  var rows = D && D.diagnostics && Array.isArray(D.diagnostics.current)
+    ? D.diagnostics.current
+    : [];
+  return rows.filter(function(item) {
+    return item && item.status !== 'ok';
+  }).map(function(item) {
+    var reason = item.reason || item.error || 'unknown';
+    return (item.deptKey || '-') + ':' + reason;
+  });
 }
 
 function emptyMetric_() {
@@ -681,7 +700,9 @@ function renderCards() {
   var area = document.getElementById('cards');
   if (!area) return;
   if (!D.weeks.length) {
-    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">データなし</div></div>';
+    var warnings = getCurrentDiagnosticWarnings_();
+    var detail = warnings.length ? warnings.join(' / ') : '現在値の対象データがありません';
+    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">現在値未取得</div><div class="card-sub val-neg">' + escapeHtml_(detail) + '</div></div>';
     return;
   }
   var data = currentView === 'weekly'

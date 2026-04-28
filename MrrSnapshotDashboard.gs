@@ -12,6 +12,7 @@ function MrrDashboard_getSnapshotData_(selection, options) {
   var weeks = dateBatch.dates.slice().sort();
   var weekLabels = {};
   var data = {};
+  var diagnostics = { current: [] };
   var totalKey = selectedDivision;
   var allLabel = MrrDashboard_getTotalLabel_(selectedDivision);
   var deptLabels = deptKeys.map(function(deptKey) {
@@ -35,7 +36,7 @@ function MrrDashboard_getSnapshotData_(selection, options) {
   });
 
   if (opts.currentOnly || opts.includeCurrent) {
-    MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey);
+    MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey, diagnostics);
   }
 
   return {
@@ -49,6 +50,7 @@ function MrrDashboard_getSnapshotData_(selection, options) {
     weekLabels: weekLabels,
     depts: deptLabels,
     data: data,
+    diagnostics: diagnostics,
     history: {
       beforeDate: opts.beforeDate || '',
       limit: opts.limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT,
@@ -83,13 +85,13 @@ function getMrrDashboardDeals(selection, dateStr, deptLabel) {
   return result;
 }
 
-function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey) {
+function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey, diagnostics) {
   var liveRows = {};
   var total = MrrDashboard_emptyMetric_();
   var hasLive = false;
 
   (deptKeys || []).forEach(function(deptKey) {
-    var metric = MrrDashboard_buildCurrentDeptMetric_(deptKey);
+    var metric = MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics);
     if (!metric) return;
     liveRows[MrrDashboard_getDeptLabel_(deptKey)] = metric;
     MrrDashboard_accumulateMetric_(total, metric);
@@ -103,20 +105,121 @@ function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKe
   data[MRR_DASHBOARD_LIVE_KEY] = liveRows;
 }
 
-function MrrDashboard_buildCurrentDeptMetric_(deptKey) {
-  var live = AppDataCache_getInitData(deptKey);
-  if (!live || live.error) {
-    throw new Error('MRR current FCST source failed: ' + deptKey + ' / ' + (live && live.error ? live.error : 'empty payload'));
+function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics) {
+  var validated = MrrDashboard_getValidatedCurrentInitData_(deptKey);
+  if (!validated.ok) {
+    MrrDashboard_addCurrentDiagnostic_(diagnostics, validated);
+    return null;
+  }
+
+  var periodMetric = MrrDashboard_buildCurrentPeriodMetric_(validated.live, validated.member, validated.periodKey);
+  MrrDashboard_addCurrentDiagnostic_(diagnostics, {
+    deptKey: deptKey,
+    status: 'ok',
+    periodKey: validated.periodKey,
+    repaired: !!validated.repaired,
+    membersCount: validated.membersCount
+  });
+  return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, validated.periodKey);
+}
+
+function MrrDashboard_getValidatedCurrentInitData_(deptKey) {
+  var first = MrrDashboard_readCurrentInitData_(deptKey, false);
+  var checked = MrrDashboard_validateCurrentInitData_(deptKey, first.live);
+  if (checked.ok) return checked;
+
+  var refreshed = MrrDashboard_readCurrentInitData_(deptKey, true);
+  var rechecked = MrrDashboard_validateCurrentInitData_(deptKey, refreshed.live);
+  rechecked.repaired = rechecked.ok;
+  if (!rechecked.ok) {
+    rechecked.initialReason = checked.reason || '';
+    rechecked.error = refreshed.error || checked.error || '';
+  }
+  return rechecked;
+}
+
+function MrrDashboard_readCurrentInitData_(deptKey, refresh) {
+  try {
+    return {
+      live: refresh ? AppDataCache_refreshInitData(deptKey) : AppDataCache_getInitData(deptKey),
+      error: ''
+    };
+  } catch (e) {
+    return {
+      live: null,
+      error: String(e && e.message ? e.message : e)
+    };
+  }
+}
+
+function MrrDashboard_validateCurrentInitData_(deptKey, live) {
+  var result = {
+    deptKey: deptKey,
+    ok: false,
+    status: 'error',
+    reason: '',
+    error: '',
+    live: live || null,
+    member: null,
+    periodKey: '',
+    membersCount: Array.isArray(live && live.members) ? live.members.length : 0
+  };
+  if (!live) {
+    result.reason = 'empty_payload';
+    return result;
+  }
+  if (live.error) {
+    result.reason = 'source_error';
+    result.error = String(live.error || '');
+    return result;
+  }
+  if (!Array.isArray(live.members)) {
+    result.reason = 'members_not_array';
+    return result;
+  }
+  if (!Array.isArray(live.periodOptions)) {
+    result.reason = 'period_options_not_array';
+    return result;
   }
 
   var member = MrrDashboard_findCurrentDepartmentTotalMember_(deptKey, live.members || []);
-  if (!member) return null;
+  if (!member) {
+    result.reason = 'department_total_missing';
+    return result;
+  }
 
   var periodKey = MrrDashboard_pickCurrentPeriodKey_(live);
-  if (!periodKey) return null;
+  if (!periodKey) {
+    result.reason = 'period_missing';
+    return result;
+  }
+  if (!member[periodKey]) {
+    result.reason = 'period_metric_missing';
+    result.periodKey = periodKey;
+    return result;
+  }
 
-  var periodMetric = MrrDashboard_buildCurrentPeriodMetric_(live, member, periodKey);
-  return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, periodKey);
+  result.status = 'ok';
+  result.ok = true;
+  result.reason = '';
+  result.member = member;
+  result.periodKey = periodKey;
+  return result;
+}
+
+function MrrDashboard_addCurrentDiagnostic_(diagnostics, item) {
+  if (!diagnostics) return;
+  if (!Array.isArray(diagnostics.current)) diagnostics.current = [];
+  diagnostics.current.push({
+    deptKey: String(item && item.deptKey || ''),
+    status: String(item && item.status || 'error'),
+    reason: String(item && item.reason || ''),
+    error: String(item && item.error || ''),
+    initialReason: String(item && item.initialReason || ''),
+    periodKey: String(item && item.periodKey || ''),
+    repaired: !!(item && item.repaired),
+    membersCount: Number(item && item.membersCount || 0) || 0
+  });
 }
 
 function MrrDashboard_findCurrentDepartmentTotalMember_(deptKey, members) {
@@ -584,11 +687,11 @@ function MrrDashboard_formatWeekLabel_(snapshotDate) {
 function MrrDashboard_getCurrentPeriodByDept_(deptKeys) {
   var result = {};
   (deptKeys || []).forEach(function(deptKey) {
-    var live = AppDataCache_getInitData(deptKey);
-    if (!live || live.error) {
-      throw new Error('MRR current FCST source failed: ' + deptKey + ' / ' + (live && live.error ? live.error : 'empty payload'));
+    var validated = MrrDashboard_getValidatedCurrentInitData_(deptKey);
+    if (!validated.ok) {
+      throw new Error('MRR current FCST source failed: ' + deptKey + ' / ' + (validated.reason || validated.error || 'invalid payload'));
     }
-    result[deptKey] = MrrDashboard_pickCurrentPeriodKey_(live);
+    result[deptKey] = validated.periodKey;
   });
   return result;
 }
