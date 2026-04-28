@@ -337,6 +337,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'bulkError = String(e1 && e1.message ? e1.message : e1);',
   "CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false })",
   'function MrrDashboard_getCurrentOppSheetContexts_(deptKeys)',
+  'function MrrDashboard_getLiveOppPeriodFilterByDept_(deptKeys, periodKey)',
+  'function MrrDashboard_buildStandalonePeriodFilter_(periodKey)',
   'function MrrDashboard_resolveCurrentOppDeptKey_(row, headerMap, deptKeys, deptUserMaps)',
   'function MrrDashboard_mergePeriodFilters_(periodFilterByDept, deptKeys)',
   'function MrrDashboard_isTrueBoolean_(value)',
@@ -378,6 +380,11 @@ assertIncludes(
   mrrSnapshot,
   "return Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM');",
   'MRR default target quarter must be derived from today only when no period is selected'
+);
+assertIncludes(
+  mrrSnapshot,
+  "? MrrDashboard_getLiveOppPeriodFilterByDept_(scopedDeptKeys, requestedPeriodKey)",
+  'MRR live Key Deal period filtering must not require per-dept FCST current cache'
 );
 assertNotIncludes(
   mrrSnapshot,

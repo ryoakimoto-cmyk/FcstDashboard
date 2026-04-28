@@ -91,7 +91,7 @@ function getMrrDashboardDeals(selection, dateStr, deptLabel, periodKey) {
   if (cached) return cached;
 
   var periodFilterByDept = isLive
-    ? MrrDashboard_getCurrentPeriodFilterByDept_(scopedDeptKeys, requestedPeriodKey)
+    ? MrrDashboard_getLiveOppPeriodFilterByDept_(scopedDeptKeys, requestedPeriodKey)
     : MrrDashboard_getSnapshotPeriodFilterByDept_(scopedDeptKeys, snapshotDate, requestedPeriodKey);
   var deals = isLive
     ? MrrDashboard_readCurrentOppDeals_(scopedDeptKeys, periodFilterByDept)
@@ -831,6 +831,33 @@ function MrrDashboard_getCurrentPeriodFilterByDept_(deptKeys, periodKey) {
     result[deptKey] = MrrDashboard_buildPeriodFilter_(validated.live.periodOptions, validated.periodKey);
   });
   return result;
+}
+
+function MrrDashboard_getLiveOppPeriodFilterByDept_(deptKeys, periodKey) {
+  var filter = MrrDashboard_buildStandalonePeriodFilter_(periodKey);
+  var result = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    result[deptKey] = filter;
+  });
+  return result;
+}
+
+function MrrDashboard_buildStandalonePeriodFilter_(periodKey) {
+  var normalized = MrrDashboard_normalizePeriodKey_(periodKey);
+  if (!normalized) normalized = FcstPeriods_getQuarterKeyFromMonthKey_(MrrDashboard_getTodayMonthKey_());
+
+  var months = {};
+  if (/^\d{4}-\d{2}$/.test(normalized)) {
+    months[normalized] = true;
+    return { periodKey: normalized, months: months };
+  }
+
+  var quarter = FcstPeriods_getQuarterDefinitionByKey_(normalized);
+  if (!quarter) throw new Error('MRR live Key Deal period is invalid: ' + (periodKey || ''));
+  (quarter.months || []).forEach(function(monthKey) {
+    months[monthKey] = true;
+  });
+  return { periodKey: normalized, months: months };
 }
 
 function MrrDashboard_readCurrentOppDeals_(deptKeys, periodFilterByDept) {
