@@ -117,6 +117,11 @@ assertIncludes(mrrDashboard, 'OppListSnapshot_getAllValues_(5)', 'MRR dashboard 
 assertIncludes(mrrDashboard, "source: 'snapshot'", 'MRR dashboard must report snapshot source');
 assertIncludes(mrrDashboard, "MrrDashboard_divisionKey_(cfg)", 'MRR dashboard must map SSCS departments into the SS division');
 assertIncludes(mrrDashboard, ".setTitle('MRR進捗ダッシュボード')", 'MRR dashboard server title must be valid UTF-8');
+const mrrBuild = getFunctionBody(mrrDashboard, 'MrrDashboard_buildFromSnapshots_');
+assertIncludes(mrrBuild, 'var rowDeptKey = String(nameRaw.split', 'MRR dashboard must recover department key from snapshot row name');
+assertIncludes(mrrBuild, 'var metaDeptKey = String(meta.dept ||', 'MRR dashboard must normalize snapshot meta dept');
+assertIncludes(mrrBuild, 'var deptKey = metaDeptKey || rowDeptKey', 'MRR dashboard must accept existing snapshots with blank meta dept');
+assertIncludes(mrrBuild, 'if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;', 'MRR dashboard must reject conflicting row/meta department keys');
 assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
 assertMatches(
   getFunctionBody(mrrDashboard, 'getMrrDashboardData'),
@@ -128,6 +133,20 @@ if (mrrDashboard.includes('MRR_SHEET_ID') || mrrDashboard.includes('SpreadsheetA
 }
 if (mrrDashboard.includes('cfg.sfSheetKey || cfg.division')) {
   throw new Error('MRR dashboard must not prioritize sfSheetKey over division; SSCS belongs to SS');
+}
+
+const fcstSnapshot = read('FcstSnapshot.gs');
+const fcstSnapshotCreateAt = getFunctionBody(fcstSnapshot, 'FcstSnapshot_createAt_');
+assertIncludes(fcstSnapshotCreateAt, 'member.totalKind === SHARED_TOTAL_KIND.DEPARTMENT', 'FCST snapshot must detect department total rows');
+assertIncludes(fcstSnapshotCreateAt, "dept: member.dept || (isDepartmentTotal ? deptKey : '')", 'FCST snapshot department total rows must persist meta.dept');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_isDepartmentTotalRowForDept_', 'FCST snapshot reads must normalize department total rows');
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_isDepartmentTotalRowForDept_'),
+  "var rowDept = String(nameRaw || '').split(':')[0].trim()",
+  'FCST snapshot reads must accept existing department total rows with blank meta.dept'
+);
+if (fcstSnapshot.includes("meta.totalKind !== 'department' || meta.dept !== deptKey")) {
+  throw new Error('FCST snapshot reads must not reject existing rows with blank meta.dept');
 }
 
 const mrrClient = read('mrr-index.html');

@@ -43,11 +43,12 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
 
       payload.weekOverWeek = FcstSnapshot_buildWeekOverWeek_(metric, prevMetricMap[mapKey] || {}, metricKeys);
       payload.note = String(notes[mapKey] || '');
+      var isDepartmentTotal = !!member.isTotal && member.totalKind === SHARED_TOTAL_KIND.DEPARTMENT;
       payload.__meta = {
         isTotal: !!member.isTotal,
         group: member.group || '',
-        groupCode: member.groupCode || '',
-        dept: member.dept || '',
+        groupCode: member.groupCode || (isDepartmentTotal ? deptKey : ''),
+        dept: member.dept || (isDepartmentTotal ? deptKey : ''),
         totalKind: member.totalKind || '',
         captureMode: captureMode,
         name: member.name
@@ -356,12 +357,13 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
 
     if (!memberMap[name]) {
       var meta = payload.__meta || {};
+      var isDepartmentTotalMember = !!meta.isTotal && meta.totalKind === SHARED_TOTAL_KIND.DEPARTMENT;
       memberMap[name] = {
         name: name,
         isTotal: !!meta.isTotal,
         group: meta.group || '',
-        groupCode: meta.groupCode || '',
-        dept: meta.dept || '',
+        groupCode: meta.groupCode || (isDepartmentTotalMember ? deptKey : ''),
+        dept: meta.dept || (isDepartmentTotalMember ? deptKey : ''),
         totalKind: meta.totalKind || '',
         sortOrder: 0
       };
@@ -507,8 +509,7 @@ function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
       payload = {};
     }
 
-    var meta = payload.__meta || {};
-    if (!meta.isTotal || meta.totalKind !== 'department' || meta.dept !== deptKey) return;
+    if (!FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw)) return;
     var timestampKey = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     snapshotMap[timestampKey] = { payload: payload, date: d };
   });
@@ -607,8 +608,7 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
       payload = {};
     }
 
-    var meta = payload.__meta || {};
-    if (!meta.isTotal || meta.totalKind !== 'department' || meta.dept !== deptKey) continue;
+    if (!FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw)) continue;
     return {
       snapshotKey: snapshotKey,
       isLive: false,
@@ -618,6 +618,19 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
   }
 
   return result;
+}
+
+function FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw) {
+  var meta = payload && payload.__meta || {};
+  if (!meta.isTotal || meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT) return false;
+
+  var expectedDept = String(deptKey || '').trim();
+  var rowDept = String(nameRaw || '').split(':')[0].trim();
+  var metaDept = String(meta.dept || '').trim();
+  if (!expectedDept) return false;
+  if (rowDept && rowDept !== expectedDept) return false;
+  if (metaDept && metaDept !== expectedDept) return false;
+  return true;
 }
 
 function FcstSnapshot_setupWeeklyTrigger() {

@@ -1,6 +1,6 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v2';
-var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1'];
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v3';
+var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2'];
 var MRR_DASHBOARD_TOTAL_KEY = '__total__';
 
 function mrrDashboard_doGet_() {
@@ -39,13 +39,16 @@ function MrrDashboard_buildFromSnapshots_() {
     if (!(snapshotAt instanceof Date) || isNaN(snapshotAt)) return;
 
     var nameRaw = String(row[1] || '').trim();
+    var rowDeptKey = String(nameRaw.split(':')[0] || '').trim();
     var periodKey = String(row[2] || '').trim();
     var payload = MrrDashboard_parseJson_(row[3]);
     var meta = payload.__meta || {};
-    var deptKey = String(meta.dept || nameRaw.split(':')[0] || '').trim();
+    var metaDeptKey = String(meta.dept || '').trim();
+    var deptKey = metaDeptKey || rowDeptKey;
     var deptMeta = catalog.byDeptKey[deptKey];
     if (!deptMeta || !periodKey) return;
-    if (!meta.isTotal || meta.totalKind !== 'department' || String(meta.dept || '') !== deptKey) return;
+    if (!meta.isTotal || meta.totalKind !== 'department') return;
+    if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;
 
     var divisionKey = deptMeta.divisionKey;
     var division = MrrDashboard_ensureDivision_(divisions, divisionKey, deptMeta.divisionLabel);
