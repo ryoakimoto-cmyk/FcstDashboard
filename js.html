@@ -5,6 +5,47 @@ var _userEmail = (typeof GAS_USER_EMAIL !== 'undefined' && GAS_USER_EMAIL !== 'n
 var _deptConfig = {};
 var _embeddedInitData = null;
 
+var ClientCache = {
+  KEY_PREFIX: 'fcst_',
+  TTL: 5 * 60 * 1000,
+  get: function(deptKey, dataKey) {
+    try {
+      var key = this.KEY_PREFIX + deptKey + '_' + dataKey;
+      var raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      var entry = JSON.parse(raw);
+      if (this.isStale(entry)) {
+        window.localStorage.removeItem(key);
+        return null;
+      }
+      return entry;
+    } catch (e) {
+      return null;
+    }
+  },
+  set: function(deptKey, dataKey, data, updatedAt) {
+    try {
+      window.localStorage.setItem(
+        this.KEY_PREFIX + deptKey + '_' + dataKey,
+        JSON.stringify({ data: data, updatedAt: updatedAt || null, storedAt: Date.now() })
+      );
+    } catch (e) {
+      try {
+        Object.keys(window.localStorage).forEach(function(key) {
+          if (key.indexOf(ClientCache.KEY_PREFIX) === 0) window.localStorage.removeItem(key);
+        });
+        window.localStorage.setItem(
+          ClientCache.KEY_PREFIX + deptKey + '_' + dataKey,
+          JSON.stringify({ data: data, updatedAt: updatedAt || null, storedAt: Date.now() })
+        );
+      } catch (ignored) {}
+    }
+  },
+  isStale: function(entry) {
+    return !entry || !entry.storedAt || (Date.now() - Number(entry.storedAt) > this.TTL);
+  }
+};
+
 function parseEmbeddedJson_(elementId, fallback) {
   var el = document.getElementById(elementId);
   if (!el) return fallback;

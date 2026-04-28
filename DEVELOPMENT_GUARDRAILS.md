@@ -37,3 +37,12 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - キャッシュ miss 時だけ正規ソースを読みに行く。キャッシュ hit 時に Spreadsheet / Drive の全探索を併用しない。
 - スナップショット・集計系では、読み込み範囲を日付・部署・期間で可能な限り先に絞る。
 - FCST と Opp で共通化できるキャッシュ層・日付処理・部署フィルタは shared helper に寄せる。ただし payload shape が違うものを無理に同一化しない。
+
+## Existing Feature Protection Rules
+
+- 追加改修で既存機能を壊さないことを最優先する。特に FCST boot / Opp boot / 部署選択 / snapshot / save の初期表示経路は毎回保護対象として扱う。
+- client 側の global helper を参照する場合は、同じ bundle 内で参照より前に定義されていることを確認する。
+- boot に必要な client global helper は `scripts/validate-critical-flows.js` の検証対象に追加し、未定義・宣言順序ミスを deploy 前に検出する。
+- `js.html` を編集した場合は、`npm run validate:syntax` と `npm run validate:critical` を必ず実行する。
+- deploy 後は `clasp deployments` で production deployment の version を確認し、ユーザーに version と影響範囲を報告する。
+- エラー修正時に安直な fallback で握りつぶさない。原因となる欠落・契約不一致を正規経路で直し、再発防止の検証を追加する。

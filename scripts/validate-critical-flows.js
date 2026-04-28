@@ -13,6 +13,23 @@ function assertIncludes(haystack, needle, message) {
   }
 }
 
+function assertBefore(haystack, before, after, message) {
+  const beforeIndex = haystack.indexOf(before);
+  const afterIndex = haystack.indexOf(after);
+  if (beforeIndex === -1) throw new Error(message + `: missing "${before}"`);
+  if (afterIndex === -1) throw new Error(message + `: missing "${after}"`);
+  if (beforeIndex > afterIndex) {
+    throw new Error(message + `: "${before}" must appear before "${after}"`);
+  }
+}
+
+function assertCount(haystack, needle, expected, message) {
+  const count = haystack.split(needle).length - 1;
+  if (count !== expected) {
+    throw new Error(message + `: expected ${expected}, found ${count} for "${needle}"`);
+  }
+}
+
 const cacheLayer = read('CacheLayer.gs');
 assertIncludes(cacheLayer, "var CACHE_PREFIX = 'fcst:';", 'cache prefix changed');
 assertIncludes(cacheLayer, "'initData'", 'initData cache invalidation missing');
@@ -56,5 +73,12 @@ const client = read('js.html');
 ['isDepartmentTotalMember_', 'isGroupTotalMember_', 'getMemberGroupLabel_'].forEach((token) => {
   assertIncludes(client, token, 'FCST client total handling incomplete');
 });
+assertCount(client, 'var ClientCache = {', 1, 'ClientCache definition count invalid');
+assertBefore(client, 'var ClientCache = {', 'ClientCache.get(_selectedDept', 'ClientCache boot dependency is undefined or declared too late');
+assertBefore(client, 'var ClientCache = {', "ClientCache.set(_selectedDept, 'initData'", 'ClientCache initData setter dependency is undefined or declared too late');
+assertBefore(client, 'var ClientCache = {', "ClientCache.set(_selectedDept, 'oppList'", 'ClientCache oppList setter dependency is undefined or declared too late');
+assertIncludes(client, 'set: function(deptKey, dataKey, data, updatedAt)', 'ClientCache set contract missing');
+assertIncludes(client, 'get: function(deptKey, dataKey)', 'ClientCache get contract missing');
+assertIncludes(client, 'TTL: 5 * 60 * 1000', 'ClientCache TTL must stay aligned to 5-minute display cache rule');
 
 console.log('critical flow checks passed');
