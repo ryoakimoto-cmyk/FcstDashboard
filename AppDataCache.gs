@@ -1,6 +1,6 @@
 function AppDataCache_getInitData(deptKey) {
   var cached = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
-  if (cached) return AppDataCache_attachFcstKeyDeals_(deptKey, cached);
+  if (cached) return cached;
 
   var aggregated = AggregatedCache_read(deptKey);
   if (aggregated) {
@@ -14,17 +14,14 @@ function AppDataCache_getInitData(deptKey) {
 
 function AppDataCache_attachFcstKeyDeals_(deptKey, data) {
   FcstSnapshot_attachCurrentKeyDealsToData_(deptKey, data);
-  if (data && data.latestSnapshotData && data.latestSnapshotData.date) {
-    FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, data.latestSnapshotData.date, data.latestSnapshotData);
-  }
-  if (data && data.previousSnapshot && data.previousSnapshot.date) {
-    FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, data.previousSnapshot.date, data.previousSnapshot);
-  }
   return data;
 }
 
 function AppDataCache_refreshInitData(deptKey) {
-  return AggregatedCache_refresh(deptKey);
+  var result = AggregatedCache_refresh(deptKey);
+  AppDataCache_attachFcstKeyDeals_(deptKey, result);
+  CacheLayer_write(deptKey, 'initData', result, { persistToSheet: false });
+  return result;
 }
 
 function AppDataCache_getOpportunities(deptKey) {

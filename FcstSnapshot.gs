@@ -399,12 +399,12 @@ function FcstSnapshot_getWeekOverWeek(deptKey) {
   return result;
 }
 
-function FcstSnapshot_getLatestMembers(deptKey) {
+function FcstSnapshot_getLatestMembers(deptKey, options) {
   var values = FcstSnapshot_getAllValues_(4);
   if (!values.length) return null;
   var latestKey = FcstSnapshot_getLatestTimestampKey_(deptKey, values);
   if (!latestKey) return null;
-  var data = FcstSnapshot_getDataByTimestampKey_(deptKey, latestKey, values);
+  var data = FcstSnapshot_getDataByTimestampKey_(deptKey, latestKey, values, options || {});
   return { members: data.members, date: data.date, periodOptions: data.periodOptions };
 }
 
@@ -432,7 +432,7 @@ function FcstSnapshot_getSnapshotDates(deptKey) {
   return dates;
 }
 
-function FcstSnapshot_getDataByDate(deptKey, dateStr) {
+function FcstSnapshot_getDataByDate(deptKey, dateStr, options) {
   var values = FcstSnapshot_getAllValues_(4);
   if (!values.length) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, date: dateStr, periodOptions: [] };
   var latestKeyForDate = '';
@@ -446,10 +446,10 @@ function FcstSnapshot_getDataByDate(deptKey, dateStr) {
     if (!latestKeyForDate || key > latestKeyForDate) latestKeyForDate = key;
   });
   if (!latestKeyForDate) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, notes: {}, date: dateStr, periodOptions: [] };
-  return FcstSnapshot_getDataByTimestampKey_(deptKey, latestKeyForDate, values);
+  return FcstSnapshot_getDataByTimestampKey_(deptKey, latestKeyForDate, values, options || {});
 }
 
-function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
+function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt, options) {
   var rows = valuesOpt;
   if (!rows) {
     rows = FcstSnapshot_getAllValues_(4);
@@ -505,10 +505,12 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
   var members = Object.keys(memberMap).map(function(n) { return memberMap[n]; });
   var periodOptions = FcstPeriods_buildDefinitionsFromMonthKeys_(Object.keys(monthKeyMap));
   FcstSnapshot_addDerivedQuarterMetrics_(members, periodOptions, fcstAdjusted, weekOverWeekMap, notes);
-  FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, timestampKey.slice(0, 10), {
-    members: members,
-    periodOptions: periodOptions
-  });
+  if (!options || options.includeKeyDeals !== false) {
+    FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, timestampKey.slice(0, 10), {
+      members: members,
+      periodOptions: periodOptions
+    });
+  }
   return {
     members: members,
     fcstAdjusted: fcstAdjusted,
@@ -1000,7 +1002,7 @@ function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
 
 function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
   var liveData = AggregatedCache_read(deptKey) || null;
-  var resolverData = liveData || FcstSnapshot_getLatestMembers(deptKey) || { periodOptions: [] };
+  var resolverData = liveData || FcstSnapshot_getLatestMembers(deptKey, { includeKeyDeals: false }) || { periodOptions: [] };
   var targetPeriod = FcstSnapshot_resolveTrendPeriodKey_(periodKey, resolverData) || String(periodKey || '').trim();
   var result = {
     snapshotKey: snapshotKey,

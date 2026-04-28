@@ -70,6 +70,14 @@ const appDataCache = read('AppDataCache.gs');
 assertIncludes(appDataCache, "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })", 'initData cache read path missing');
 assertIncludes(appDataCache, "CacheLayer_read(deptKey, 'oppList', { skipSharedSheet: true })", 'oppList cache read path missing');
 assertIncludes(appDataCache, "CacheLayer_write(deptKey, 'oppList', result, { persistToSheet: false })", 'oppList must stay ephemeral');
+assertIncludes(
+  getFunctionBody(appDataCache, 'AppDataCache_getInitData'),
+  'if (cached) return cached;',
+  'initData cache hit must not perform extra snapshot/opportunity reads'
+);
+if (getFunctionBody(appDataCache, 'AppDataCache_attachFcstKeyDeals_').includes('FcstSnapshot_attachSnapshotKeyDealsToData_')) {
+  throw new Error('initData attachment must not attach historical snapshot Key Deals during initial load');
+}
 
 const aggregatedCache = read('AggregatedCache.gs');
 [
@@ -85,6 +93,11 @@ const aggregatedCache = read('AggregatedCache.gs');
   "prefix + 'latestSnapshotData'",
   "prefix + 'cachedAt'"
 ].forEach((token) => assertIncludes(aggregatedCache, token, 'aggregated cache payload shape changed'));
+assertIncludes(aggregatedCache, "FcstSnapshot_getLatestMembers(deptKey, { includeKeyDeals: false })", 'aggregated refresh must avoid historical Key Deal loading for previous snapshot');
+assertIncludes(aggregatedCache, "FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], { includeKeyDeals: false })", 'aggregated refresh must avoid historical Key Deal loading for latest snapshot');
+if (getFunctionBody(aggregatedCache, 'AggregatedCache_refresh').includes('FcstSnapshot_attachCurrentKeyDealsToData_')) {
+  throw new Error('AggregatedCache_refresh must not attach current Key Deals into shared aggregate cache');
+}
 
 const sfDataReader = read('SfDataReader.gs');
 ['groupCode', 'totalKind', 'fcstMin', 'fcstMax'].forEach((token) => {
@@ -214,6 +227,11 @@ assertIncludes(fcstSnapshot, 'function FcstSnapshot_attachCurrentKeyDealsToData_
 assertIncludes(fcstSnapshot, 'OppListSnapshot_getByDate(oppDeptKey, dateKey)', 'Historical FCST Key Deals must use Opp list snapshots');
 assertIncludes(fcstSnapshot, 'AppDataCache_getOpportunities(oppDeptKey)', 'Current FCST Key Deals must use current Opp list');
 assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_getDataByTimestampKey_'),
+  'options.includeKeyDeals !== false',
+  'FCST snapshot full reads must support skipping historical Key Deal attachment'
+);
+assertIncludes(
   getFunctionBody(fcstSnapshot, 'FcstSnapshot_buildSnapshotInputFromLive_'),
   'FcstSnapshot_mergeAdjustedIntoMembers_(members, liveData && liveData.fcstAdjusted, periodKeys)',
   'FCST snapshot input must include live adjusted metrics'
@@ -285,12 +303,23 @@ assertIncludes(guardrails, 'MRR Dashboard Rules', 'MRR dashboard guardrails miss
 assertIncludes(guardrails, 'FCST snapshot rows は月次キーのみ保存する', 'monthly-only snapshot guardrail missing');
 assertIncludes(guardrails, 'historical の FCST/MRR Key Deal は `案件リストスナップショット` を正規ソースにする', 'historical Key Deal source guardrail missing');
 assertIncludes(guardrails, '`FCSTスナップショット` payload に `keyDeals` を保存しない', 'FCST snapshot Key Deal payload prohibition missing');
+assertIncludes(guardrails, 'HTML shell を返す `doGet` では、テンプレートに埋め込まないデータを先読みしない', 'doGet preload guardrail missing');
+assertIncludes(guardrails, '初期表示用 `initData` では、過去snapshotのKey Deal付与を行わない', 'initData historical Key Deal guardrail missing');
 assertIncludes(guardrails, 'version削除は、上限付近・上限到達・version作成失敗時に限って実施する', 'Apps Script version deletion rule must be limit/failure-only');
 
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
 assertIncludes(code, 'AssignmentMaster_getContext', 'Code.gs must use shared assignment context');
+const doGetBody = getFunctionBody(code, 'doGet');
+if (doGetBody.includes('AppDataCache_getInitData(deptKey)')) {
+  throw new Error('doGet must not prefetch initData when embeddedInitData is not used');
+}
+assertIncludes(
+  getFunctionBody(code, 'getClientSnapshotData'),
+  'FcstSnapshot_getDataByDate(deptKey, dateStr, { includeKeyDeals: false })',
+  'client snapshot period loads must avoid full historical Key Deal attachment'
+);
 
 const client = read('js.html');
 ['isDepartmentTotalMember_', 'isGroupTotalMember_', 'getMemberGroupLabel_'].forEach((token) => {

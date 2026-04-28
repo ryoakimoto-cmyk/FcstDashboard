@@ -35,13 +35,6 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  var initData = null;
-  try {
-    initData = AppDataCache_getInitData(deptKey);
-  } catch(err) {
-    initData = null;
-  }
-
   var tmpl = HtmlService.createTemplateFromFile('index');
   tmpl.selectedDept = deptKey;
   tmpl.deptConfigJson = deptConfigJson;
@@ -395,7 +388,7 @@ function getClientPeriodData(deptKey, periodKey) {
 
 function getClientSnapshotData(deptKey, dateStr, periodKey) {
   try {
-    var snapshot = FcstSnapshot_getDataByDate(deptKey, dateStr);
+    var snapshot = FcstSnapshot_getDataByDate(deptKey, dateStr, { includeKeyDeals: false });
     if (!snapshot) return { error: 'スナップショットが見つかりません' };
     var resolvedPeriod = String(periodKey || '').trim();
     var periodOptions = snapshot.periodOptions || [];

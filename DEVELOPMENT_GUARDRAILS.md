@@ -37,6 +37,8 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - キャッシュ miss 時だけ正規ソースを読みに行く。キャッシュ hit 時に Spreadsheet / Drive の全探索を併用しない。
 - スナップショット・集計系では、読み込み範囲を日付・部署・期間で可能な限り先に絞る。
 - FCST と Opp で共通化できるキャッシュ層・日付処理・部署フィルタは shared helper に寄せる。ただし payload shape が違うものを無理に同一化しない。
+- HTML shell を返す `doGet` では、テンプレートに埋め込まないデータを先読みしない。初期HTML返却とデータ取得RPCを二重実行しない。
+- 初期表示用 `initData` では、過去snapshotのKey Deal付与を行わない。Key Dealは現在表示中の期間・snapshot日付に絞って後段で付与する。
 
 ## MRR Dashboard Rules
 

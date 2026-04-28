@@ -93,12 +93,11 @@ function AggregatedCache_refresh(deptKey) {
     result.fcstAdjusted = fcstState.adjusted;
     result.weekOverWeekMap = FcstSnapshot_getWeekOverWeek(deptKey);
     result.snapshotDates = FcstSnapshot_getSnapshotDates(deptKey);
-    result.previousSnapshot = FcstSnapshot_getLatestMembers(deptKey);
+    result.previousSnapshot = FcstSnapshot_getLatestMembers(deptKey, { includeKeyDeals: false });
     result.latestSnapshotData = result.snapshotDates.length
-      ? FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0])
+      ? FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], { includeKeyDeals: false })
       : null;
     result.sfLastUpdated = result.lastUpdated || AggregatedCache_getSfLastUpdated_(deptKey);
-    FcstSnapshot_attachCurrentKeyDealsToData_(deptKey, result);
 
     if (!isProposalProductsEnabled_(deptKey)) {
       AggregatedCache_stripProposalProductFields_(result);
