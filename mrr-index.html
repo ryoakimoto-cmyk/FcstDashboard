@@ -257,6 +257,10 @@
   <header class="header">
     <div class="header-left">
       <h1>MRR進捗ダッシュボード</h1>
+      <div class="tabs" id="divisionTabs">
+        <button type="button" class="tab active" data-division="SS" onclick="switchDivision('SS')">SS</button>
+        <button type="button" class="tab" data-division="BO" onclick="switchDivision('BO')">BO</button>
+      </div>
       <div class="tabs">
         <button type="button" class="tab active" data-view="weekly" onclick="switchView('weekly')">週次</button>
         <button type="button" class="tab" data-view="dept" onclick="switchView('dept')">部署別</button>
@@ -289,6 +293,7 @@
 var ALL_DEPTS_LABEL = '全部署';
 var D = null;
 var chart = null;
+var currentDivision = getInitialDivision_();
 var currentView = 'weekly';
 var currentWeekIdx = 0;
 var chartFilter = null;
@@ -296,7 +301,21 @@ var dealSortKey = '';
 var dealSortAsc = true;
 
 function emptyMetric_() {
-  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0, keyDeal: '' };
+  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0, keyDeal: '', keyDealsData: [] };
+}
+
+function getInitialDivision_() {
+  try {
+    var params = new URLSearchParams(window.location.search || '');
+    var division = String(params.get('division') || '').toUpperCase();
+    return division === 'BO' ? 'BO' : 'SS';
+  } catch (e) {
+    return 'SS';
+  }
+}
+
+function getAllDeptLabel_() {
+  return (D && D.allLabel) || ALL_DEPTS_LABEL;
 }
 
 function showLoading_(message) {
@@ -330,15 +349,19 @@ function getWeekMap_(week) {
 
 function getDeptData(week, dept) {
   var rows = getWeekMap_(week);
-  if (dept === ALL_DEPTS_LABEL) {
-    return rows.SS || emptyMetric_();
+  if (dept === getAllDeptLabel_()) {
+    return rows[(D && D.totalDeptKey) || 'SS'] || emptyMetric_();
   }
   return rows[dept] || emptyMetric_();
 }
 
 function normalizeResult_(result) {
   return {
+    division: (result && result.division) || currentDivision,
+    totalDeptKey: (result && result.totalDeptKey) || 'SS',
+    allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
     weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
+    weekLabels: result && result.weekLabels ? result.weekLabels : {},
     depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
     data: result && result.data ? result.data : {}
   };
@@ -791,6 +814,276 @@ function escapeHtml_(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function getDeptData(week, dept) {
+  var rows = getWeekMap_(week);
+  if (dept === ALL_DEPTS_LABEL || dept === getAllDeptLabel_()) {
+    return rows[(D && D.totalDeptKey) || 'SS'] || emptyMetric_();
+  }
+  return rows[dept] || emptyMetric_();
+}
+
+function normalizeResult_(result) {
+  return {
+    division: (result && result.division) || currentDivision,
+    totalDeptKey: (result && result.totalDeptKey) || 'SS',
+    allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
+    weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
+    weekLabels: result && result.weekLabels ? result.weekLabels : {},
+    depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
+    data: result && result.data ? result.data : {}
+  };
+}
+
+function bootstrap_() {
+  loadDivisionData_(currentDivision);
+}
+
+function loadDivisionData_(division) {
+  showLoading_('隱ｭ霎ｼ荳ｭ...');
+  updateDivisionTabs_();
+  google.script.run
+    .withSuccessHandler(function(result) {
+      D = normalizeResult_(result || {});
+      currentDivision = D.division || division || 'SS';
+      buildDeptOptions_();
+      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+      chartFilter = null;
+      updateDivisionTabs_();
+      updateDivisionQuery_();
+      updateWeekLabel();
+      hideLoading_();
+      render();
+    })
+    .withFailureHandler(function(err) {
+      showLoading_('繧ｨ繝ｩ繝ｼ: ' + getErrorMessage_(err));
+    })
+    .getMrrDashboardData(division);
+}
+
+function switchDivision(division) {
+  if (currentDivision === division && D) return;
+  currentDivision = division;
+  chartFilter = null;
+  dealSortKey = '';
+  dealSortAsc = true;
+  loadDivisionData_(division);
+}
+
+function updateDivisionTabs_() {
+  document.querySelectorAll('[data-division]').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.division === currentDivision);
+  });
+}
+
+function updateDivisionQuery_() {
+  try {
+    var url = new URL(window.location.href);
+    url.searchParams.set('app', 'mrr');
+    url.searchParams.set('division', currentDivision);
+    window.history.replaceState({}, '', url.toString());
+  } catch (e) {}
+}
+
+function buildDeptOptions_() {
+  var select = document.getElementById('deptSelect');
+  if (!select) return;
+  select.innerHTML = '';
+  [getAllDeptLabel_()].concat(D.depts || []).forEach(function(dept) {
+    var option = document.createElement('option');
+    option.value = dept;
+    option.textContent = dept;
+    select.appendChild(option);
+  });
+}
+
+function getSelectedDept_() {
+  var select = document.getElementById('deptSelect');
+  return select && select.value ? select.value : getAllDeptLabel_();
+}
+
+function getWeekLabel_(weekKey) {
+  if (!weekKey) return '';
+  return (D && D.weekLabels && D.weekLabels[weekKey]) || weekKey;
+}
+
+function updateWeekLabel() {
+  var label = document.getElementById('weekLabel');
+  if (!label) return;
+  label.textContent = getWeekLabel_(getSelectedWeek_()) || '-';
+}
+
+function renderChart() {
+  var canvas = document.getElementById('mainChart');
+  if (!canvas || !D || !D.weeks.length) return;
+  if (chart) chart.destroy();
+  var ctx = canvas.getContext('2d');
+  var options = buildChartOptions_();
+
+  if (currentView === 'weekly') {
+    var dept = getSelectedDept_();
+    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: D.weeks.map(getWeekLabel_),
+        datasets: [
+          {
+            label: 'Target',
+            data: rows.map(function(row) { return row.target || 0; }),
+            type: 'line',
+            borderColor: '#ea4335',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [8, 4],
+            pointRadius: 0,
+            tension: 0
+          },
+          {
+            label: 'Actual',
+            data: rows.map(function(row) { return row.actual || 0; }),
+            backgroundColor: 'rgba(26,115,232,0.72)',
+            borderColor: '#1a73e8',
+            borderWidth: 1
+          },
+          {
+            label: 'Expected MRR',
+            data: rows.map(function(row) { return row.expectedMrr || 0; }),
+            backgroundColor: 'rgba(52,168,83,0.72)',
+            borderColor: '#34a853',
+            borderWidth: 1
+          },
+          {
+            label: 'FCST',
+            data: rows.map(function(row) { return row.fcst || 0; }),
+            backgroundColor: 'rgba(251,188,4,0.72)',
+            borderColor: '#fbbc04',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: Object.assign(options, {
+        onClick: function(_, elements) {
+          if (!elements.length) {
+            chartFilter = null;
+          } else {
+            var label = D.weeks[elements[0].index];
+            chartFilter = chartFilter && chartFilter.type === 'week' && chartFilter.value === label
+              ? null
+              : { type: 'week', value: label };
+          }
+          renderDeals();
+        }
+      })
+    });
+    return;
+  }
+
+  var week = getSelectedWeek_();
+  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: D.depts,
+      datasets: [
+        {
+          label: 'Target',
+          data: targets,
+          type: 'line',
+          borderColor: '#ea4335',
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          pointRadius: 0
+        },
+        {
+          label: 'Actual',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).actual || 0; }),
+          backgroundColor: 'rgba(26,115,232,0.72)',
+          borderColor: '#1a73e8',
+          borderWidth: 1
+        },
+        {
+          label: 'Expected MRR',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).expectedMrr || 0; }),
+          backgroundColor: 'rgba(52,168,83,0.72)',
+          borderColor: '#34a853',
+          borderWidth: 1
+        },
+        {
+          label: 'FCST',
+          data: D.depts.map(function(dept) { return getDeptData(week, dept).fcst || 0; }),
+          backgroundColor: 'rgba(251,188,4,0.72)',
+          borderColor: '#fbbc04',
+          borderWidth: 1
+        }
+      ]
+    },
+    options: Object.assign(options, {
+      onClick: function(_, elements) {
+        if (!elements.length) {
+          chartFilter = null;
+        } else {
+          var label = D.depts[elements[0].index];
+          chartFilter = chartFilter && chartFilter.type === 'dept' && chartFilter.value === label
+            ? null
+            : { type: 'dept', value: label };
+        }
+        renderDeals();
+      }
+    }),
+    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
+  });
+}
+
+function collectDeals_() {
+  if (!D || !D.weeks.length) return [];
+  var deals = [];
+  var week = currentView === 'weekly'
+    ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || D.weeks[D.weeks.length - 1])
+    : getSelectedWeek_();
+  var depts = [];
+
+  if (currentView === 'weekly') {
+    var selectedDept = getSelectedDept_();
+    depts = (selectedDept === ALL_DEPTS_LABEL || selectedDept === getAllDeptLabel_()) ? D.depts.slice() : [selectedDept];
+  } else {
+    depts = chartFilter && chartFilter.type === 'dept' && chartFilter.value
+      ? [chartFilter.value]
+      : D.depts.slice();
+  }
+
+  depts.forEach(function(dept) {
+    getMetricDeals_(week, dept).forEach(function(deal) {
+      deals.push(deal);
+    });
+  });
+
+  return deals;
+}
+
+function getMetricDeals_(week, dept) {
+  var metric = getDeptData(week, dept);
+  if (Array.isArray(metric.keyDealsData) && metric.keyDealsData.length) {
+    return metric.keyDealsData.map(function(deal) {
+      return {
+        dept: deal.dept || dept,
+        company: deal.company || '',
+        mrr: Number(deal.mrr) || 0,
+        phase: deal.phase || '-',
+        yomi: Number(deal.yomi) || 0
+      };
+    });
+  }
+  return parseDeals(metric.keyDeal).map(function(deal) {
+    return {
+      dept: dept,
+      company: deal.company,
+      mrr: deal.mrr,
+      phase: deal.phase,
+      yomi: deal.yomi
+    };
+  });
 }
 
 bootstrap_();

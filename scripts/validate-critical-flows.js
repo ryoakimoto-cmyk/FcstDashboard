@@ -158,4 +158,42 @@ const mrr = read('mrr-index.html');
   assertIncludes(mrr, token, 'MRR template markers missing');
 });
 
+[
+  'data-division="SS"',
+  'data-division="BO"',
+  "switchDivision('BO')",
+  '.getMrrDashboardData(division);',
+  'labels: D.weeks.map(getWeekLabel_)',
+  'Array.isArray(metric.keyDealsData) && metric.keyDealsData.length'
+].forEach((token) => {
+  assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
+});
+
+const mrrDashboard = read('MrrDashboard.gs');
+[
+  'function getMrrDashboardData(division)',
+  "if (normalizedDivision === 'BO')",
+  'return MrrDashboard_getBoData_();',
+  'function MrrDashboard_getSsData_()',
+  "totalDeptKey: 'SS'",
+  "allLabel: '全事業部'"
+].forEach((token) => {
+  assertIncludes(mrrDashboard, token, 'MRR dashboard dispatcher incomplete');
+});
+
+const mrrSnapshot = read('MrrSnapshotDashboard.gs');
+[
+  'function MrrDashboard_getBoData_()',
+  "totalDeptKey: 'BO'",
+  "allLabel: 'BO全体'",
+  'FcstSnapshot_getDataByDate(deptKey, snapshotDate)',
+  'OppListSnapshot_getByDate(deptKey, snapshotDate)',
+  'SharedAppState_isDepartmentTotal_(member, deptKey)',
+  'keyDealsData: keyDealsData',
+  'MrrDashboard_pickSnapshotPeriodKey_',
+  'MrrDashboard_formatLegacyDeals_'
+].forEach((token) => {
+  assertIncludes(mrrSnapshot, token, 'BO MRR snapshot path incomplete');
+});
+
 console.log('critical flow checks passed');

@@ -6,16 +6,23 @@ function mrrDashboard_doGet_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function getMrrDashboardData() {
+function getMrrDashboardData(division) {
+  var normalizedDivision = String(division || 'SS').toUpperCase();
+  if (normalizedDivision === 'BO') {
+    return MrrDashboard_getBoData_();
+  }
+  return MrrDashboard_getSsData_();
+}
+
+function MrrDashboard_getSsData_() {
   var ss = SpreadsheetApp.openById(MRR_SHEET_ID);
   var sheet = ss.getSheets()[0];
   var values = sheet.getDataRange().getValues();
-
-  // Row 0 = header, skip it
   var dataRows = values.slice(1);
 
   var weeksOrder = [];
   var weeksSeen = {};
+  var weekLabels = {};
   var deptsOrder = [];
   var deptsSeen = {};
   var data = {};
@@ -24,47 +31,50 @@ function getMrrDashboardData() {
   var currentWeek = null;
 
   dataRows.forEach(function(row) {
-    var month = row[0]; // Col A: 月
-    var week  = row[1]; // Col B: 週
-    var dept  = String(row[2] || '').trim(); // Col C: 部署
-    var target      = Number(row[3]) || 0;  // Col D: 目標
-    var actual      = Number(row[4]) || 0;  // Col E: 実績
-    var expectedMrr = Number(row[5]) || 0;  // Col F: 期待MRR
-    var fcst        = Number(row[6]) || 0;  // Col G: FCST
-    var keyDeal     = String(row[7] || ''); // Col H: Key Deal
+    var month = row[0];
+    var week = row[1];
+    var dept = String(row[2] || '').trim();
+    var target = Number(row[3]) || 0;
+    var actual = Number(row[4]) || 0;
+    var expectedMrr = Number(row[5]) || 0;
+    var fcst = Number(row[6]) || 0;
+    var keyDeal = String(row[7] || '');
 
-    // Fill-down: SS rows have month/week, sub-rows don't
     if (month !== '' && month !== null) currentMonth = month;
-    if (week  !== '' && week  !== null) currentWeek  = week;
+    if (week !== '' && week !== null) currentWeek = week;
 
     if (!currentMonth || !currentWeek || !dept) return;
 
-    var weekKey = currentMonth + '月W' + currentWeek;
-
+    var weekKey = String(currentMonth) + '月W' + String(currentWeek);
     if (!weeksSeen[weekKey]) {
       weeksSeen[weekKey] = true;
       weeksOrder.push(weekKey);
+      weekLabels[weekKey] = weekKey;
     }
     if (!data[weekKey]) data[weekKey] = {};
 
-    // Track non-SS departments
     if (dept !== 'SS' && !deptsSeen[dept]) {
       deptsSeen[dept] = true;
       deptsOrder.push(dept);
     }
 
     data[weekKey][dept] = {
-      target:      Math.round(target),
-      actual:      Math.round(actual),
+      target: Math.round(target),
+      actual: Math.round(actual),
       expectedMrr: Math.round(expectedMrr),
-      fcst:        Math.round(fcst),
-      keyDeal:     keyDeal
+      fcst: Math.round(fcst),
+      keyDeal: keyDeal,
+      keyDealsData: []
     };
   });
 
   return {
+    division: 'SS',
+    totalDeptKey: 'SS',
+    allLabel: '全事業部',
     weeks: weeksOrder,
+    weekLabels: weekLabels,
     depts: deptsOrder,
-    data:  data
+    data: data
   };
 }
