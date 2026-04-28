@@ -22,30 +22,34 @@ function mrrDashboard_doGet_(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function getMrrDashboardData(division, beforeDate) {
+function getMrrDashboardData(division, beforeDate, periodKey) {
   var selection = MrrDashboard_normalizeDivisionSelection_(division) || 'SS';
   var normalizedBeforeDate = MrrDashboard_normalizeSnapshotDate_(beforeDate);
-  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':snapshots:before:' + (normalizedBeforeDate || 'latest');
+  var normalizedPeriodKey = MrrDashboard_normalizePeriodKey_(periodKey);
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':snapshots:before:' + (normalizedBeforeDate || 'latest') + ':period:' + (normalizedPeriodKey || 'default');
   var cached = MrrDashboard_cacheGet_(cacheKey);
   if (cached) return cached;
 
   var result = MrrDashboard_getSnapshotData_(selection, {
     beforeDate: normalizedBeforeDate,
-    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
+    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT,
+    periodKey: normalizedPeriodKey
   });
   MrrDashboard_cachePut_(cacheKey, result);
   return result;
 }
 
-function getMrrDashboardCurrentData(division) {
+function getMrrDashboardCurrentData(division, periodKey) {
   var selection = MrrDashboard_normalizeDivisionSelection_(division) || 'SS';
-  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':current';
+  var normalizedPeriodKey = MrrDashboard_normalizePeriodKey_(periodKey);
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':current:period:' + (normalizedPeriodKey || 'default');
   var cached = MrrDashboard_cacheGet_(cacheKey);
   if (cached) return cached;
 
   var result = MrrDashboard_getSnapshotData_(selection, {
     currentOnly: true,
-    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
+    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT,
+    periodKey: normalizedPeriodKey
   });
   if (MrrDashboard_isCurrentResultCacheable_(result)) {
     MrrDashboard_cachePut_(cacheKey, result);
@@ -117,6 +121,10 @@ function MrrDashboard_getTotalLabel_(selection) {
   var normalized = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
   if (normalized === MRR_DASHBOARD_ALL_DIVISION) return 'COO全体';
   return normalized + '全体';
+}
+
+function MrrDashboard_normalizePeriodKey_(periodKey) {
+  return String(periodKey || '').trim();
 }
 
 function MrrDashboard_cacheGet_(key) {

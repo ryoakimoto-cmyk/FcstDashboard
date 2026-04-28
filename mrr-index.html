@@ -195,6 +195,49 @@
     padding: 8px 14px;
     color: #1a73e8;
   }
+  .period-panel {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+  }
+  .period-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .period-label {
+    min-width: 54px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .period-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .period-chip {
+    padding: 7px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #475569;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 900;
+  }
+  .period-chip.active {
+    border-color: #1a73e8;
+    background: #1a73e8;
+    color: #ffffff;
+    box-shadow: 0 8px 18px rgba(26, 115, 232, 0.22);
+  }
   .cards {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -345,6 +388,7 @@
   </header>
 
   <main class="content">
+    <section class="period-panel" id="periodControls"></section>
     <div class="meta-row">
       <span id="historyMeta"></span>
       <button type="button" id="loadMoreBtn" class="load-more-btn hidden" onclick="loadMoreSnapshots_()">さらに過去を読み込む</button>
@@ -380,6 +424,8 @@ var loadingDealKey = '';
 var loadingHistory = false;
 var snapshotLoadError = '';
 var snapshotHistoryLoaded = false;
+var selectedQuarterKey = '';
+var selectedPeriod = '';
 var MRR_LIVE_WEEK_KEY = 'live';
 
 function getInitialDivision_() {
@@ -469,6 +515,7 @@ function loadCurrentData_(division) {
     .withSuccessHandler(function(result) {
       try {
         D = normalizeResult_(result || {});
+        syncPeriodStateFromData_();
         currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
         currentDivision = D.division || division;
         chartFilter = null;
@@ -484,7 +531,7 @@ function loadCurrentData_(division) {
     .withFailureHandler(function(err) {
       showLoading_('エラー: ' + getErrorMessage_(err));
     })
-    .getMrrDashboardCurrentData(division);
+    .getMrrDashboardCurrentData(division, selectedPeriod || '');
 }
 
 function loadSnapshotData_(division, beforeDate) {
@@ -494,6 +541,7 @@ function loadSnapshotData_(division, beforeDate) {
   google.script.run
     .withSuccessHandler(function(result) {
       mergeDashboardData_(normalizeResult_(result || {}));
+      syncPeriodStateFromData_();
       snapshotHistoryLoaded = true;
       currentDivision = D.division || division;
       chartFilter = null;
@@ -508,7 +556,7 @@ function loadSnapshotData_(division, beforeDate) {
       snapshotLoadError = getErrorMessage_(err);
       renderHistoryMeta_();
     })
-    .getMrrDashboardData(division, beforeDate || '');
+    .getMrrDashboardData(division, beforeDate || '', selectedPeriod || '');
 }
 
 function normalizeResult_(result) {
@@ -519,6 +567,9 @@ function normalizeResult_(result) {
     totalDeptKey: result.totalDeptKey || currentDivision,
     allLabel: result.allLabel || (currentDivision + '全体'),
     metricDefinitions: Array.isArray(result.metricDefinitions) ? result.metricDefinitions.slice() : [],
+    periodOptions: Array.isArray(result.periodOptions) ? result.periodOptions.slice() : [],
+    selectedPeriod: result.selectedPeriod || '',
+    selectedQuarterKey: result.selectedQuarterKey || '',
     weeks: sortWeeks_(Array.isArray(result.weeks) ? result.weeks.slice() : []),
     weekLabels: result.weekLabels || {},
     depts: Array.isArray(result.depts) ? result.depts.slice() : [],
@@ -549,8 +600,77 @@ function mergeDashboardData_(incoming) {
     D.diagnostics = D.diagnostics || {};
     D.diagnostics.current = incoming.diagnostics.current.slice();
   }
+  if (incoming.periodOptions && incoming.periodOptions.length) D.periodOptions = incoming.periodOptions.slice();
+  if (incoming.selectedPeriod) D.selectedPeriod = incoming.selectedPeriod;
+  if (incoming.selectedQuarterKey) D.selectedQuarterKey = incoming.selectedQuarterKey;
   D.history = incoming.history || D.history;
   currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+}
+
+function syncPeriodStateFromData_() {
+  if (!D) return;
+  var options = Array.isArray(D.periodOptions) ? D.periodOptions : [];
+  var nextQuarter = selectedQuarterKey || D.selectedQuarterKey || (options[0] && options[0].key) || '';
+  if (!getMrrQuarterOption_(options, nextQuarter)) {
+    nextQuarter = D.selectedQuarterKey || (options[0] && options[0].key) || '';
+  }
+
+  var nextPeriod = selectedPeriod || D.selectedPeriod || nextQuarter;
+  if (!isValidMrrPeriod_(options, nextPeriod)) {
+    nextPeriod = D.selectedPeriod || nextQuarter;
+  }
+  if (!isValidMrrPeriod_(options, nextPeriod)) {
+    nextPeriod = nextQuarter;
+  }
+
+  selectedPeriod = nextPeriod || '';
+  selectedQuarterKey = getMrrQuarterKeyForPeriod_(options, selectedPeriod) || nextQuarter || '';
+  D.selectedPeriod = selectedPeriod;
+  D.selectedQuarterKey = selectedQuarterKey;
+}
+
+function getMrrQuarterOption_(periodOptions, quarterKey) {
+  var key = String(quarterKey || '');
+  return (periodOptions || []).find(function(option) {
+    return option && option.key === key;
+  }) || null;
+}
+
+function getMrrQuarterKeyForPeriod_(periodOptions, periodKey) {
+  var key = String(periodKey || '');
+  var option = (periodOptions || []).find(function(item) {
+    return item && (item.key === key || (item.months || []).indexOf(key) !== -1);
+  });
+  return option ? option.key : '';
+}
+
+function isValidMrrPeriod_(periodOptions, periodKey) {
+  var key = String(periodKey || '');
+  if (!key) return false;
+  return (periodOptions || []).some(function(option) {
+    return option && (option.key === key || (option.months || []).indexOf(key) !== -1);
+  });
+}
+
+function selectMrrQuarter_(quarterKey) {
+  if (!D || selectedQuarterKey === quarterKey && selectedPeriod === quarterKey) return;
+  selectedQuarterKey = quarterKey;
+  selectedPeriod = quarterKey;
+  reloadForPeriod_();
+}
+
+function selectMrrPeriod_(periodKey) {
+  if (!D || selectedPeriod === periodKey) return;
+  selectedPeriod = periodKey;
+  selectedQuarterKey = getMrrQuarterKeyForPeriod_(D.periodOptions || [], periodKey) || selectedQuarterKey;
+  reloadForPeriod_();
+}
+
+function reloadForPeriod_() {
+  chartFilter = null;
+  dealCache = {};
+  loadingDealKey = '';
+  loadCurrentData_(currentDivision);
 }
 
 function sortWeeks_(weeks) {
@@ -634,6 +754,7 @@ function loadMoreSnapshots_() {
 
 function render() {
   if (!D) return;
+  renderPeriodControls_();
   renderHistoryMeta_();
   renderCards();
   renderChartSafely_();
@@ -648,12 +769,44 @@ function renderChartSafely_() {
   }
 }
 
+function renderPeriodControls_() {
+  var area = document.getElementById('periodControls');
+  if (!area || !D) return;
+  var options = D.periodOptions || [];
+  if (!options.length) {
+    area.innerHTML = '<div class="period-row"><span class="period-label">対象</span><span>対象Q / 対象月がありません</span></div>';
+    return;
+  }
+  var selectedQuarter = getMrrQuarterOption_(options, selectedQuarterKey) || options[0];
+  var quarterHtml = options.map(function(option) {
+    var key = String(option.key || '');
+    return '<button type="button" class="period-chip' + (selectedQuarterKey === key ? ' active' : '') + '" onclick="selectMrrQuarter_(\'' + escapeJsString_(key) + '\')">' +
+      escapeHtml_(option.label || key) +
+    '</button>';
+  }).join('');
+  var monthHtml = '';
+  if (selectedQuarter) {
+    monthHtml += '<button type="button" class="period-chip' + (selectedPeriod === selectedQuarter.key ? ' active' : '') + '" onclick="selectMrrPeriod_(\'' + escapeJsString_(selectedQuarter.key) + '\')">' +
+      escapeHtml_(selectedQuarter.label || selectedQuarter.key) +
+    '</button>';
+    (selectedQuarter.months || []).forEach(function(monthKey) {
+      monthHtml += '<button type="button" class="period-chip' + (selectedPeriod === monthKey ? ' active' : '') + '" onclick="selectMrrPeriod_(\'' + escapeJsString_(monthKey) + '\')">' +
+        escapeHtml_(formatMrrMonthLabel_(monthKey)) +
+      '</button>';
+    });
+  }
+  area.innerHTML =
+    '<div class="period-row"><span class="period-label">対象Q:</span><div class="period-chips">' + quarterHtml + '</div></div>' +
+    '<div class="period-row"><span class="period-label">対象月:</span><div class="period-chips">' + monthHtml + '</div></div>';
+}
+
 function renderHistoryMeta_() {
   var meta = document.getElementById('historyMeta');
   var button = document.getElementById('loadMoreBtn');
   if (!meta || !button) return;
   var snapshotCount = getSnapshotCount_();
   var parts = [(D.divisionLabel || D.division)];
+  if (selectedPeriod) parts.push('対象: ' + getMrrPeriodLabel_(selectedPeriod));
   if (D.weeks.indexOf(MRR_LIVE_WEEK_KEY) !== -1) parts.push('現在値表示中');
   parts.push('スナップショット: ' + (snapshotHistoryLoaded ? snapshotCount + '日付' : '未読込'));
   var currentWarnings = getCurrentDiagnosticWarnings_();
@@ -897,7 +1050,7 @@ function renderDeals() {
   renderFilterChip_();
 
   var context = getDealContext_();
-  var cacheKey = [currentDivision, context.week, context.dept].join('|');
+  var cacheKey = [currentDivision, context.week, context.dept, selectedPeriod || ''].join('|');
   if (!dealCache[cacheKey]) {
     if (loadingDealKey !== cacheKey) loadDeals_(cacheKey, context);
     area.innerHTML = '<div class="empty-state">Key Deal を読み込み中...</div>';
@@ -971,7 +1124,7 @@ function loadDeals_(cacheKey, context) {
       loadingDealKey = '';
       renderDeals();
     })
-    .getMrrDashboardDeals(currentDivision, context.week, context.dept);
+    .getMrrDashboardDeals(currentDivision, context.week, context.dept, selectedPeriod || '');
 }
 
 function renderFilterChip_() {
@@ -1021,6 +1174,23 @@ function valClass_(v) {
   return 'val-neutral';
 }
 
+function getMrrPeriodLabel_(periodKey) {
+  var key = String(periodKey || '');
+  var options = D && D.periodOptions || [];
+  for (var i = 0; i < options.length; i++) {
+    var option = options[i] || {};
+    if (option.key === key) return option.label || key;
+    if ((option.months || []).indexOf(key) !== -1) return formatMrrMonthLabel_(key);
+  }
+  return key;
+}
+
+function formatMrrMonthLabel_(monthKey) {
+  var match = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return String(monthKey || '');
+  return Number(match[2]) + '月';
+}
+
 function escapeHtml_(value) {
   return String(value === null || value === undefined ? '' : value)
     .replace(/&/g, '&amp;')
@@ -1028,6 +1198,14 @@ function escapeHtml_(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeJsString_(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
 }
 
 bootstrap_();
