@@ -54,7 +54,7 @@ DB files now store app-owned growth/state data:
 
 `SnapshotStorage.gs` is the new storage layer. It creates DB spreadsheets with names like `FcstDashboard DB - <sheet name> - <timestamp>`, stores the active file ID in script properties, and rolls over to a new DB file before hitting the configured cell limit or after a cell-limit write error.
 
-Reads are backward compatible. The app reads old sheets from the main spreadsheet plus any DB files registered in script properties. This means old snapshot / adjustment data remains visible without a one-time migration.
+Reads are DB-only for the DB-owned sheets above. The app does not read legacy sheets from the main spreadsheet for `FCSTスナップショット`, `案件リストスナップショット`, or `FCST調整`. This project has not started production operation for this storage split, so old compatibility paths should be cleaned up instead of preserved.
 
 Writes now go to DB files for the three DB-owned sheets above. `SnapshotExecutionLog` stays in the main file and now includes:
 
@@ -64,6 +64,14 @@ Writes now go to DB files for the three DB-owned sheets above. `SnapshotExecutio
 - `storage_rolled_over`
 
 `SnapshotDBIndex` is also created in the main file when possible. If the main file is already too close to the 10M cell limit and index creation fails, DB writes still continue; the write location is still visible from `SnapshotExecutionLog`.
+
+Fresh-start cleanup helpers are available:
+
+- `SnapshotStorage_getFreshStartPlan()`: lists old main-spreadsheet DB-owned sheets, registered DB files, and script properties that would be cleared.
+- `manualArmSnapshotStorageFreshStartCleanup()`: arms cleanup for 10 minutes and returns the current cleanup plan.
+- `manualCleanupSnapshotStorageForFreshStart()`: after arming, deletes the old main-spreadsheet DB-owned sheets/index, trashes registered DB files, and clears snapshot storage script properties.
+
+`SnapshotExecutionLog` is not deleted by cleanup because it is an operations log in the main spreadsheet. Unregistered DB-looking files found by Drive name search are listed as candidates only and are not automatically trashed.
 
 ## Manual verification
 

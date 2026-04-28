@@ -1,0 +1,39 @@
+# FcstDashboard Development Guardrails
+
+このファイルは作業開始前に必ず読む。特に shared / FCST / Opp lane をまたぐ作業では、ここにある制約を先に確認してから調査・編集する。
+
+## Local Search Rules
+
+- この Windows 環境では `rg` / `rg.exe` が `Access is denied` で失敗することがあるため、FcstDashboard 作業では `rg` を使わない。
+- ファイル検索は PowerShell の `Get-ChildItem` を使う。
+- 文字列検索は PowerShell の `Select-String` を使う。
+- 複数ファイルを読む場合も、`rg` に戻さず `Get-ChildItem` と `Select-String` を組み合わせる。
+
+例:
+
+```powershell
+Get-ChildItem -Recurse -Filter *.gs
+Select-String -Path *.gs,*.html -Pattern 'SnapshotStorage_'
+Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotStorage_'
+```
+
+## Parallel Agent Rules
+
+- 調査・実装・検証を分離できる作業では、複数 agent を並行利用して最短完了を目指す。
+- ただし、同じファイルを複数 agent に編集させない。編集範囲が衝突する場合は、親 agent が実装し、子 agent は調査・レビューに限定する。
+- agent に渡す指示にも、このファイルの制約、特に `rg` 禁止とフォールバック禁止を明記する。
+
+## Fallback Rules
+
+- 集計・スナップショット・保存先判定に関するフォールバックは、ユーザー承認なしに追加しない。
+- やむを得ずフォールバックが必要な場合は、影響範囲・発火条件・正規経路へ戻す条件を明示してから実装する。
+
+## Read Performance Rules
+
+- 読み込み対象が多岐にわたる場合でも、正規データソースを先に絞り、不要な legacy / fallback / 全件探索を通常経路に入れない。
+- Web App 表示で使う重い読み込み・集計は、原則 5 分キャッシュを使ってユーザー表示負荷を下げる。
+- キャッシュキーは部署・期間・表示モード・データ種別を明示し、異なる条件のデータを混ぜない。
+- cache key / payload shape は安易に変えない。変更が必要な場合は影響範囲を先に明示する。
+- キャッシュ miss 時だけ正規ソースを読みに行く。キャッシュ hit 時に Spreadsheet / Drive の全探索を併用しない。
+- スナップショット・集計系では、読み込み範囲を日付・部署・期間で可能な限り先に絞る。
+- FCST と Opp で共通化できるキャッシュ層・日付処理・部署フィルタは shared helper に寄せる。ただし payload shape が違うものを無理に同一化しない。

@@ -16,13 +16,12 @@ function FcstAdjusted_save(deptKey, p) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var sheet = FcstAdjusted_getOrCreateSheet_(deptKey);
-    var lastRow = sheet.getLastRow();
     var name = String(p.name || '').trim();
     var period = String(p.period || '').trim();
     if (!name || !period) throw new Error('name / period is required');
 
-    var existing = FcstAdjusted_findRow_(sheet, deptKey, name, period, lastRow);
+    var existing = FcstAdjusted_findExisting_(deptKey, name, period);
+    var sheet = existing.sheet || FcstAdjusted_getOrCreateSheet_(deptKey);
     var rowIndex = existing.rowIndex;
     var prev = existing.record;
     var now = new Date();
@@ -78,6 +77,26 @@ function FcstAdjusted_getOrCreateSheet_(deptKey) {
 
 function FcstAdjusted_getSheet_(deptKey) {
   return SnapshotStorage_getWriteSheet_(FCST_ADJUSTED_SHEET_NAME, FCST_STATE_HEADERS, 0);
+}
+
+function FcstAdjusted_findExisting_(deptKey, name, period) {
+  var result = {
+    sheet: null,
+    rowIndex: -1,
+    record: { net: 0, newExp: 0, churn: 0, note: '' }
+  };
+
+  SnapshotStorage_getReadSheets_(FCST_ADJUSTED_SHEET_NAME, FCST_STATE_HEADERS).forEach(function(sheet) {
+    var existing = FcstAdjusted_findRow_(sheet, deptKey, name, period, sheet.getLastRow());
+    if (existing.rowIndex <= 0) return;
+    result = {
+      sheet: sheet,
+      rowIndex: existing.rowIndex,
+      record: existing.record
+    };
+  });
+
+  return result;
 }
 
 function FcstAdjusted_ensureSchema_(sheet) {

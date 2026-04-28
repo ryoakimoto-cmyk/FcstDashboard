@@ -1,4 +1,4 @@
-var CACHE_TTL = 3600;
+var CACHE_TTL = 300;
 var CACHE_PREFIX = 'fcst:';
 
 function CacheLayer_read(deptKey, dataKey, options) {

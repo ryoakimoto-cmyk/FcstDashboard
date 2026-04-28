@@ -4,6 +4,13 @@
 
 ---
 
+## 作業開始前の必読
+
+- 着手前に `DEVELOPMENT_GUARDRAILS.md` を必ず確認すること。
+- この環境では `rg` が実行権限で失敗するため、検索は PowerShell の `Select-String` / `Get-ChildItem` を使うこと。
+
+---
+
 ## プロジェクト概要
 
 **目的**: FCSTシート（営業フォーキャスト）をGAS Webアプリとして再構築・UI洗練
@@ -44,8 +51,8 @@ FcstDashboard/
 ### データフロー
 1. Salesforce → Coefficient → スプレッドシート（SFデータシート）自動更新
 2. GAS がスプレッドシートを読んで集計 → Webアプリにデータ配信
-3. 調整値（fcstAdjusted）は別シート「FCST調整」に保存
-4. 週次スナップショットは「FCSTスナップショット」シートに保存（52週分保持）
+3. 調整値（fcstAdjusted）は DB file 側の「FCST調整」に保存
+4. 週次スナップショットは DB file 側の「FCSTスナップショット」に保存（52週分保持）
 
 ### 主要シート名（Config.gs）
 - `FCST` - 元データシート

@@ -1,11 +1,10 @@
 const SNAPSHOT_STORAGE_CELL_LIMIT = 9900000;
 const SNAPSHOT_STORAGE_PROP_PREFIX = 'snapshotStorage:';
+const SNAPSHOT_STORAGE_CLEANUP_ARM_PROP = SNAPSHOT_STORAGE_PROP_PREFIX + 'freshStartCleanupArmedUntil';
 const SNAPSHOT_STORAGE_INDEX_HEADERS = ['created_at', 'sheet_name', 'file_id', 'file_url', 'active', 'cell_count', 'row_count'];
 
 function SnapshotStorage_getReadSheets_(sheetName, headers) {
   var sheets = [];
-  var legacySheet = getSharedSheet(sheetName);
-  if (legacySheet) sheets.push(legacySheet);
 
   SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
     try {
@@ -157,6 +156,197 @@ function SnapshotStorage_buildWriteResult_(sheet, rolledOver) {
 function SnapshotStorage_recordSheet_(sheetName, sheet) {
   if (!sheet) return;
   SnapshotStorage_recordIndex_(sheetName, sheet.getParent(), sheet, true);
+}
+
+function SnapshotStorage_getFreshStartPlan() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var result = {
+    mainSpreadsheetId: SPREADSHEET_ID,
+    mainSpreadsheetUrl: ss.getUrl(),
+    mainSheetsToDelete: [],
+    dbFilesToTrash: [],
+    unregisteredDbFileCandidates: [],
+    scriptPropertiesToClear: []
+  };
+  var seenFileIds = {};
+
+  SnapshotStorage_getFreshStartMainSheetNames_().forEach(function(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    result.mainSheetsToDelete.push({
+      sheetName: sheetName,
+      rows: sheet.getLastRow(),
+      columns: sheet.getLastColumn()
+    });
+  });
+
+  var props = PropertiesService.getScriptProperties().getProperties();
+  Object.keys(props).sort().forEach(function(key) {
+    if (key.indexOf(SNAPSHOT_STORAGE_PROP_PREFIX) !== 0) return;
+    result.scriptPropertiesToClear.push(key);
+  });
+
+  SnapshotStorage_getDbOwnedSheetNames_().forEach(function(sheetName) {
+    var activeFileId = SnapshotStorage_getActiveFileId_(sheetName);
+    SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
+      SnapshotStorage_addFreshStartDbFile_(result, sheetName, fileId, fileId === activeFileId, true, seenFileIds);
+    });
+  });
+  SnapshotStorage_findDbFilesByName_().forEach(function(file) {
+    var id = file.getId();
+    if (seenFileIds[id]) return;
+    result.unregisteredDbFileCandidates.push({
+      fileId: id,
+      fileName: file.getName(),
+      fileUrl: file.getUrl()
+    });
+  });
+
+  return result;
+}
+
+function manualArmSnapshotStorageFreshStartCleanup() {
+  var expiresAt = Date.now() + 10 * 60 * 1000;
+  PropertiesService.getScriptProperties().setProperty(SNAPSHOT_STORAGE_CLEANUP_ARM_PROP, String(expiresAt));
+  var plan = SnapshotStorage_getFreshStartPlan();
+  plan.armedUntil = Utilities.formatDate(new Date(expiresAt), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  return plan;
+}
+
+function manualCleanupSnapshotStorageForFreshStart() {
+  return SnapshotStorage_cleanupForFreshStart();
+}
+
+function SnapshotStorage_cleanupForFreshStart() {
+  SnapshotStorage_assertFreshStartCleanupArmed_();
+  var plan = SnapshotStorage_getFreshStartPlan();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var deletedMainSheets = [];
+  var trashedDbFiles = [];
+  var clearErrors = [];
+
+  SnapshotStorage_getFreshStartMainSheetNames_().forEach(function(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    if (ss.getSheets().length <= 1) {
+      clearErrors.push('Skipped deleting the last sheet: ' + sheetName);
+      return;
+    }
+    ss.deleteSheet(sheet);
+    deletedMainSheets.push(sheetName);
+  });
+
+  var seenFiles = {};
+  plan.dbFilesToTrash.forEach(function(entry) {
+    var fileId = String(entry.fileId || '').trim();
+    if (!fileId || seenFiles[fileId]) return;
+    seenFiles[fileId] = true;
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+      trashedDbFiles.push(fileId);
+    } catch (e) {
+      clearErrors.push('Failed to trash DB file ' + fileId + ': ' + (e && e.message ? e.message : e));
+    }
+  });
+
+  var props = PropertiesService.getScriptProperties();
+  plan.scriptPropertiesToClear.forEach(function(key) {
+    props.deleteProperty(key);
+  });
+  props.deleteProperty(SNAPSHOT_STORAGE_CLEANUP_ARM_PROP);
+
+  return {
+    ok: clearErrors.length === 0,
+    deletedMainSheets: deletedMainSheets,
+    trashedDbFiles: trashedDbFiles,
+    clearedProperties: plan.scriptPropertiesToClear,
+    errors: clearErrors
+  };
+}
+
+function SnapshotStorage_getDbOwnedSheetNames_() {
+  return [
+    FCST_SNAPSHOT_SHEET_NAME,
+    OPP_LIST_SNAPSHOT_SHEET_NAME,
+    FCST_ADJUSTED_SHEET_NAME
+  ];
+}
+
+function SnapshotStorage_getFreshStartMainSheetNames_() {
+  return SnapshotStorage_getDbOwnedSheetNames_().concat([
+    SNAPSHOT_DB_INDEX_SHEET_NAME
+  ]);
+}
+
+function SnapshotStorage_assertFreshStartCleanupArmed_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(SNAPSHOT_STORAGE_CLEANUP_ARM_PROP);
+  var expiresAt = Number(raw) || 0;
+  if (!expiresAt || Date.now() > expiresAt) {
+    throw new Error('Run manualArmSnapshotStorageFreshStartCleanup first. Cleanup stays armed for 10 minutes.');
+  }
+}
+
+function SnapshotStorage_addFreshStartDbFile_(result, sheetName, fileId, active, registered, seenFileIds) {
+  var id = String(fileId || '').trim();
+  if (!id || seenFileIds[id]) return;
+  seenFileIds[id] = true;
+
+  var entry = {
+    sheetName: sheetName || '',
+    fileId: id,
+    active: !!active,
+    registered: !!registered,
+    fileName: '',
+    fileUrl: '',
+    rows: 0,
+    error: ''
+  };
+
+  try {
+    var db = SpreadsheetApp.openById(id);
+    var sheet = SnapshotStorage_findDbOwnedSheet_(db, sheetName);
+    entry.fileName = db.getName();
+    entry.fileUrl = db.getUrl();
+    entry.sheetName = sheet ? sheet.getName() : entry.sheetName;
+    entry.rows = sheet ? sheet.getLastRow() : 0;
+  } catch (e) {
+    entry.error = e && e.message ? e.message : String(e);
+    try {
+      var file = DriveApp.getFileById(id);
+      entry.fileName = file.getName();
+      entry.fileUrl = file.getUrl();
+    } catch (ignored) {}
+  }
+
+  result.dbFilesToTrash.push(entry);
+}
+
+function SnapshotStorage_findDbOwnedSheet_(spreadsheet, preferredSheetName) {
+  var preferred = String(preferredSheetName || '').trim();
+  if (preferred) {
+    var sheet = spreadsheet.getSheetByName(preferred);
+    if (sheet) return sheet;
+  }
+
+  var sheetNames = SnapshotStorage_getDbOwnedSheetNames_();
+  for (var i = 0; i < sheetNames.length; i++) {
+    var candidate = spreadsheet.getSheetByName(sheetNames[i]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function SnapshotStorage_findDbFilesByName_() {
+  var files = [];
+  try {
+    var iterator = DriveApp.searchFiles("title contains 'FcstDashboard DB - ' and trashed = false");
+    while (iterator.hasNext()) {
+      files.push(iterator.next());
+    }
+  } catch (e) {
+    Logger.log('SnapshotStorage DB file search failed: ' + (e && e.message ? e.message : e));
+  }
+  return files;
 }
 
 function SnapshotStorage_recordIndex_(sheetName, spreadsheet, sheet, active) {

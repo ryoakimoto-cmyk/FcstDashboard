@@ -1,23 +1,6 @@
 function migrateToSharedArchitecture() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  [FCST_ADJUSTED_SHEET_NAME].forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
-    if (!sheet) return;
-
-    var lastCol = Math.max(sheet.getLastColumn(), 1);
-    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    if (headers.indexOf('dept') !== -1) return;
-
-    var newCol = lastCol + 1;
-    sheet.getRange(1, newCol).setValue('dept');
-    if (sheet.getLastRow() > 1) {
-      sheet.getRange(2, newCol, sheet.getLastRow() - 1, 1)
-        .setValues(Array(sheet.getLastRow() - 1).fill(['BOCS']));
-    }
-    Logger.log('Added dept column to: ' + name);
-  });
-
   LEGACY_DISPLAY_SHEET_NAMES.forEach(function(name) {
     var sheet = ss.getSheetByName(name);
     if (sheet) {
@@ -42,11 +25,6 @@ function migrateToSharedArchitecture() {
       ['timestamp', 'user_email', 'row_key', 'column', 'old_value', 'new_value']
     ]);
     Logger.log('Created: ' + CHANGE_LOG_SHEET_NAME);
-  }
-
-  if (!ss.getSheetByName(OPP_LIST_SNAPSHOT_SHEET_NAME)) {
-    ss.insertSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-    Logger.log('Created: ' + OPP_LIST_SNAPSHOT_SHEET_NAME);
   }
 
   MasterSchema_setupSheets();
