@@ -86,15 +86,14 @@ function MrrDashboard_filterDeptKeysByLabel_(deptKeys, deptLabel) {
 }
 
 function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
   var result = { dateSet: {}, dates: [], hasMore: false, oldestDate: '' };
-  if (!sheet || sheet.getLastRow() < 1) return result;
+  var values = FcstSnapshot_getAllValues_(2);
+  if (!values.length) return result;
 
   var maxPerDivision = Number(limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT) || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT;
   var normalizedBefore = MrrDashboard_normalizeSnapshotDate_(beforeDate);
   var deptSet = MrrDashboard_toSet_(deptKeys);
   var divisionDates = {};
-  var values = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
 
   values.forEach(function(row) {
     var date = row[0];
@@ -130,12 +129,11 @@ function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit) {
 }
 
 function MrrDashboard_readFcstSnapshots_(deptKeys, dateSet) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
   var context = { dates: {}, metricsByDeptDate: {} };
-  if (!sheet || sheet.getLastRow() < 1) return context;
+  var values = FcstSnapshot_getAllValues_(4);
+  if (!values.length) return context;
 
   var deptSet = MrrDashboard_toSet_(deptKeys);
-  var values = sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
   var latestByDeptDate = {};
   var buckets = {};
 

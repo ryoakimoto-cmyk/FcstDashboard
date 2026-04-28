@@ -9,6 +9,7 @@ const MONTHLY_TARGET_MASTER_SHEET_NAME = '月次目標マスタ';
 const CHANGE_LOG_SHEET_NAME = '変更ログ';
 const TARGET_SHEET_NAME = '目標';
 const FCST_SNAPSHOT_SHEET_NAME = 'FCSTスナップショット';
+const SNAPSHOT_DB_INDEX_SHEET_NAME = 'SnapshotDBIndex';
 const OPP_WEBAPP_INPUT_SHEET_NAME = '案件_WebApp入力';
 const OPP_HISTORY_V2_SHEET_NAME = 'Opp履歴';
 const SNAPSHOT_META_SHEET_NAME = 'スナップショットメタ';

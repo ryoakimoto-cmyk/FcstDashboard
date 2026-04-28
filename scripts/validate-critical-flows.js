@@ -78,9 +78,30 @@ assertIncludes(config, 'function isProposalProductsEnabled_(deptKey)', 'proposal
   "const OPP_WEBAPP_INPUT_SHEET_NAME = '案件_WebApp入力';",
   "const OPP_HISTORY_V2_SHEET_NAME = 'Opp履歴';",
   "const SNAPSHOT_META_SHEET_NAME = 'スナップショットメタ';",
-  "const FCST_DECLARATION_CURRENT_SHEET_NAME = 'FCST宣言_現在';"
+  "const FCST_DECLARATION_CURRENT_SHEET_NAME = 'FCST宣言_現在';",
+  "const SNAPSHOT_DB_INDEX_SHEET_NAME = 'SnapshotDBIndex';"
 ].forEach((token) => assertIncludes(config, token, 'opp history v2 sheet constants missing'));
 assertNotIncludes(config, 'const OPP_LIST_SNAPSHOT_SHEET_NAME', 'legacy opp snapshot sheet constant must be removed');
+
+const snapshotStorage = read('SnapshotStorage.gs');
+[
+  'function SnapshotStorage_getReadSheets_(sheetName, headers)',
+  'function SnapshotStorage_getAllValues_(sheetName, headers, columnCount)',
+  'function SnapshotStorage_appendRows_(sheetName, headers, rows)',
+  'function SnapshotStorage_getReadFileIds_(sheetName)',
+  'function SnapshotStorage_buildFileName_(sheetName, sequence)',
+  'function manualAuthorizeSnapshotDbFolder()',
+  'OPP_HISTORY_V2_SHEET_NAME'
+].forEach((token) => assertIncludes(snapshotStorage, token, 'snapshot DB storage layer incomplete'));
+
+const fcstSnapshot = read('FcstSnapshot.gs');
+[
+  'function FcstSnapshot_headers_()',
+  'function FcstSnapshot_getAllValues_(columnCount)',
+  'SnapshotStorage_getAllValues_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), columnCount || 4)',
+  'SnapshotStorage_appendRows_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), rows)'
+].forEach((token) => assertIncludes(fcstSnapshot, token, 'FCST snapshot storage-aware path missing'));
+assertNotIncludes(fcstSnapshot, 'getSharedSheet(FCST_SNAPSHOT_SHEET_NAME)', 'FCST snapshot must not read/write main snapshot sheet directly');
 
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
@@ -221,6 +242,7 @@ assertNotIncludes(mrrSnapshot, 'Fallback_', 'MRR runtime must not use ad-hoc fal
 assertNotIncludes(mrrSnapshot, 'function MrrDashboard_getBoData_()', 'MRR runtime must not keep BO-only snapshot entrypoints');
 assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoFcstSnapshots_', 'MRR runtime must not keep BO-only FCST readers');
 assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoOppSnapshots_', 'MRR runtime must not keep BO-only Opp readers');
+assertNotIncludes(mrrSnapshot, 'getSharedSheet(FCST_SNAPSHOT_SHEET_NAME)', 'MRR must not read FCST snapshots from main spreadsheet directly');
 [
   'function MrrDashboard_getSnapshotData_(selection, options)',
   'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
@@ -228,7 +250,8 @@ assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoOppSnapshots_', 'MRR
   'dates.slice(0, maxPerDivision)',
   'function MrrDashboard_readFcstSnapshots_(deptKeys, dateSet)',
   'function MrrDashboard_readOppSnapshotDeals_(deptKeys, snapshotDate, periodByDept)',
-  'getRange(1, 1, sheet.getLastRow(), 4).getValues()',
+  'var values = FcstSnapshot_getAllValues_(2);',
+  'var values = FcstSnapshot_getAllValues_(4);',
   'getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues()',
   'SharedAppState_isDepartmentTotal_({',
   'function MrrDashboard_addFcstSnapshotPayloadToBucket_(buckets, deptKey, dateStr, period, payload, nameRaw)',

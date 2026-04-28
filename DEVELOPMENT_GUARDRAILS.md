@@ -23,6 +23,15 @@ Last updated: 2026-04-28
 - 表示不具合の修正であっても、サーバー側の contract を緩める場合は影響範囲を先に明示する。
 - `npm run validate:syntax` と `npm run validate:critical` を通してから deploy する。
 
+## Apps Script deploy 前の共有資材確認
+
+- `clasp push -f` は Apps Script 側のファイル一覧を現在の checkout で置き換える。古い lane branch から push すると、別 branch で追加済みの共有資材を本番から消すリスクがある。
+- deploy 前に、現在 branch が本番運用中の共有基盤を含んでいるか確認する。特に snapshot / cache / MRR / FCST を触る場合は `SnapshotStorage.gs`、storage-aware reader、5 分 cache 経路、URL routing の有無を確認する。
+- branch が `master` または production deploy の基準 commit より古い場合、先に必要な共有基盤を取り込む。古い branch のまま画面修正だけを push/deploy しない。
+- snapshot 保存先が DB ファイル化されている場合、表示側は main spreadsheet 直読みではなく storage-aware reader を使う。FCST snapshot は `FcstSnapshot_getAllValues_()`、DB 共通読み込みは `SnapshotStorage_getAllValues_()` を優先する。
+- MRR / FCST / Opp の表示が `データなし` になった時は、UI修正を繰り返す前に「生成側の保存先」と「表示側の読み込み先」が一致しているかを最優先で確認する。
+- deploy 前 validation には、重要共有ファイルの存在確認と、DB保存済み snapshot を main sheet 直読みしていないことの検査を含める。
+
 ## MRR ダッシュボード読み込みルール
 
 - SS / BO / CO / COO は同一の FCST スナップショット集計ロジックを使う。事業部ごとの専用ロジックや旧 SS 専用シートへの分岐を追加しない。
