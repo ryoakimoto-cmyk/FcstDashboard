@@ -7,12 +7,6 @@ function OppListSnapshot_createWeekly(deptKey) {
       return { ok: false, count: 0, error: String(liveResult.error || '') };
     }
     var rows = liveResult.rows || [];
-    var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-    if (!sheet) {
-      var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-      sheet = ss.insertSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-      sheet.getRange(1, 1, 1, 5).setValues([['snapshot_at', 'snapshot_date', 'opp_id', 'dept', 'payload_json']]);
-    }
 
     var now = new Date();
     var dateStr = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd');
@@ -23,27 +17,43 @@ function OppListSnapshot_createWeekly(deptKey) {
       return [now, dateStr, row.oppId || '', deptKey, JSON.stringify(payload)];
     });
 
-    OppListSnapshot_deleteByDate_(deptKey, sheet, dateStr);
-    if (appendRows.length) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, 5).setValues(appendRows);
-    }
-    OppListSnapshot_trimOld_(deptKey, sheet);
+    OppListSnapshot_getSheets_().forEach(function(sheet) {
+      OppListSnapshot_deleteByDate_(deptKey, sheet, dateStr);
+    });
+    var writeResult = SnapshotStorage_appendRows_(OPP_LIST_SNAPSHOT_SHEET_NAME, OppListSnapshot_headers_(), appendRows);
+    OppListSnapshot_getSheets_().forEach(function(sheet) {
+      OppListSnapshot_trimOld_(deptKey, sheet);
+    });
     return {
       ok: true,
       date: dateStr,
       snapshotAt: Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
-      count: appendRows.length
+      count: appendRows.length,
+      storageFileId: writeResult.fileId,
+      storageFileUrl: writeResult.fileUrl,
+      storageSheetName: writeResult.sheetName,
+      storageRolledOver: !!writeResult.rolledOver
     };
   } finally {
     lock.releaseLock();
   }
 }
 
-function OppListSnapshot_getSnapshotDates(deptKey) {
-  var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 2) return [];
+function OppListSnapshot_headers_() {
+  return ['snapshot_at', 'snapshot_date', 'opp_id', 'dept', 'payload_json'];
+}
 
-  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+function OppListSnapshot_getSheets_() {
+  return SnapshotStorage_getReadSheets_(OPP_LIST_SNAPSHOT_SHEET_NAME, OppListSnapshot_headers_());
+}
+
+function OppListSnapshot_getAllValues_(columnCount) {
+  return SnapshotStorage_getAllValues_(OPP_LIST_SNAPSHOT_SHEET_NAME, OppListSnapshot_headers_(), columnCount || 5);
+}
+
+function OppListSnapshot_getSnapshotDates(deptKey) {
+  var values = OppListSnapshot_getAllValues_(4);
+  if (values.length < 2) return [];
   var seen = {};
   var dates = [];
   values.forEach(function(row) {
@@ -58,10 +68,8 @@ function OppListSnapshot_getSnapshotDates(deptKey) {
 }
 
 function OppListSnapshot_getByDate(deptKey, dateStr) {
-  var sheet = getSharedSheet(OPP_LIST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 2) return { date: dateStr, rows: [] };
-
-  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  var values = OppListSnapshot_getAllValues_(5);
+  if (values.length < 2) return { date: dateStr, rows: [] };
   var rows = [];
   values.forEach(function(row) {
     var dept = String(row[3] || '').trim();

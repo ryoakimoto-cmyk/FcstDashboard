@@ -634,6 +634,10 @@ function createSnapshot(deptKey, requestedSheetKey) {
     snapshotAt: String(fcstResult.snapshotAt || '').trim(),
     captureMode: String(fcstResult.captureMode || '').trim(),
     requestedSheetKey: requestedSheetKey || '',
+    storageFileId: String(fcstResult.storageFileId || '').trim(),
+    storageFileUrl: String(fcstResult.storageFileUrl || '').trim(),
+    storageSheetName: String(fcstResult.storageSheetName || '').trim(),
+    storageRolledOver: !!fcstResult.storageRolledOver,
     error: fcstResult.error || ''
   });
   Logger.log('FCST snapshot execution: dept=' + deptKey +
@@ -697,6 +701,10 @@ function createOppSnapshot(deptKey, requestedSheetKey) {
     snapshotDate: String(oppResult.date || '').trim(),
     snapshotAt: String(oppResult.snapshotAt || '').trim(),
     requestedSheetKey: requestedSheetKey || '',
+    storageFileId: String(oppResult.storageFileId || '').trim(),
+    storageFileUrl: String(oppResult.storageFileUrl || '').trim(),
+    storageSheetName: String(oppResult.storageSheetName || '').trim(),
+    storageRolledOver: !!oppResult.storageRolledOver,
     error: oppResult.error || ''
   });
   Logger.log('Opp snapshot execution: dept=' + deptKey +
@@ -841,7 +849,7 @@ function SnapshotExecutionLog_record_(entry) {
       var orgRow = OppListReader_getOrgDeptRow_(deptKey);
       if (orgRow) sheetKey = DeptConfig_resolveSfSheetKey_(orgRow.divisionCode, orgRow.departmentCode);
     }
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 13).setValues([[
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, SnapshotExecutionLog_headers_().length).setValues([[
       Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
       String(entry && entry.kind || '').trim(),
       String(entry && entry.action || '').trim(),
@@ -854,7 +862,11 @@ function SnapshotExecutionLog_record_(entry) {
       Number(entry && entry.count) || 0,
       String(entry && entry.snapshotDate || '').trim(),
       String(entry && entry.snapshotAt || '').trim(),
-      String(entry && entry.error || '').trim()
+      String(entry && entry.error || '').trim(),
+      String(entry && entry.storageFileId || '').trim(),
+      String(entry && entry.storageFileUrl || '').trim(),
+      String(entry && entry.storageSheetName || '').trim(),
+      entry && entry.storageRolledOver ? 'TRUE' : 'FALSE'
     ]]);
   } catch (e) {
     Logger.log('SnapshotExecutionLog failed: ' + (e && e.message ? e.message : e));
@@ -867,25 +879,44 @@ function SnapshotExecutionLog_getOrCreateSheet_() {
   if (!sheet) {
     sheet = ss.insertSheet('SnapshotExecutionLog');
   }
-  if (sheet.getLastRow() < 1) {
-    sheet.getRange(1, 1, 1, 13).setValues([[
-      'executed_at',
-      'kind',
-      'action',
-      'capture_mode',
-      'requested_sheet_key',
-      'sheet_key',
-      'dept_key',
-      'ok',
-      'skipped',
-      'count',
-      'snapshot_date',
-      'snapshot_at',
-      'error'
-    ]]);
+  var headers = SnapshotExecutionLog_headers_();
+  if (sheet.getMaxColumns() < headers.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  }
+  var shouldWriteHeader = sheet.getLastRow() < 1;
+  if (!shouldWriteHeader) {
+    var existing = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+    shouldWriteHeader = headers.some(function(header, idx) {
+      return String(existing[idx] || '') !== header;
+    });
+  }
+  if (shouldWriteHeader) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function SnapshotExecutionLog_headers_() {
+  return [
+    'executed_at',
+    'kind',
+    'action',
+    'capture_mode',
+    'requested_sheet_key',
+    'sheet_key',
+    'dept_key',
+    'ok',
+    'skipped',
+    'count',
+    'snapshot_date',
+    'snapshot_at',
+    'error',
+    'storage_file_id',
+    'storage_file_url',
+    'storage_sheet_name',
+    'storage_rolled_over'
+  ];
 }
 
 function SnapshotManual_normalizeSheetKey_(sheetKey) {

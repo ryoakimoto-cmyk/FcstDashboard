@@ -3,17 +3,10 @@ function FcstSnapshot_create(deptKey, members, notesMap, periodKeys) {
 }
 
 function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshotAt, meta) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet) {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    sheet = ss.insertSheet(FCST_SNAPSHOT_SHEET_NAME);
-    sheet.getRange(1, 1, 1, 4).setValues([['\u65e5\u6642', '\u62c5\u5f53\u8005', '\u671f\u9593', '\u30c7\u30fc\u30bf']]);
-  }
-
   var snapshotDate = (snapshotAt instanceof Date && !isNaN(snapshotAt)) ? new Date(snapshotAt.getTime()) : new Date();
   var options = meta || {};
   var periods = periodKeys || [];
-  var existingValues = sheet.getLastRow() > 0 ? sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues() : [];
+  var existingValues = FcstSnapshot_getAllValues_(4);
   var dateKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd');
   var timestampKey = Utilities.formatDate(snapshotDate, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
   var captureMode = FcstSnapshot_normalizeCaptureMode_(options.captureMode);
@@ -66,10 +59,30 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
   });
 
   if (rows.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
+    var writeResult = SnapshotStorage_appendRows_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), rows);
+    FcstSnapshot_trimOld_(deptKey, writeResult.sheet);
+    return {
+      ok: true,
+      skipped: false,
+      count: rows.length,
+      date: dateKey,
+      snapshotAt: timestampKey,
+      captureMode: captureMode,
+      storageFileId: writeResult.fileId,
+      storageFileUrl: writeResult.fileUrl,
+      storageSheetName: writeResult.sheetName,
+      storageRolledOver: !!writeResult.rolledOver
+    };
   }
-  FcstSnapshot_trimOld_(deptKey, sheet);
   return { ok: true, skipped: false, count: rows.length, date: dateKey, snapshotAt: timestampKey, captureMode: captureMode };
+}
+
+function FcstSnapshot_headers_() {
+  return ['日時', '担当者', '期間', 'データ'];
+}
+
+function FcstSnapshot_getAllValues_(columnCount) {
+  return SnapshotStorage_getAllValues_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), columnCount || 4);
 }
 
 function FcstSnapshot_normalizeCaptureMode_(captureMode) {
@@ -162,10 +175,7 @@ function FcstSnapshot_autoRecoverWeeklyIfMissing_(deptKey) {
 
   var monday = FcstSnapshot_getMondayAt3AM_(new Date());
   var mondayKey = Utilities.formatDate(monday, 'Asia/Tokyo', 'yyyy-MM-dd');
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  var values = (!sheet || sheet.getLastRow() < 1)
-    ? []
-    : sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
 
   if (FcstSnapshot_hasDateRow_(deptKey, mondayKey, values)) return;
 
@@ -177,10 +187,8 @@ function FcstSnapshot_autoRecoverWeeklyIfMissing_(deptKey) {
 }
 
 function FcstSnapshot_getLatestMetricMap_(deptKey) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 1) return {};
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(1, 1, lastRow, 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
+  if (!values.length) return {};
   var latestKey = FcstSnapshot_getLatestTimestampKey_(deptKey, values);
   if (!latestKey) return {};
   var metricMap = {};
@@ -230,10 +238,8 @@ function FcstSnapshot_trimOld_(deptKey, sheet) {
 }
 
 function FcstSnapshot_getWeekOverWeek(deptKey) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 1) return {};
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(1, 1, lastRow, 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
+  if (!values.length) return {};
   var dateKeys = [];
   values.forEach(function(row) {
     var d = row[0];
@@ -277,10 +283,8 @@ function FcstSnapshot_getWeekOverWeek(deptKey) {
 }
 
 function FcstSnapshot_getLatestMembers(deptKey) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 1) return null;
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(1, 1, lastRow, 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
+  if (!values.length) return null;
   var latestKey = FcstSnapshot_getLatestTimestampKey_(deptKey, values);
   if (!latestKey) return null;
   var data = FcstSnapshot_getDataByTimestampKey_(deptKey, latestKey, values);
@@ -288,10 +292,8 @@ function FcstSnapshot_getLatestMembers(deptKey) {
 }
 
 function FcstSnapshot_getSnapshotDates(deptKey) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 1) return [];
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(1, 1, lastRow, 2).getValues();
+  var values = FcstSnapshot_getAllValues_(2);
+  if (!values.length) return [];
   var seen = {};
   var dates = [];
   values.forEach(function(row) {
@@ -310,10 +312,8 @@ function FcstSnapshot_getSnapshotDates(deptKey) {
 }
 
 function FcstSnapshot_getDataByDate(deptKey, dateStr) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  if (!sheet || sheet.getLastRow() < 1) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, date: dateStr, periodOptions: [] };
-  var lastRow = sheet.getLastRow();
-  var values = sheet.getRange(1, 1, lastRow, 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
+  if (!values.length) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, date: dateStr, periodOptions: [] };
   var latestKeyForDate = '';
   values.forEach(function(row) {
     var d = row[0];
@@ -331,9 +331,8 @@ function FcstSnapshot_getDataByDate(deptKey, dateStr) {
 function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
   var rows = valuesOpt;
   if (!rows) {
-    var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-    if (!sheet || sheet.getLastRow() < 1) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, notes: {}, date: '', periodOptions: [] };
-    rows = sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
+    rows = FcstSnapshot_getAllValues_(4);
+    if (!rows.length) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, notes: {}, date: '', periodOptions: [] };
   }
   var memberMap = {};
   var fcstAdjusted = {};
@@ -460,10 +459,7 @@ function FcstSnapshot_runBackfillMissingWeeks(deptKey, weeksBack) {
     var live = AggregatedCache_read(dk);
     if (!live) live = AggregatedCache_refresh(dk);
     var input = FcstSnapshot_buildSnapshotInputFromLive_(live);
-    var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-    var values = (!sheet || sheet.getLastRow() < 1)
-      ? []
-      : sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
+    var values = FcstSnapshot_getAllValues_(4);
 
     for (var i = totalWeeks - 1; i >= 0; i--) {
       var monday = new Date(currentMonday.getTime() - i * 7 * 86400000);
@@ -485,10 +481,7 @@ function FcstSnapshot_runBackfillMissingWeeks(deptKey, weeksBack) {
 }
 
 function FcstSnapshot_getTrendData(deptKey, periodKey, liveData) {
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  var values = (!sheet || sheet.getLastRow() < 1)
-    ? []
-    : sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
   var targetPeriod = FcstSnapshot_resolveTrendPeriodKey_(periodKey, liveData) || String(periodKey || '').trim();
   var data = {
     labels: [],
@@ -596,10 +589,7 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
 
   if (!targetPeriod) return result;
 
-  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
-  var values = (!sheet || sheet.getLastRow() < 1)
-    ? []
-    : sheet.getRange(1, 1, sheet.getLastRow(), 4).getValues();
+  var values = FcstSnapshot_getAllValues_(4);
 
   for (var i = 0; i < values.length; i++) {
     var row = values[i];

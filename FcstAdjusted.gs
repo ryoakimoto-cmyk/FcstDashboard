@@ -42,6 +42,7 @@ function FcstAdjusted_save(deptKey, p) {
     } else {
       sheet.appendRow(record);
     }
+    SnapshotStorage_recordSheet_(FCST_ADJUSTED_SHEET_NAME, sheet);
     return { ok: true };
   } finally {
     lock.releaseLock();
@@ -49,14 +50,9 @@ function FcstAdjusted_save(deptKey, p) {
 }
 
 function FcstAdjusted_getState_(deptKey) {
-  var sheet = FcstAdjusted_getSheet_(deptKey);
-  if (!sheet) return { adjusted: {}, notes: {} };
+  var values = SnapshotStorage_getAllValues_(FCST_ADJUSTED_SHEET_NAME, FCST_STATE_HEADERS, FCST_STATE_HEADERS.length);
+  if (values.length < 2) return { adjusted: {}, notes: {} };
 
-  FcstAdjusted_ensureSchema_(sheet);
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { adjusted: {}, notes: {} };
-
-  var values = sheet.getRange(2, 1, lastRow - 1, FCST_STATE_HEADERS.length).getValues();
   var adjusted = {};
   var notes = {};
   values.forEach(function(row) {
@@ -77,21 +73,11 @@ function FcstAdjusted_getState_(deptKey) {
 }
 
 function FcstAdjusted_getOrCreateSheet_(deptKey) {
-  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  var sheet = getSharedSheet(FCST_ADJUSTED_SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(FCST_ADJUSTED_SHEET_NAME);
-    sheet.getRange(1, 1, 1, FCST_STATE_HEADERS.length).setValues([FCST_STATE_HEADERS]);
-  } else {
-    FcstAdjusted_ensureSchema_(sheet);
-  }
-  return sheet;
+  return SnapshotStorage_getWriteSheet_(FCST_ADJUSTED_SHEET_NAME, FCST_STATE_HEADERS, 1);
 }
 
 function FcstAdjusted_getSheet_(deptKey) {
-  var sheet = getSharedSheet(FCST_ADJUSTED_SHEET_NAME);
-  if (sheet) FcstAdjusted_ensureSchema_(sheet);
-  return sheet;
+  return SnapshotStorage_getWriteSheet_(FCST_ADJUSTED_SHEET_NAME, FCST_STATE_HEADERS, 0);
 }
 
 function FcstAdjusted_ensureSchema_(sheet) {

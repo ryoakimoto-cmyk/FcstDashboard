@@ -1,0 +1,258 @@
+const SNAPSHOT_STORAGE_CELL_LIMIT = 9900000;
+const SNAPSHOT_STORAGE_PROP_PREFIX = 'snapshotStorage:';
+const SNAPSHOT_STORAGE_INDEX_HEADERS = ['created_at', 'sheet_name', 'file_id', 'file_url', 'active', 'cell_count', 'row_count'];
+
+function SnapshotStorage_getReadSheets_(sheetName, headers) {
+  var sheets = [];
+  var legacySheet = getSharedSheet(sheetName);
+  if (legacySheet) sheets.push(legacySheet);
+
+  SnapshotStorage_getFileIds_(sheetName).forEach(function(fileId) {
+    try {
+      var ss = SpreadsheetApp.openById(fileId);
+      var sheet = ss.getSheetByName(sheetName);
+      if (sheet) {
+        SnapshotStorage_ensureSheetShape_(sheet, headers || [], false);
+        sheets.push(sheet);
+      }
+    } catch (e) {
+      Logger.log('SnapshotStorage read file skipped: ' + fileId + ' / ' + (e && e.message ? e.message : e));
+    }
+  });
+
+  return sheets;
+}
+
+function SnapshotStorage_getAllValues_(sheetName, headers, columnCount) {
+  var values = [];
+  SnapshotStorage_getReadSheets_(sheetName, headers).forEach(function(sheet) {
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 1) return;
+    values = values.concat(sheet.getRange(1, 1, lastRow, columnCount).getValues());
+  });
+  return values;
+}
+
+function SnapshotStorage_appendRows_(sheetName, headers, rows) {
+  var appendRows = rows || [];
+  if (!appendRows.length) {
+    return {
+      sheet: null,
+      sheetName: sheetName,
+      fileId: '',
+      fileUrl: '',
+      rolledOver: false
+    };
+  }
+
+  var sheet = SnapshotStorage_getWriteSheet_(sheetName, headers, appendRows.length);
+  try {
+    SnapshotStorage_ensureAppendRows_(sheet, appendRows.length);
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+    return SnapshotStorage_buildWriteResult_(sheet, false);
+  } catch (e) {
+    if (!SnapshotStorage_isCellLimitError_(e)) throw e;
+    sheet = SnapshotStorage_createFile_(sheetName, headers);
+    SnapshotStorage_ensureAppendRows_(sheet, appendRows.length);
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, headers.length).setValues(appendRows);
+    return SnapshotStorage_buildWriteResult_(sheet, true);
+  }
+}
+
+function SnapshotStorage_getWriteSheet_(sheetName, headers, appendRowCount) {
+  var sheet = SnapshotStorage_getActiveSheet_(sheetName, headers);
+  if (!sheet || SnapshotStorage_wouldExceedCellLimit_(sheet, headers.length, appendRowCount || 0)) {
+    sheet = SnapshotStorage_createFile_(sheetName, headers);
+  }
+  SnapshotStorage_ensureSheetShape_(sheet, headers, true);
+  return sheet;
+}
+
+function SnapshotStorage_getActiveSheet_(sheetName, headers) {
+  var activeFileId = SnapshotStorage_getActiveFileId_(sheetName);
+  if (activeFileId) {
+    try {
+      var ss = SpreadsheetApp.openById(activeFileId);
+      var sheet = ss.getSheetByName(sheetName);
+      if (sheet) {
+        SnapshotStorage_ensureSheetShape_(sheet, headers, true);
+        return sheet;
+      }
+    } catch (e) {
+      Logger.log('SnapshotStorage active file unavailable: ' + activeFileId + ' / ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  return SnapshotStorage_createFile_(sheetName, headers);
+}
+
+function SnapshotStorage_createFile_(sheetName, headers) {
+  var timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd-HHmmss');
+  var ss = SpreadsheetApp.create('FcstDashboard DB - ' + sheetName + ' - ' + timestamp);
+  var sheet = ss.getSheets()[0];
+  sheet.setName(sheetName);
+  SnapshotStorage_ensureSheetShape_(sheet, headers, true);
+
+  var fileId = ss.getId();
+  var ids = SnapshotStorage_getFileIds_(sheetName);
+  if (ids.indexOf(fileId) === -1) ids.push(fileId);
+  SnapshotStorage_setFileIds_(sheetName, ids);
+  SnapshotStorage_setActiveFileId_(sheetName, fileId);
+  SnapshotStorage_recordIndex_(sheetName, ss, sheet, true);
+  Logger.log('SnapshotStorage created file: sheet=' + sheetName + ' fileId=' + fileId + ' url=' + ss.getUrl());
+  return sheet;
+}
+
+function SnapshotStorage_ensureSheetShape_(sheet, headers, allowWrite) {
+  var columnCount = headers.length;
+  if (!columnCount) return;
+
+  var maxColumns = sheet.getMaxColumns();
+  if (maxColumns < columnCount && allowWrite) {
+    sheet.insertColumnsAfter(maxColumns, columnCount - maxColumns);
+  }
+  if (sheet.getMaxColumns() > columnCount && allowWrite) {
+    sheet.deleteColumns(columnCount + 1, sheet.getMaxColumns() - columnCount);
+  }
+
+  if (allowWrite && sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, columnCount).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
+}
+
+function SnapshotStorage_ensureAppendRows_(sheet, appendRowCount) {
+  var requiredLastRow = sheet.getLastRow() + appendRowCount;
+  if (requiredLastRow <= sheet.getMaxRows()) return;
+  sheet.insertRowsAfter(sheet.getMaxRows(), requiredLastRow - sheet.getMaxRows());
+}
+
+function SnapshotStorage_wouldExceedCellLimit_(sheet, columnCount, appendRowCount) {
+  var ss = sheet.getParent();
+  var currentCells = SnapshotStorage_countCells_(ss);
+  var requiredLastRow = sheet.getLastRow() + appendRowCount;
+  var additionalRows = Math.max(0, requiredLastRow - sheet.getMaxRows());
+  var additionalCells = additionalRows * Math.max(columnCount, sheet.getMaxColumns());
+  return currentCells + additionalCells > SNAPSHOT_STORAGE_CELL_LIMIT;
+}
+
+function SnapshotStorage_countCells_(spreadsheet) {
+  return spreadsheet.getSheets().reduce(function(total, sheet) {
+    return total + sheet.getMaxRows() * sheet.getMaxColumns();
+  }, 0);
+}
+
+function SnapshotStorage_buildWriteResult_(sheet, rolledOver) {
+  var ss = sheet.getParent();
+  SnapshotStorage_recordIndex_(sheet.getName(), ss, sheet, true);
+  return {
+    sheet: sheet,
+    sheetName: sheet.getName(),
+    fileId: ss.getId(),
+    fileUrl: ss.getUrl(),
+    rolledOver: !!rolledOver
+  };
+}
+
+function SnapshotStorage_recordSheet_(sheetName, sheet) {
+  if (!sheet) return;
+  SnapshotStorage_recordIndex_(sheetName, sheet.getParent(), sheet, true);
+}
+
+function SnapshotStorage_recordIndex_(sheetName, spreadsheet, sheet, active) {
+  try {
+    var indexSheet = SnapshotStorage_getIndexSheet_();
+    var now = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    var fileId = spreadsheet.getId();
+    var values = indexSheet.getLastRow() > 1
+      ? indexSheet.getRange(2, 1, indexSheet.getLastRow() - 1, SNAPSHOT_STORAGE_INDEX_HEADERS.length).getValues()
+      : [];
+    var rowIndex = -1;
+    values.forEach(function(row, idx) {
+      if (String(row[1] || '') === sheetName && String(row[2] || '') !== fileId && active) {
+        indexSheet.getRange(idx + 2, 5).setValue('FALSE');
+      }
+      if (String(row[2] || '') === fileId && String(row[1] || '') === sheetName) rowIndex = idx + 2;
+    });
+
+    var rowValues = [
+      now,
+      sheetName,
+      fileId,
+      spreadsheet.getUrl(),
+      active ? 'TRUE' : 'FALSE',
+      SnapshotStorage_countCells_(spreadsheet),
+      sheet.getLastRow()
+    ];
+    if (rowIndex > 0) {
+      indexSheet.getRange(rowIndex, 1, 1, SNAPSHOT_STORAGE_INDEX_HEADERS.length).setValues([rowValues]);
+    } else {
+      indexSheet.getRange(indexSheet.getLastRow() + 1, 1, 1, SNAPSHOT_STORAGE_INDEX_HEADERS.length).setValues([rowValues]);
+    }
+  } catch (e) {
+    Logger.log('SnapshotStorage index failed: ' + (e && e.message ? e.message : e));
+  }
+}
+
+function SnapshotStorage_getIndexSheet_() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName(SNAPSHOT_DB_INDEX_SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(SNAPSHOT_DB_INDEX_SHEET_NAME);
+  if (sheet.getMaxColumns() < SNAPSHOT_STORAGE_INDEX_HEADERS.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), SNAPSHOT_STORAGE_INDEX_HEADERS.length - sheet.getMaxColumns());
+  }
+  if (sheet.getMaxColumns() > SNAPSHOT_STORAGE_INDEX_HEADERS.length) {
+    sheet.deleteColumns(SNAPSHOT_STORAGE_INDEX_HEADERS.length + 1, sheet.getMaxColumns() - SNAPSHOT_STORAGE_INDEX_HEADERS.length);
+  }
+  var minRows = Math.max(sheet.getLastRow(), 100);
+  if (sheet.getMaxRows() > minRows) {
+    sheet.deleteRows(minRows + 1, sheet.getMaxRows() - minRows);
+  }
+  var shouldWriteHeader = sheet.getLastRow() < 1;
+  if (!shouldWriteHeader) {
+    var existing = sheet.getRange(1, 1, 1, SNAPSHOT_STORAGE_INDEX_HEADERS.length).getValues()[0];
+    shouldWriteHeader = SNAPSHOT_STORAGE_INDEX_HEADERS.some(function(header, idx) {
+      return String(existing[idx] || '') !== header;
+    });
+  }
+  if (shouldWriteHeader) {
+    sheet.getRange(1, 1, 1, SNAPSHOT_STORAGE_INDEX_HEADERS.length).setValues([SNAPSHOT_STORAGE_INDEX_HEADERS]);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function SnapshotStorage_isCellLimitError_(error) {
+  var message = String(error && error.message ? error.message : error);
+  return message.indexOf('10000000') !== -1 || /cell/i.test(message);
+}
+
+function SnapshotStorage_getFileIds_(sheetName) {
+  var raw = PropertiesService.getScriptProperties().getProperty(SnapshotStorage_propKey_(sheetName, 'fileIds'));
+  if (!raw) return [];
+  try {
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(function(id) { return !!String(id || '').trim(); }) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function SnapshotStorage_setFileIds_(sheetName, fileIds) {
+  PropertiesService.getScriptProperties().setProperty(
+    SnapshotStorage_propKey_(sheetName, 'fileIds'),
+    JSON.stringify(fileIds || [])
+  );
+}
+
+function SnapshotStorage_getActiveFileId_(sheetName) {
+  return String(PropertiesService.getScriptProperties().getProperty(SnapshotStorage_propKey_(sheetName, 'activeFileId')) || '').trim();
+}
+
+function SnapshotStorage_setActiveFileId_(sheetName, fileId) {
+  PropertiesService.getScriptProperties().setProperty(SnapshotStorage_propKey_(sheetName, 'activeFileId'), String(fileId || '').trim());
+}
+
+function SnapshotStorage_propKey_(sheetName, suffix) {
+  return SNAPSHOT_STORAGE_PROP_PREFIX + Utilities.base64EncodeWebSafe(String(sheetName || '')) + ':' + suffix;
+}

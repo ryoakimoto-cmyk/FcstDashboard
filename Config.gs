@@ -11,6 +11,7 @@ const ASSIGNMENT_MASTER_SHEET_NAME = '所属マスタ';
 const CHANGE_LOG_SHEET_NAME = '変更ログ';
 const FCST_SNAPSHOT_SHEET_NAME = 'FCSTスナップショット';
 const OPP_LIST_SNAPSHOT_SHEET_NAME = '案件リストスナップショット';
+const SNAPSHOT_DB_INDEX_SHEET_NAME = 'SnapshotDBIndex';
 const EXPORT_WAITING_PROPOSAL_PRODUCTS_SHEET_NAME = 'Export待機_提案商品';
 const SF_USER_SHEET_NAME = 'SFユーザー';
 const SF_DATA_SHEET_BO = 'SFデータ更新_BO';
