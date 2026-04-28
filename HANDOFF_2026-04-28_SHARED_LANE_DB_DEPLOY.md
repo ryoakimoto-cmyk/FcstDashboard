@@ -80,11 +80,12 @@ Use Apps Script editor manual execution. Do not use `clasp run` in this project.
 
 Recommended smoke test:
 
-1. Run `manualCreateFcstSnapshot_BO`.
-2. Confirm `BOPA` and `BOW` no longer fail with the 10,000,000 cell limit error.
-3. Confirm `SnapshotExecutionLog` has `storage_file_id`, `storage_file_url`, `storage_sheet_name`, and `storage_rolled_over`.
-4. Open the `storage_file_url` and confirm `FCSTスナップショット` rows were written there.
-5. Run `manualCreateOppSnapshot_BO` after FCST verification and check the same storage columns for `案件リストスナップショット`.
+1. Run `manualAuthorizeSnapshotDbFolder` once and authorize Drive access if prompted.
+2. Run `manualCreateFcstSnapshot_BO`.
+3. Confirm `BOPA` and `BOW` no longer fail with the 10,000,000 cell limit error.
+4. Confirm `SnapshotExecutionLog` has `storage_file_id`, `storage_file_url`, `storage_sheet_name`, and `storage_rolled_over`.
+5. Open the `storage_file_url` and confirm `FCSTスナップショット` rows were written there.
+6. Run `manualCreateOppSnapshot_BO` after FCST verification and check the same storage columns for `案件リストスナップショット`.
 
 ## Local caveats
 

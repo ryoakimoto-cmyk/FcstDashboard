@@ -87,11 +87,12 @@ function SnapshotStorage_getActiveSheet_(sheetName, headers) {
 
 function SnapshotStorage_createFile_(sheetName, headers) {
   var ids = SnapshotStorage_getFileIds_(sheetName);
+  var dbFolder = SnapshotStorage_getDbFolder_();
   var ss = SpreadsheetApp.create(SnapshotStorage_buildFileName_(sheetName, ids.length + 1));
   var sheet = ss.getSheets()[0];
   sheet.setName(sheetName);
   SnapshotStorage_ensureSheetShape_(sheet, headers, true);
-  SnapshotStorage_moveFileToDbFolder_(ss);
+  SnapshotStorage_moveFileToDbFolder_(ss, dbFolder);
 
   var fileId = ss.getId();
   if (ids.indexOf(fileId) === -1) ids.push(fileId);
@@ -106,16 +107,38 @@ function SnapshotStorage_buildFileName_(sheetName, sequence) {
   return 'FcstDashboard DB - ' + sheetName + ' ' + Math.max(1, Number(sequence) || 1);
 }
 
-function SnapshotStorage_moveFileToDbFolder_(spreadsheet) {
+function manualAuthorizeSnapshotDbFolder() {
+  var folder = SnapshotStorage_getDbFolder_();
+  var result = {
+    ok: true,
+    folderId: String(typeof SNAPSHOT_DB_FOLDER_ID !== 'undefined' ? SNAPSHOT_DB_FOLDER_ID : '').trim(),
+    folderName: folder ? folder.getName() : '',
+    folderUrl: folder ? folder.getUrl() : ''
+  };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+function SnapshotStorage_getDbFolder_() {
   var folderId = String(typeof SNAPSHOT_DB_FOLDER_ID !== 'undefined' ? SNAPSHOT_DB_FOLDER_ID : '').trim();
-  if (!folderId) return;
+  if (!folderId) return null;
+
+  try {
+    return DriveApp.getFolderById(folderId);
+  } catch (e) {
+    throw new Error('Snapshot DB folder is not accessible. Run manualAuthorizeSnapshotDbFolder and authorize Drive access. folder=' + folderId + ' / ' + (e && e.message ? e.message : e));
+  }
+}
+
+function SnapshotStorage_moveFileToDbFolder_(spreadsheet, dbFolder) {
+  if (!dbFolder) return;
 
   var fileId = spreadsheet.getId();
   try {
-    DriveApp.getFileById(fileId).moveTo(DriveApp.getFolderById(folderId));
+    DriveApp.getFileById(fileId).moveTo(dbFolder);
   } catch (e) {
     try { DriveApp.getFileById(fileId).setTrashed(true); } catch (ignored) {}
-    throw new Error('Snapshot DB file could not be moved to configured folder: ' + folderId + ' / ' + (e && e.message ? e.message : e));
+    throw new Error('Snapshot DB file could not be moved to configured folder. Run manualAuthorizeSnapshotDbFolder and authorize Drive access. folder=' + dbFolder.getId() + ' / ' + (e && e.message ? e.message : e));
   }
 }
 
