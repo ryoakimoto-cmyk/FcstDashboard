@@ -197,6 +197,12 @@ function SnapshotStorage_getFreshStartPlan() {
   return result;
 }
 
+function manualLogSnapshotStorageFreshStartPlan() {
+  var plan = SnapshotStorage_getFreshStartPlan();
+  Logger.log(JSON.stringify(plan, null, 2));
+  return plan;
+}
+
 function manualArmSnapshotStorageFreshStartCleanup() {
   var expiresAt = Date.now() + 10 * 60 * 1000;
   PropertiesService.getScriptProperties().setProperty(SNAPSHOT_STORAGE_CLEANUP_ARM_PROP, String(expiresAt));

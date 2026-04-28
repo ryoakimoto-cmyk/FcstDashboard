@@ -68,6 +68,7 @@ Writes now go to DB files for the three DB-owned sheets above. `SnapshotExecutio
 Fresh-start cleanup helpers are available:
 
 - `SnapshotStorage_getFreshStartPlan()`: lists old main-spreadsheet DB-owned sheets, registered DB files, and script properties that would be cleared.
+- `manualLogSnapshotStorageFreshStartPlan()`: writes the cleanup plan as JSON to Apps Script execution logs for manual review.
 - `manualArmSnapshotStorageFreshStartCleanup()`: arms cleanup for 10 minutes and returns the current cleanup plan.
 - `manualCleanupSnapshotStorageForFreshStart()`: after arming, deletes the old main-spreadsheet DB-owned sheets/index, trashes registered DB files, and clears snapshot storage script properties.
 
