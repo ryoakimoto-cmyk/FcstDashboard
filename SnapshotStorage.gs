@@ -91,6 +91,7 @@ function SnapshotStorage_createFile_(sheetName, headers) {
   var sheet = ss.getSheets()[0];
   sheet.setName(sheetName);
   SnapshotStorage_ensureSheetShape_(sheet, headers, true);
+  SnapshotStorage_moveFileToDbFolder_(ss);
 
   var fileId = ss.getId();
   var ids = SnapshotStorage_getFileIds_(sheetName);
@@ -100,6 +101,19 @@ function SnapshotStorage_createFile_(sheetName, headers) {
   SnapshotStorage_recordIndex_(sheetName, ss, sheet, true);
   Logger.log('SnapshotStorage created file: sheet=' + sheetName + ' fileId=' + fileId + ' url=' + ss.getUrl());
   return sheet;
+}
+
+function SnapshotStorage_moveFileToDbFolder_(spreadsheet) {
+  var folderId = String(typeof SNAPSHOT_DB_FOLDER_ID !== 'undefined' ? SNAPSHOT_DB_FOLDER_ID : '').trim();
+  if (!folderId) return;
+
+  var fileId = spreadsheet.getId();
+  try {
+    DriveApp.getFileById(fileId).moveTo(DriveApp.getFolderById(folderId));
+  } catch (e) {
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch (ignored) {}
+    throw new Error('Snapshot DB file could not be moved to configured folder: ' + folderId + ' / ' + (e && e.message ? e.message : e));
+  }
 }
 
 function SnapshotStorage_ensureSheetShape_(sheet, headers, allowWrite) {
