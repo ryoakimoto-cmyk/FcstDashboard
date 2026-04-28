@@ -98,6 +98,7 @@ function AggregatedCache_refresh(deptKey) {
       ? FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0])
       : null;
     result.sfLastUpdated = result.lastUpdated || AggregatedCache_getSfLastUpdated_(deptKey);
+    FcstSnapshot_attachCurrentKeyDealsToData_(deptKey, result);
 
     if (!isProposalProductsEnabled_(deptKey)) {
       AggregatedCache_stripProposalProductFields_(result);

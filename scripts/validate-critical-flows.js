@@ -106,6 +106,15 @@ assertIncludes(
   'return value === true;',
   'FCST Key Deal boolean parsing must accept only boolean true'
 );
+const sfAggregated = getFunctionBody(sfDataReader, 'SfDataReader_getAggregated');
+assertMatches(
+  sfAggregated,
+  /if \(isConfirmedPhase\) \{\s*SfDataReader_addBreakdownValue_\(metric\.confirmed,/s,
+  'FCST confirmed metric must aggregate only rows where フェーズ_変換 is 確定'
+);
+if (sfAggregated.includes('metric.keyDeals.push')) {
+  throw new Error('FCST aggregation must not build Key Deal payloads from FCST rows');
+}
 
 const manifest = read('appsscript.json');
 assertIncludes(manifest, '"https://www.googleapis.com/auth/drive"', 'snapshot DB folder writes require Apps Script DriveApp scope');
@@ -127,7 +136,18 @@ const mrrDashboard = read('MrrDashboard.gs');
 assertIncludes(mrrDashboard, 'CacheLayer_read(MRR_DASHBOARD_CACHE_DEPT, MRR_DASHBOARD_CACHE_KEY, { skipSharedSheet: true })', 'MRR dashboard must use 5-minute cache before snapshot reads');
 assertIncludes(mrrDashboard, 'FcstSnapshot_getAllValues_(4)', 'MRR dashboard must read FCST snapshots through snapshot storage helper');
 assertIncludes(mrrDashboard, 'OppListSnapshot_getAllValues_(5)', 'MRR dashboard must read Opp snapshots through snapshot storage helper');
-assertIncludes(mrrDashboard, "source: 'snapshot'", 'MRR dashboard must report snapshot source');
+assertIncludes(mrrDashboard, "source: 'snapshot+current'", 'MRR dashboard must report snapshot + current source');
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_CACHE_KEY = 'snapshotLiveData:v1';", 'MRR dashboard live payload must use a distinct cache key');
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_LIVE_KEY = 'live';", 'MRR dashboard live key missing');
+assertIncludes(mrrDashboard, 'AppDataCache_getInitData(deptKey)', 'MRR dashboard current FCST source must use AppDataCache_getInitData');
+assertIncludes(mrrDashboard, 'AppDataCache_getOpportunities(oppDeptKey)', 'MRR dashboard current Key Deal source must use current opp list');
+assertIncludes(mrrDashboard, 'periodDeals: {}', 'MRR dashboard must expose period-scoped Key Deals');
+assertIncludes(mrrDashboard, 'MrrDashboard_dealMatchesPeriod_(deal, periodKey)', 'MRR dashboard Key Deals must be filtered by selected period');
+assertIncludes(mrrDashboard, 'oppDeptKeys: []', 'MRR dashboard must keep explicit Opp group-name mappings');
+assertIncludes(mrrDashboard, 'meta.oppDeptKeys.push(row.groupName)', 'MRR dashboard must derive current Opp source keys from OrgMaster groupName');
+assertIncludes(mrrDashboard, 'MrrDashboard_buildLiveMetric_(live, member, monthKey)', 'MRR dashboard live metrics must merge current FCST fields explicitly');
+assertIncludes(mrrDashboard, 'MrrDashboard_getLiveAdjustedMetric_', 'MRR dashboard live FCST adjusted metric merge missing');
+assertIncludes(mrrDashboard, 'FcstPeriods_getQuarterKeyFromMonthKey_(periodKey)', 'MRR dashboard must derive quarter rows from monthly periods');
 assertIncludes(mrrDashboard, "MrrDashboard_divisionKey_(cfg)", 'MRR dashboard must map SSCS departments into the SS division');
 assertIncludes(mrrDashboard, ".setTitle('MRR進捗ダッシュボード')", 'MRR dashboard server title must be valid UTF-8');
 assertIncludes(mrrDashboard, "var MRR_DASHBOARD_TOTAL_KEY = 'total';", 'MRR dashboard total key must be Apps Script RPC-safe');
@@ -145,9 +165,10 @@ if (mrrBuild.includes('meta.dept || rowDeptKey') || mrrBuild.includes('metaDeptK
 assertIncludes(mrrDashboard, "var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];", 'MRR dashboard must include CO as a first-class division');
 assertIncludes(mrrDashboard, "if (sfSheetKey === 'CO') return 'CO';", 'MRR dashboard must classify CO departments');
 assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
-assertIncludes(mrrDashboard, "var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v6';", 'MRR dashboard cache key must change when snapshot grouping changes');
+assertIncludes(mrrDashboard, "'snapshotData:v6'", 'MRR dashboard cache invalidation must remove the previous snapshot-only key');
 assertIncludes(mrrBuild, 'key: dateKey', 'MRR dashboard must group snapshot weeks by date, not minute');
 assertIncludes(mrrBuild, 'division.data[periodKey][dateKey]', 'MRR dashboard data buckets must use date keys');
+assertIncludes(mrrBuild, 'if (!FcstPeriods_parseMonthKey_(periodKey)) return;', 'MRR dashboard must ignore persisted quarter snapshot rows');
 if (mrrBuild.includes("var timestampKey = Utilities.formatDate(snapshotAt, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm')")) {
   throw new Error('MRR dashboard snapshot grouping must not depend on minute-level timestamps');
 }
@@ -168,12 +189,35 @@ if (mrrDashboard.includes('MRR_SHEET_ID') || mrrDashboard.includes('SpreadsheetA
 if (mrrDashboard.includes('cfg.sfSheetKey || cfg.division')) {
   throw new Error('MRR dashboard must not prioritize sfSheetKey over division; SSCS belongs to SS');
 }
+if (mrrDashboard.includes('AggregatedCache_read(deptKey) ||') || mrrDashboard.includes('AppDataCache_getInitData(deptKey) ||')) {
+  throw new Error('MRR dashboard must not add implicit live-source fallbacks');
+}
 
 const fcstSnapshot = read('FcstSnapshot.gs');
 const fcstSnapshotCreateAt = getFunctionBody(fcstSnapshot, 'FcstSnapshot_createAt_');
 assertIncludes(fcstSnapshot, 'function FcstSnapshot_buildPayloadMeta_', 'FCST snapshot must centralize write metadata shape');
 const fcstPayloadMeta = getFunctionBody(fcstSnapshot, 'FcstSnapshot_buildPayloadMeta_');
 assertIncludes(fcstSnapshotCreateAt, 'payload.__meta = FcstSnapshot_buildPayloadMeta_(member, options)', 'FCST snapshot writes must use normalized minimal metadata');
+assertIncludes(fcstSnapshotCreateAt, 'var periods = FcstSnapshot_filterSnapshotPeriodKeys_(periodKeys || [])', 'FCST snapshot writes must filter persisted periods');
+if (fcstSnapshotCreateAt.includes("k === 'keyDeals'")) {
+  throw new Error('FCST snapshot payload must not persist keyDeals');
+}
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_filterSnapshotPeriodKeys_', 'FCST snapshot monthly-only period filter missing');
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_filterSnapshotPeriodKeys_'),
+  'FcstPeriods_parseMonthKey_(key)',
+  'FCST snapshot persisted periods must be monthly keys only'
+);
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_mergeAdjustedIntoMembers_', 'FCST snapshot must merge adjusted values into snapshot payloads');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_attachSnapshotKeyDealsToData_', 'FCST snapshot reads must attach historical Key Deals from Opp snapshots');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_attachCurrentKeyDealsToData_', 'FCST current reads must attach current Key Deals from current Opp list');
+assertIncludes(fcstSnapshot, 'OppListSnapshot_getByDate(oppDeptKey, dateKey)', 'Historical FCST Key Deals must use Opp list snapshots');
+assertIncludes(fcstSnapshot, 'AppDataCache_getOpportunities(oppDeptKey)', 'Current FCST Key Deals must use current Opp list');
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_buildSnapshotInputFromLive_'),
+  'FcstSnapshot_mergeAdjustedIntoMembers_(members, liveData && liveData.fcstAdjusted, periodKeys)',
+  'FCST snapshot input must include live adjusted metrics'
+);
 assertIncludes(fcstSnapshotCreateAt, 'FcstSnapshot_getLatestMetricMap_(deptKey, dateKey)', 'FCST snapshot week-over-week baseline must exclude the same snapshot date');
 assertIncludes(fcstSnapshotCreateAt, 'FcstSnapshot_deleteByDate_(deptKey, sheet, dateKey)', 'FCST snapshot writes must replace same dept/date rows before appending');
 assertIncludes(fcstSnapshot, 'function FcstSnapshot_deleteByDate_', 'FCST snapshot must have date-level dedupe deletion');
@@ -187,10 +231,24 @@ assertIncludes(
   'FCST trend data must collapse snapshots by date'
 );
 assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendData'),
+  'FcstSnapshot_getSnapshotKeyDealsForPeriod_(deptKey, dateKey, targetPeriod)',
+  'FCST trend historical Key Deals must come from Opp snapshots'
+);
+assertIncludes(
+  getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendData'),
+  'FcstSnapshot_getCurrentKeyDealsForPeriod_(deptKey, livePeriod)',
+  'FCST trend current Key Deals must come from current Opp list'
+);
+assertIncludes(
   getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendWeekDetails'),
   "Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd') !== snapshotKey",
   'FCST trend detail lookup must use date keys'
 );
+if (getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendWeekDetails').includes('matchedPayload.keyDeals') ||
+    getFunctionBody(fcstSnapshot, 'FcstSnapshot_getTrendWeekDetails').includes('liveMetric && liveMetric.keyDeals')) {
+  throw new Error('FCST trend details must not read Key Deals from FCST snapshot/live metric payload');
+}
 assertIncludes(fcstPayloadMeta, 'meta.totalKind = totalKind', 'FCST snapshot write metadata must include row type');
 assertIncludes(fcstPayloadMeta, 'if (group) meta.group = group', 'FCST snapshot write metadata must include historical group when present');
 ['isTotal:', 'dept:', 'name:', 'captureMode:', 'groupCode:'].forEach((token) => {
@@ -215,9 +273,19 @@ assertIncludes(mrrClient, 'MRR進捗ダッシュボード', 'MRR dashboard title
 assertIncludes(mrrClient, 'getMrrDashboardData()', 'MRR client must load backend dashboard data');
 assertIncludes(mrrClient, 'Key Deal はありません', 'MRR client must render empty Key Deal state without parser fallback');
 assertIncludes(mrrClient, "return (D && D.totalKey) || 'total';", 'MRR client total fallback key must be Apps Script RPC-safe');
+assertIncludes(mrrClient, "w.isLive ? '現在'", 'MRR client must label live/current week as 現在');
+assertIncludes(mrrClient, 'height: 560px !important', 'MRR dashboard chart must keep expanded height');
+assertIncludes(mrrClient, '--color-primary: #1a73e8;', 'MRR dashboard tone must align to FCST dashboard primary color');
 if (mrrClient.includes('__total__')) {
   throw new Error('MRR client must not depend on properties ending with "__"');
 }
+
+const guardrails = read('DEVELOPMENT_GUARDRAILS.md');
+assertIncludes(guardrails, 'MRR Dashboard Rules', 'MRR dashboard guardrails missing');
+assertIncludes(guardrails, 'FCST snapshot rows は月次キーのみ保存する', 'monthly-only snapshot guardrail missing');
+assertIncludes(guardrails, 'historical の FCST/MRR Key Deal は `案件リストスナップショット` を正規ソースにする', 'historical Key Deal source guardrail missing');
+assertIncludes(guardrails, '`FCSTスナップショット` payload に `keyDeals` を保存しない', 'FCST snapshot Key Deal payload prohibition missing');
+assertIncludes(guardrails, 'version削除は、上限付近・上限到達・version作成失敗時に限って実施する', 'Apps Script version deletion rule must be limit/failure-only');
 
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');

@@ -38,6 +38,18 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - スナップショット・集計系では、読み込み範囲を日付・部署・期間で可能な限り先に絞る。
 - FCST と Opp で共通化できるキャッシュ層・日付処理・部署フィルタは shared helper に寄せる。ただし payload shape が違うものを無理に同一化しない。
 
+## MRR Dashboard Rules
+
+- MRR dashboard は snapshot history と live/current point を別扱いにする。live/current は履歴へ保存せず、snapshot の週次比較基準にも混ぜない。
+- live/current の FCST 数値は `AppDataCache_getInitData` / `AggregatedCache` の現行FCST集計結果を正規ソースにする。
+- live/current の Key Deal は `AppDataCache_getOpportunities` の現在案件リストを正規ソースにする。
+- historical の FCST/MRR 数値は `FCSTスナップショット` を正規ソースにする。
+- historical の FCST/MRR Key Deal は `案件リストスナップショット` を正規ソースにする。
+- `FCSTスナップショット` payload に `keyDeals` を保存しない。FCST/MRR の過去Key Deal表示でも `FCSTスナップショット` payload の `keyDeals` を参照しない。
+- FCST snapshot rows は月次キーのみ保存する。四半期は保存済み snapshot row として読まず、月次キーから表示時に合算する。
+- MRR / snapshot / current source の不足を、legacy sheet・別source・payload内の別キーへ無断 fallback して補完しない。必要な場合は事前に発火条件と戻し条件を明示して承認を取る。
+- MRR dashboard の重い読み込みは 5 分 cache を使う。cache hit 時に snapshot / Spreadsheet / Drive の再読込を併用しない。
+
 ## Existing Feature Protection Rules
 
 - 追加改修で既存機能を壊さないことを最優先する。特に FCST boot / Opp boot / 部署選択 / snapshot / save の初期表示経路は毎回保護対象として扱う。
@@ -49,10 +61,10 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 
 ## Apps Script Version Rules
 
-- `clasp version` で新規versionを作成する前に、Apps Scriptのプロジェクト履歴で最古の不要versionを1つ削除する。
-- version上限に到達してから気づく運用にしない。`clasp versions` で件数を確認し、上限付近または上限到達時は先に削除してからversion作成する。
+- `clasp version` の前に毎回 version を削除しない。
+- version削除は、上限付近・上限到達・version作成失敗時に限って実施する。
 - `clasp` にはversion削除コマンドがないため、削除はApps Scriptエディタのプロジェクト履歴画面で行う。
-- 削除してよいのはproduction deploymentや直近rollback候補に使っていない古いversionだけ。削除前後に `clasp deployments` でproduction deploymentのversionを確認する。
+- 削除してよいのはproduction deploymentや直近rollback候補に使っていない古いversionだけ。削除が必要な時だけ、削除前後に `clasp deployments` でproduction deploymentのversionを確認する。
 
 ## Apps Script Runtime Diagnostics Rules
 

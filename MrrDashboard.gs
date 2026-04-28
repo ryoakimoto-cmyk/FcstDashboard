@@ -1,7 +1,8 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v6';
-var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2', 'snapshotData:v4', 'snapshotData:v5'];
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotLiveData:v1';
+var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2', 'snapshotData:v4', 'snapshotData:v5', 'snapshotData:v6'];
 var MRR_DASHBOARD_TOTAL_KEY = 'total';
+var MRR_DASHBOARD_LIVE_KEY = 'live';
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_NUMERIC_METRIC_KEYS = {
   fcstMin: true,
@@ -51,6 +52,7 @@ function MrrDashboard_buildFromSnapshots_() {
     var rowInfo = FcstSnapshot_parseRowName_(nameRaw);
     var rowDeptKey = String(rowInfo.deptKey || '').trim();
     var periodKey = String(row[2] || '').trim();
+    if (!FcstPeriods_parseMonthKey_(periodKey)) return;
     var payload = MrrDashboard_parseJson_(row[3]);
     var meta = FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowInfo.name);
     var deptKey = rowDeptKey;
@@ -76,8 +78,11 @@ function MrrDashboard_buildFromSnapshots_() {
     division.data[periodKey][dateKey][deptKey] = MrrDashboard_extractMetrics_(payload);
   });
 
+  MrrDashboard_addLiveData_(divisions, catalog, dealsByDivisionDate);
+
   Object.keys(divisions).forEach(function(divisionKey) {
     var division = divisions[divisionKey];
+    MrrDashboard_addDerivedQuarterPeriods_(division);
     MrrDashboard_sortDivision_(division);
     MrrDashboard_fillTotalsAndDeals_(division, dealsByDivisionDate[divisionKey] || {});
   });
@@ -89,13 +94,168 @@ function MrrDashboard_buildFromSnapshots_() {
   });
 
   return {
-    source: 'snapshot',
+    source: 'snapshot+current',
     generatedAt: Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss'),
     defaultDivision: divisions.BO ? 'BO' : (orderedDivisions[0] ? orderedDivisions[0].key : ''),
     totalKey: MRR_DASHBOARD_TOTAL_KEY,
     metrics: MrrDashboard_metricDefs_(),
     divisions: orderedDivisions
   };
+}
+
+function MrrDashboard_addLiveData_(divisions, catalog, dealsByDivisionDate) {
+  Object.keys(catalog.byDeptKey || {}).forEach(function(deptKey) {
+    var deptMeta = catalog.byDeptKey[deptKey];
+    var live = AppDataCache_getInitData(deptKey);
+    if (!live || live.error) {
+      throw new Error('MRR live FCST source failed: ' + deptKey + ' / ' + (live && live.error ? live.error : 'empty payload'));
+    }
+
+    var member = MrrDashboard_findDepartmentTotalMember_(live.members || []);
+    if (member) {
+      var division = MrrDashboard_ensureDivision_(divisions, deptMeta.divisionKey, deptMeta.divisionLabel);
+      MrrDashboard_addWeek_(division, {
+        key: MRR_DASHBOARD_LIVE_KEY,
+        date: MRR_DASHBOARD_LIVE_KEY,
+        label: '現在',
+        timestamp: MRR_DASHBOARD_LIVE_KEY,
+        isLive: true
+      });
+      MrrDashboard_addDept_(division, deptMeta);
+
+      MrrDashboard_liveMonthKeys_(live.periodOptions || []).forEach(function(monthKey) {
+        MrrDashboard_addPeriod_(division, monthKey);
+        if (!division.data[monthKey]) division.data[monthKey] = {};
+        if (!division.data[monthKey][MRR_DASHBOARD_LIVE_KEY]) division.data[monthKey][MRR_DASHBOARD_LIVE_KEY] = {};
+        division.data[monthKey][MRR_DASHBOARD_LIVE_KEY][deptKey] = MrrDashboard_extractMetrics_(
+          MrrDashboard_buildLiveMetric_(live, member, monthKey)
+        );
+      });
+    }
+
+    MrrDashboard_addLiveDealsForDept_(dealsByDivisionDate, deptMeta);
+  });
+}
+
+function MrrDashboard_findDepartmentTotalMember_(members) {
+  for (var i = 0; i < (members || []).length; i++) {
+    var member = members[i] || {};
+    if (member.totalKind === SHARED_TOTAL_KIND.DEPARTMENT) return member;
+  }
+  return null;
+}
+
+function MrrDashboard_liveMonthKeys_(periodOptions) {
+  var seen = {};
+  var result = [];
+  (periodOptions || []).forEach(function(option) {
+    (option && option.months || []).forEach(function(monthKey) {
+      var key = String(monthKey || '').trim();
+      if (!FcstPeriods_parseMonthKey_(key) || seen[key]) return;
+      seen[key] = true;
+      result.push(key);
+    });
+  });
+  return result;
+}
+
+function MrrDashboard_addLiveDealsForDept_(dealsByDivisionDate, deptMeta) {
+  var oppDeptKeys = deptMeta.oppDeptKeys || [];
+  if (!oppDeptKeys.length) {
+    throw new Error('MRR live Opp source mapping missing: ' + deptMeta.key);
+  }
+
+  var divisionKey = deptMeta.divisionKey;
+  if (!dealsByDivisionDate[divisionKey]) dealsByDivisionDate[divisionKey] = {};
+  if (!dealsByDivisionDate[divisionKey][MRR_DASHBOARD_LIVE_KEY]) dealsByDivisionDate[divisionKey][MRR_DASHBOARD_LIVE_KEY] = {};
+  if (!dealsByDivisionDate[divisionKey][MRR_DASHBOARD_LIVE_KEY][deptMeta.key]) {
+    dealsByDivisionDate[divisionKey][MRR_DASHBOARD_LIVE_KEY][deptMeta.key] = [];
+  }
+
+  var seen = {};
+  oppDeptKeys.forEach(function(oppDeptKey) {
+    var result = AppDataCache_getOpportunities(oppDeptKey);
+    if (!result || result.error) {
+      throw new Error('MRR live Opp source failed: ' + oppDeptKey + ' / ' + (result && result.error ? result.error : 'empty payload'));
+    }
+
+    (result.rows || []).forEach(function(row) {
+      if (!row || row.keyDeal !== true) return;
+      var oppId = String(row.oppId || '').trim();
+      if (oppId && seen[oppId]) return;
+      if (oppId) seen[oppId] = true;
+      dealsByDivisionDate[divisionKey][MRR_DASHBOARD_LIVE_KEY][deptMeta.key].push({
+        oppId: oppId,
+        deptKey: deptMeta.key,
+        deptLabel: deptMeta.label,
+        company: String(row.dealName || '').trim(),
+        mrr: MrrDashboard_num_(row.mrr),
+        phase: String(row.phase || '').trim(),
+        forecast: String(row.forecast || '').trim(),
+        fcstCommit: MrrDashboard_num_(row.fcstCommit),
+        fcstMin: MrrDashboard_num_(row.fcstMin),
+        fcstMax: MrrDashboard_num_(row.fcstMax),
+        completedMonth: String(row.completedMonth || '').trim(),
+        comment: String(row.fcstComment || '').trim()
+      });
+    });
+  });
+}
+
+function MrrDashboard_buildLiveMetric_(live, member, periodKey) {
+  var metric = {};
+  var source = member && member[periodKey] ? member[periodKey] : {};
+  Object.keys(source).forEach(function(key) {
+    metric[key] = source[key];
+  });
+  metric.fcstAdjusted = MrrDashboard_getLiveAdjustedMetric_(live, member, periodKey);
+  return metric;
+}
+
+function MrrDashboard_getLiveAdjustedMetric_(live, member, periodKey) {
+  var name = String(member && member.name || '').trim();
+  var key = name + '|' + String(periodKey || '').trim();
+  var adjusted = live && live.fcstAdjusted && live.fcstAdjusted[key];
+  if (adjusted && typeof adjusted.net === 'number') return adjusted;
+  return { net: 0, newExp: 0, churn: 0 };
+}
+
+function MrrDashboard_addDerivedQuarterPeriods_(division) {
+  var monthsByQuarter = {};
+  Object.keys(division.data || {}).forEach(function(periodKey) {
+    if (!FcstPeriods_parseMonthKey_(periodKey)) return;
+    var quarterKey = FcstPeriods_getQuarterKeyFromMonthKey_(periodKey);
+    if (!quarterKey) return;
+    if (!monthsByQuarter[quarterKey]) monthsByQuarter[quarterKey] = {};
+    monthsByQuarter[quarterKey][periodKey] = true;
+  });
+
+  Object.keys(monthsByQuarter).forEach(function(quarterKey) {
+    MrrDashboard_addPeriod_(division, quarterKey);
+    if (!division.data[quarterKey]) division.data[quarterKey] = {};
+
+    division.weeks.forEach(function(week) {
+      if (!division.data[quarterKey][week.key]) division.data[quarterKey][week.key] = {};
+      division.depts.forEach(function(dept) {
+        var rows = [];
+        Object.keys(monthsByQuarter[quarterKey]).forEach(function(monthKey) {
+          var monthRows = division.data[monthKey] && division.data[monthKey][week.key];
+          if (monthRows && monthRows[dept.key]) rows.push(monthRows[dept.key]);
+        });
+        division.data[quarterKey][week.key][dept.key] = MrrDashboard_sumExtractedMetrics_(rows);
+      });
+    });
+  });
+}
+
+function MrrDashboard_sumExtractedMetrics_(rows) {
+  var metrics = MrrDashboard_emptyMetrics_();
+  (rows || []).forEach(function(row) {
+    MrrDashboard_metricDefs_().forEach(function(def) {
+      metrics[def.key] += MrrDashboard_num_(row && row[def.key]);
+    });
+  });
+  return metrics;
 }
 
 function MrrDashboard_buildDeptCatalog_() {
@@ -111,7 +271,8 @@ function MrrDashboard_buildDeptCatalog_() {
       key: deptKey,
       label: String(cfg.label || cfg.departmentName || deptKey).trim(),
       divisionKey: divisionKey,
-      divisionLabel: divisionKey
+      divisionLabel: divisionKey,
+      oppDeptKeys: []
     };
     byDeptKey[deptKey] = meta;
     byAnyKey[MrrDashboard_normKey_(deptKey)] = meta;
@@ -125,6 +286,9 @@ function MrrDashboard_buildDeptCatalog_() {
     if (!meta) return;
     byAnyKey[MrrDashboard_normKey_(row.groupName)] = meta;
     byAnyKey[MrrDashboard_normKey_(row.departmentName)] = meta;
+    if (row.groupName && meta.oppDeptKeys.indexOf(row.groupName) === -1) {
+      meta.oppDeptKeys.push(row.groupName);
+    }
   });
 
   return { byDeptKey: byDeptKey, byAnyKey: byAnyKey };
@@ -186,6 +350,7 @@ function MrrDashboard_ensureDivision_(divisions, key, label) {
       weeks: [],
       depts: [],
       data: {},
+      periodDeals: {},
       deals: {}
     };
   }
@@ -243,22 +408,30 @@ function MrrDashboard_fillTotalsAndDeals_(division, dealsByDate) {
     });
   });
 
-  division.weeks.forEach(function(week) {
-    var dateDeals = dealsByDate[week.date] || {};
-    var weekDeals = {};
-    var totalDeals = [];
-    division.depts.forEach(function(dept) {
-      var rows = (dateDeals[dept.key] || []).slice().sort(function(a, b) {
+  Object.keys(division.data).forEach(function(periodKey) {
+    if (!division.periodDeals[periodKey]) division.periodDeals[periodKey] = {};
+    division.weeks.forEach(function(week) {
+      var dateDeals = dealsByDate[week.date] || {};
+      var weekDeals = {};
+      var totalDeals = [];
+      division.depts.forEach(function(dept) {
+        var rows = (dateDeals[dept.key] || []).filter(function(deal) {
+          return MrrDashboard_dealMatchesPeriod_(deal, periodKey);
+        }).sort(function(a, b) {
+          return Math.abs(b.mrr) - Math.abs(a.mrr);
+        });
+        weekDeals[dept.key] = rows;
+        totalDeals = totalDeals.concat(rows);
+      });
+      weekDeals[MRR_DASHBOARD_TOTAL_KEY] = totalDeals.sort(function(a, b) {
         return Math.abs(b.mrr) - Math.abs(a.mrr);
       });
-      weekDeals[dept.key] = rows;
-      totalDeals = totalDeals.concat(rows);
+      division.periodDeals[periodKey][week.key] = weekDeals;
     });
-    weekDeals[MRR_DASHBOARD_TOTAL_KEY] = totalDeals.sort(function(a, b) {
-      return Math.abs(b.mrr) - Math.abs(a.mrr);
-    });
-    division.deals[week.key] = weekDeals;
   });
+
+  var defaultPeriod = division.defaultPeriod || (division.periods[0] && division.periods[0].key) || '';
+  division.deals = defaultPeriod ? (division.periodDeals[defaultPeriod] || {}) : {};
 }
 
 function MrrDashboard_extractMetrics_(payload) {
@@ -336,6 +509,41 @@ function MrrDashboard_parseJson_(value) {
 function MrrDashboard_num_(value) {
   var n = Number(value);
   return isNaN(n) ? 0 : n;
+}
+
+function MrrDashboard_dealMatchesPeriod_(deal, periodKey) {
+  var monthKey = MrrDashboard_normalizeMonthKey_(deal && deal.completedMonth);
+  if (!monthKey) return false;
+  var months = MrrDashboard_periodMonthSet_(periodKey);
+  return !!months[monthKey];
+}
+
+function MrrDashboard_periodMonthSet_(periodKey) {
+  var key = String(periodKey || '').trim();
+  var months = {};
+  if (FcstPeriods_parseMonthKey_(key)) {
+    months[key] = true;
+    return months;
+  }
+  var quarter = FcstPeriods_getQuarterDefinitionByKey_(key);
+  (quarter && quarter.months || []).forEach(function(monthKey) {
+    months[monthKey] = true;
+  });
+  return months;
+}
+
+function MrrDashboard_normalizeMonthKey_(value) {
+  if (value instanceof Date && !isNaN(value)) {
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy-MM');
+  }
+  var text = String(value || '').trim();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}$/.test(text)) return text;
+  var compact = text.match(/^(\d{4})(\d{2})$/);
+  if (compact) return compact[1] + '-' + compact[2];
+  var match = text.match(/^(\d{4})[-\/年](\d{1,2})/);
+  if (!match) return '';
+  return match[1] + '-' + String(Number(match[2])).padStart(2, '0');
 }
 
 function MrrDashboard_normKey_(value) {

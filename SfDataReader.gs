@@ -49,27 +49,17 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     SfDataReader_addBreakdownValue_(metric.fcstCommit, bucket, fcstCommitValue);
     metric.fcstMin += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MIN)_分割後']));
     metric.fcstMax += SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['FCST(MAX)_分割後']));
-    SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['金額（LK＋新ソリューション）(換算値)']));
     SfDataReader_addBreakdownValue_(metric.expectedMrr, bucket, SfDataReader_valueByKeys_(row, headerMap, ['期待MRR_分割後']));
     SfDataReader_addBreakdownValue_(metric.received, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_受領_分割後']));
     SfDataReader_addBreakdownValue_(metric.debtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_債権管理_分割後']));
     SfDataReader_addBreakdownValue_(metric.debtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_債権管理 Lite_分割後']));
     SfDataReader_addBreakdownValue_(metric.expense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['FCST(コミット)_経費_分割後']));
     if (isConfirmedPhase) {
+      SfDataReader_addBreakdownValue_(metric.confirmed, bucket, SfDataReader_valueByKeys_(row, headerMap, ['金額（LK＋新ソリューション）(換算値)']));
       SfDataReader_addBreakdownValue_(metric.confirmedReceived, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_受領']));
       SfDataReader_addBreakdownValue_(metric.confirmedDebtMgmt, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_債権管理']));
       SfDataReader_addBreakdownValue_(metric.confirmedDebtMgmtLite, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_債権管理 Lite']));
       SfDataReader_addBreakdownValue_(metric.confirmedExpense, bucket, SfDataReader_valueByKeys_(row, headerMap, ['月額_経費']));
-    }
-
-    if (SfDataReader_toBoolean_(SfDataReader_valueByKeys_(row, headerMap, ['Key Deal フラグ']))) {
-      metric.keyDeals.push({
-        company: SfDataReader_stripLegalForm_(SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['取引先名'])).trim()),
-        monthlyMrr: SfDataReader_toNumber_(SfDataReader_valueByKeys_(row, headerMap, ['金額（LK＋新ソリューション）(換算値)'])),
-        phase: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['フェーズ_変換'])).trim(),
-        fcst: SfDataReader_toNumber_(fcstCommitValue),
-        oppId: SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['案件 ID'])).trim()
-      });
     }
 
     membersByName[sourceName] = member;

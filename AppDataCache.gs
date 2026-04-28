@@ -1,14 +1,26 @@
 function AppDataCache_getInitData(deptKey) {
   var cached = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
-  if (cached) return cached;
+  if (cached) return AppDataCache_attachFcstKeyDeals_(deptKey, cached);
 
   var aggregated = AggregatedCache_read(deptKey);
   if (aggregated) {
+    AppDataCache_attachFcstKeyDeals_(deptKey, aggregated);
     CacheLayer_write(deptKey, 'initData', aggregated, { persistToSheet: false });
     return aggregated;
   }
 
   return AppDataCache_refreshInitData(deptKey);
+}
+
+function AppDataCache_attachFcstKeyDeals_(deptKey, data) {
+  FcstSnapshot_attachCurrentKeyDealsToData_(deptKey, data);
+  if (data && data.latestSnapshotData && data.latestSnapshotData.date) {
+    FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, data.latestSnapshotData.date, data.latestSnapshotData);
+  }
+  if (data && data.previousSnapshot && data.previousSnapshot.date) {
+    FcstSnapshot_attachSnapshotKeyDealsToData_(deptKey, data.previousSnapshot.date, data.previousSnapshot);
+  }
+  return data;
 }
 
 function AppDataCache_refreshInitData(deptKey) {

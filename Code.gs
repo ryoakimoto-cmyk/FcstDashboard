@@ -378,6 +378,7 @@ function getClientPeriodData(deptKey, periodKey) {
     var data = buildInitData_(deptKey);
     if (!data) return { error: 'データが見つかりません' };
     var rows = buildRowsForPeriod_(data.members, periodKey);
+    FcstSnapshot_attachCurrentKeyDealsToRows_(deptKey, periodKey, rows);
     return {
       data: {
         periodKey: String(periodKey || ''),
@@ -400,6 +401,7 @@ function getClientSnapshotData(deptKey, dateStr, periodKey) {
     var periodOptions = snapshot.periodOptions || [];
     if (!resolvedPeriod && periodOptions.length) resolvedPeriod = periodOptions[0].key || '';
     var rows = buildRowsForPeriod_(snapshot.members, resolvedPeriod);
+    FcstSnapshot_attachSnapshotKeyDealsToRows_(deptKey, snapshot.date || dateStr, resolvedPeriod, rows);
     return {
       date: snapshot.date || dateStr,
       timestampKey: snapshot.timestampKey || '',
