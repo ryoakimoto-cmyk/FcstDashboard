@@ -4,8 +4,18 @@ var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v3:mrr:';
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_ALL_DIVISION = 'COO';
 
-function mrrDashboard_doGet_() {
-  return HtmlService.createHtmlOutputFromFile('mrr-index')
+function mrrDashboard_doGet_(e) {
+  var tmpl = HtmlService.createTemplateFromFile('mrr-index');
+  var initialDivision = e && e.parameter ? MrrDashboard_normalizeDivisionSelection_(e.parameter.division) : '';
+  var webAppUrl = '';
+  try {
+    webAppUrl = ScriptApp.getService().getUrl() || '';
+  } catch (err) {
+    webAppUrl = '';
+  }
+  tmpl.mrrInitialDivision = initialDivision || '';
+  tmpl.mrrWebAppUrl = webAppUrl || '';
+  return tmpl.evaluate()
     .setTitle('MRR進捗ダッシュボード')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

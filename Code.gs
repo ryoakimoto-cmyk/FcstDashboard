@@ -1,6 +1,6 @@
 function doGet(e) {
   if (e && e.parameter && e.parameter.app === 'mrr') {
-    return mrrDashboard_doGet_();
+    return mrrDashboard_doGet_(e);
   }
   var deptKey = (e && e.parameter && e.parameter.dept) || null;
   var email = Session.getActiveUser().getEmail();

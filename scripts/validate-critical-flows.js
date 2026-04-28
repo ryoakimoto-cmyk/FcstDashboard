@@ -87,6 +87,7 @@ assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init c
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
 assertIncludes(code, 'AssignmentMaster_getContext', 'Code.gs must use shared assignment context');
 assertIncludes(code, 'function getEmbeddedInitDataForDept_(deptKey)', 'dept embedded init helper missing');
+assertIncludes(code, 'return mrrDashboard_doGet_(e);', 'MRR doGet must pass URL parameters to the template');
 assertIncludes(code, "tmpl.embeddedInitData = getEmbeddedInitDataForDept_(deptKey);", 'dept page must use embedded init helper');
 assertIncludes(code, "tmpl.webAppUrl = webAppUrl || 'null';", 'dept page must embed absolute web app url');
 assertIncludes(code, "webAppUrl = ScriptApp.getService().getUrl() || '';", 'web app url resolution missing');
@@ -174,7 +175,10 @@ assertNoMojibake('mrr-index.html', mrr);
   "{ key: 'BO', label: 'BO'",
   "{ key: 'CO', label: 'CO'",
   "{ key: 'COO', label: 'COO'",
+  'var GAS_MRR_INITIAL_DIVISION =',
+  'var GAS_MRR_WEBAPP_URL =',
   'onclick="goDivision_(\\\'',
+  'window.top.location.href = url.toString();',
   ".getMrrDashboardData(division, beforeDate || '');",
   '.getMrrDashboardDeals(currentDivision, context.week, context.dept);',
   'function loadMoreSnapshots_()',
@@ -197,6 +201,9 @@ const mrrDashboard = read('MrrDashboard.gs');
   'var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;',
   'var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;',
   "var MRR_DASHBOARD_ALL_DIVISION = 'COO';",
+  "var tmpl = HtmlService.createTemplateFromFile('mrr-index');",
+  'tmpl.mrrInitialDivision = initialDivision || \'\';',
+  'tmpl.mrrWebAppUrl = webAppUrl || \'\';',
   'function getMrrDashboardData(division, beforeDate)',
   'function getMrrDashboardChoices()',
   'function MrrDashboard_getSelectedDivisionKeys_(selection)',

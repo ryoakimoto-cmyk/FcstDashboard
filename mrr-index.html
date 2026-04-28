@@ -359,6 +359,8 @@
 </div>
 
 <script>
+var GAS_MRR_INITIAL_DIVISION = '<?= mrrInitialDivision ?>';
+var GAS_MRR_WEBAPP_URL = '<?= mrrWebAppUrl ?>';
 var DIVISION_CHOICES = [
   { key: 'SS', label: 'SS', description: 'SS事業部' },
   { key: 'BO', label: 'BO', description: 'BO事業部' },
@@ -378,6 +380,8 @@ var loadingDealKey = '';
 var loadingHistory = false;
 
 function getInitialDivision_() {
+  var embedded = normalizeDivision_(GAS_MRR_INITIAL_DIVISION || '');
+  if (embedded) return embedded;
   try {
     var value = String(new URLSearchParams(window.location.search || '').get('division') || '').toUpperCase();
     return normalizeDivision_(value);
@@ -405,10 +409,15 @@ function showSelection_() {
 }
 
 function goDivision_(division) {
-  var url = new URL(window.location.href);
+  var baseUrl = GAS_MRR_WEBAPP_URL || window.location.href;
+  var url = new URL(baseUrl);
   url.searchParams.set('app', 'mrr');
   url.searchParams.set('division', division);
-  window.location.href = url.toString();
+  try {
+    window.top.location.href = url.toString();
+  } catch (e) {
+    window.location.href = url.toString();
+  }
 }
 
 function showApp_() {
