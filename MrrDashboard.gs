@@ -1,6 +1,6 @@
 var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;
 var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;
-var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v5:mrr:';
+var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v6:mrr:';
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_ALL_DIVISION = 'COO';
 var MRR_DASHBOARD_LIVE_KEY = 'live';
@@ -24,12 +24,26 @@ function mrrDashboard_doGet_(e) {
 function getMrrDashboardData(division, beforeDate) {
   var selection = MrrDashboard_normalizeDivisionSelection_(division) || 'SS';
   var normalizedBeforeDate = MrrDashboard_normalizeSnapshotDate_(beforeDate);
-  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':before:' + (normalizedBeforeDate || 'latest');
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':snapshots:before:' + (normalizedBeforeDate || 'latest');
   var cached = MrrDashboard_cacheGet_(cacheKey);
   if (cached) return cached;
 
   var result = MrrDashboard_getSnapshotData_(selection, {
     beforeDate: normalizedBeforeDate,
+    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
+  });
+  MrrDashboard_cachePut_(cacheKey, result);
+  return result;
+}
+
+function getMrrDashboardCurrentData(division) {
+  var selection = MrrDashboard_normalizeDivisionSelection_(division) || 'SS';
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':current';
+  var cached = MrrDashboard_cacheGet_(cacheKey);
+  if (cached) return cached;
+
+  var result = MrrDashboard_getSnapshotData_(selection, {
+    currentOnly: true,
     limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
   });
   MrrDashboard_cachePut_(cacheKey, result);

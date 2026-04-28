@@ -219,6 +219,10 @@ assertNoMojibake('mrr-index.html', mrr);
   'var GAS_MRR_WEBAPP_URL =',
   'onclick="goDivision_(\\\'',
   'window.top.location.href = url.toString();',
+  '.getMrrDashboardCurrentData(division);',
+  'function prepareInitialSnapshots_()',
+  ".getMrrDashboardData(currentDivision, '');",
+  'function loadSnapshotData_(division, beforeDate)',
   ".getMrrDashboardData(division, beforeDate || '');",
   '.getMrrDashboardDeals(currentDivision, context.week, context.dept);',
   'function loadMoreSnapshots_()',
@@ -246,9 +250,12 @@ const mrrDashboard = read('MrrDashboard.gs');
   'tmpl.mrrInitialDivision = initialDivision || \'\';',
   'tmpl.mrrWebAppUrl = webAppUrl || \'\';',
   'function getMrrDashboardData(division, beforeDate)',
+  'function getMrrDashboardCurrentData(division)',
   'function getMrrDashboardChoices()',
   'function MrrDashboard_getSelectedDivisionKeys_(selection)',
-  'MrrDashboard_getSnapshotData_(selection, {'
+  'MrrDashboard_getSnapshotData_(selection, {',
+  "selection + ':current'",
+  'currentOnly: true'
 ].forEach((token) => {
   assertIncludes(mrrDashboard, token, 'MRR dashboard dispatcher incomplete');
 });
@@ -267,6 +274,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMin'", 'MRR view must not show FCSTMIN
 assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX');
 [
   'function MrrDashboard_getSnapshotData_(selection, options)',
+  'opts.currentOnly',
+  'opts.currentOnly || opts.includeCurrent',
   'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
   'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey)',
   'function MrrDashboard_buildCurrentDeptMetric_(deptKey)',

@@ -3,8 +3,12 @@ function MrrDashboard_getSnapshotData_(selection, options) {
   var opts = options || {};
   var divisionKeys = MrrDashboard_getSelectedDivisionKeys_(selectedDivision);
   var deptKeys = MrrDashboard_getDeptKeysForDivisions_(divisionKeys);
-  var dateBatch = MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, opts.beforeDate || '', opts.limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT);
-  var fcst = MrrDashboard_readFcstSnapshots_(deptKeys, dateBatch.dateSet);
+  var dateBatch = { dateSet: {}, dates: [], hasMore: false, oldestDate: '' };
+  var fcst = { dates: {}, metricsByDeptDate: {} };
+  if (!opts.currentOnly) {
+    dateBatch = MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, opts.beforeDate || '', opts.limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT);
+    fcst = MrrDashboard_readFcstSnapshots_(deptKeys, dateBatch.dateSet);
+  }
   var weeks = dateBatch.dates.slice().sort();
   var weekLabels = {};
   var data = {};
@@ -30,7 +34,7 @@ function MrrDashboard_getSnapshotData_(selection, options) {
     data[dateStr] = rowMap;
   });
 
-  if (!opts.beforeDate) {
+  if (opts.currentOnly || opts.includeCurrent) {
     MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey);
   }
 

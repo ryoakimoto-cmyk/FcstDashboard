@@ -378,6 +378,8 @@ var dealSortAsc = true;
 var dealCache = {};
 var loadingDealKey = '';
 var loadingHistory = false;
+var snapshotLoadError = '';
+var MRR_LIVE_WEEK_KEY = 'live';
 
 function getInitialDivision_() {
   var embedded = normalizeDivision_(GAS_MRR_INITIAL_DIVISION || '');
@@ -442,7 +444,7 @@ function bootstrap_() {
     return;
   }
   showApp_();
-  loadDivisionData_(currentDivision, '');
+  loadCurrentData_(currentDivision);
 }
 
 function buildDivisionTabs_() {
@@ -455,17 +457,58 @@ function buildDivisionTabs_() {
   }).join('');
 }
 
-function loadDivisionData_(division, beforeDate) {
-  if (beforeDate) loadingHistory = true;
-  showLoading_(beforeDate ? '過去データを読み込み中...' : '読み込み中...');
+function loadCurrentData_(division) {
+  loadingHistory = false;
+  snapshotLoadError = '';
+  dealCache = {};
+  loadingDealKey = '';
+  showLoading_('現在値を読み込み中...');
   google.script.run
     .withSuccessHandler(function(result) {
-      if (beforeDate && D) {
-        mergeDashboardData_(normalizeResult_(result || {}));
-      } else {
-        D = normalizeResult_(result || {});
-        currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
-      }
+      D = normalizeResult_(result || {});
+      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+      currentDivision = D.division || division;
+      chartFilter = null;
+      updateDivisionTabs_();
+      buildDeptOptions_();
+      updateWeekLabel();
+      hideLoading_();
+      render();
+      prepareInitialSnapshots_();
+    })
+    .withFailureHandler(function(err) {
+      showLoading_('エラー: ' + getErrorMessage_(err));
+    })
+    .getMrrDashboardCurrentData(division);
+}
+
+function prepareInitialSnapshots_() {
+  if (!D || loadingHistory) return;
+  loadingHistory = true;
+  snapshotLoadError = '';
+  renderHistoryMeta_();
+  google.script.run
+    .withSuccessHandler(function(result) {
+      mergeDashboardData_(normalizeResult_(result || {}));
+      loadingHistory = false;
+      updateWeekLabel();
+      render();
+    })
+    .withFailureHandler(function(err) {
+      loadingHistory = false;
+      snapshotLoadError = getErrorMessage_(err);
+      renderHistoryMeta_();
+    })
+    .getMrrDashboardData(currentDivision, '');
+}
+
+function loadSnapshotData_(division, beforeDate) {
+  loadingHistory = true;
+  snapshotLoadError = '';
+  showLoading_('過去データを読み込み中...');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      mergeDashboardData_(normalizeResult_(result || {}));
       currentDivision = D.division || division;
       chartFilter = null;
       updateDivisionTabs_();
@@ -490,7 +533,7 @@ function normalizeResult_(result) {
     totalDeptKey: result.totalDeptKey || currentDivision,
     allLabel: result.allLabel || (currentDivision + '全体'),
     metricDefinitions: Array.isArray(result.metricDefinitions) ? result.metricDefinitions.slice() : [],
-    weeks: Array.isArray(result.weeks) ? result.weeks.slice() : [],
+    weeks: sortWeeks_(Array.isArray(result.weeks) ? result.weeks.slice() : []),
     weekLabels: result.weekLabels || {},
     depts: Array.isArray(result.depts) ? result.depts.slice() : [],
     data: result.data || {},
@@ -502,7 +545,7 @@ function mergeDashboardData_(incoming) {
   incoming.weeks.forEach(function(week) {
     if (D.weeks.indexOf(week) === -1) D.weeks.push(week);
   });
-  D.weeks.sort();
+  D.weeks = sortWeeks_(D.weeks);
   Object.keys(incoming.weekLabels || {}).forEach(function(key) {
     D.weekLabels[key] = incoming.weekLabels[key];
   });
@@ -517,6 +560,14 @@ function mergeDashboardData_(incoming) {
   });
   D.history = incoming.history || D.history;
   currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+}
+
+function sortWeeks_(weeks) {
+  return (weeks || []).slice().sort(function(a, b) {
+    if (a === MRR_LIVE_WEEK_KEY && b !== MRR_LIVE_WEEK_KEY) return 1;
+    if (b === MRR_LIVE_WEEK_KEY && a !== MRR_LIVE_WEEK_KEY) return -1;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
 }
 
 function updateDivisionTabs_() {
@@ -582,7 +633,7 @@ function switchView(view) {
 
 function loadMoreSnapshots_() {
   if (!D || loadingHistory || !D.history || !D.history.hasMore || !D.history.oldestDate) return;
-  loadDivisionData_(currentDivision, D.history.oldestDate);
+  loadSnapshotData_(currentDivision, D.history.oldestDate);
 }
 
 function render() {
@@ -597,9 +648,14 @@ function renderHistoryMeta_() {
   var meta = document.getElementById('historyMeta');
   var button = document.getElementById('loadMoreBtn');
   if (!meta || !button) return;
-  var count = D.weeks.length;
-  meta.textContent = (D.divisionLabel || D.division) + ' / 表示中スナップショット: ' + count + '日付';
-  button.classList.toggle('hidden', !(D.history && D.history.hasMore));
+  var snapshotCount = D.weeks.filter(function(week) { return week !== MRR_LIVE_WEEK_KEY; }).length;
+  var parts = [(D.divisionLabel || D.division)];
+  if (D.weeks.indexOf(MRR_LIVE_WEEK_KEY) !== -1) parts.push('現在値表示中');
+  parts.push('スナップショット: ' + snapshotCount + '日付');
+  if (loadingHistory) parts.push('スナップショット準備中');
+  if (snapshotLoadError) parts.push('履歴エラー: ' + snapshotLoadError);
+  meta.textContent = parts.join(' / ');
+  button.classList.toggle('hidden', loadingHistory || !(D.history && D.history.hasMore));
 }
 
 function emptyMetric_() {
