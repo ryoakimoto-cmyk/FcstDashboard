@@ -46,3 +46,10 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - `js.html` を編集した場合は、`npm run validate:syntax` と `npm run validate:critical` を必ず実行する。
 - deploy 後は `clasp deployments` で production deployment の version を確認し、ユーザーに version と影響範囲を報告する。
 - エラー修正時に安直な fallback で握りつぶさない。原因となる欠落・契約不一致を正規経路で直し、再発防止の検証を追加する。
+
+## Snapshot DB Folder Rules
+
+- Snapshot DB ファイルのフォルダ格納では `DriveApp` を使わない。
+- `DriveApp.getFolderById` / `DriveApp.getFileById` は full Drive scope を要求し、手動実行時に権限未承認で snapshot 作成を止めるため禁止。
+- DB ファイルは Drive API + `drive.file` scope で、作成時に `parents: [SNAPSHOT_DB_FOLDER_ID]` を指定して直接 FCSTDB フォルダ配下へ作る。
+- snapshot payload、cache key、既存シート schema を権限回避目的で変更しない。

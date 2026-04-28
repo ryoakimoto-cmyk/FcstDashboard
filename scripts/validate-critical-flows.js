@@ -64,6 +64,20 @@ const sfDataReader = read('SfDataReader.gs');
 const config = read('Config.gs');
 assertIncludes(config, 'function isProposalProductsEnabled_(deptKey)', 'proposalProducts helper missing');
 
+const manifest = read('appsscript.json');
+assertIncludes(manifest, '"https://www.googleapis.com/auth/drive.file"', 'snapshot DB folder writes must use drive.file scope');
+if (manifest.includes('"https://www.googleapis.com/auth/drive"')) {
+  throw new Error('snapshot DB folder writes must not require full Drive scope');
+}
+
+const snapshotStorage = read('SnapshotStorage.gs');
+assertIncludes(snapshotStorage, 'function SnapshotStorage_createSpreadsheetInDbFolder_', 'snapshot DB folder creation path missing');
+assertIncludes(snapshotStorage, 'https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', 'snapshot DB file creation must target Drive API folder path');
+assertIncludes(snapshotStorage, 'parents: [folderId]', 'snapshot DB files must be created directly under configured folder');
+if (snapshotStorage.includes('DriveApp.')) {
+  throw new Error('SnapshotStorage must avoid DriveApp full-drive authorization dependency');
+}
+
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
