@@ -1,14 +1,15 @@
-function MrrDashboard_getBoData_() {
-  var deptKeys = MrrDashboard_getDivisionDeptKeys_('BO');
-  var fcst = MrrDashboard_readBoFcstSnapshots_(deptKeys);
-  var opp = MrrDashboard_readBoOppSnapshots_(deptKeys);
+function MrrDashboard_getSnapshotData_(selection, options) {
+  var selectedDivision = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
+  var opts = options || {};
+  var divisionKeys = MrrDashboard_getSelectedDivisionKeys_(selectedDivision);
+  var deptKeys = MrrDashboard_getDeptKeysForDivisions_(divisionKeys);
+  var dateBatch = MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, opts.beforeDate || '', opts.limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT);
+  var fcst = MrrDashboard_readFcstSnapshots_(deptKeys, dateBatch.dateSet);
+  var weeks = dateBatch.dates.slice().sort();
   var weekLabels = {};
   var data = {};
-  var datesSeen = {};
-
-  Object.keys(fcst.dates || {}).forEach(function(dateStr) { datesSeen[dateStr] = true; });
-
-  var weeks = Object.keys(datesSeen).sort();
+  var totalKey = selectedDivision;
+  var allLabel = MrrDashboard_getTotalLabel_(selectedDivision);
   var deptLabels = deptKeys.map(function(deptKey) {
     return MrrDashboard_getDeptLabel_(deptKey);
   });
@@ -20,29 +21,115 @@ function MrrDashboard_getBoData_() {
 
     deptKeys.forEach(function(deptKey) {
       var deptLabel = MrrDashboard_getDeptLabel_(deptKey);
-      var metric = MrrDashboard_buildBoDeptMetricFromContexts_(deptKey, dateStr, fcst, opp);
+      var metric = MrrDashboard_buildDeptMetricFromContext_(deptKey, dateStr, fcst);
       rowMap[deptLabel] = metric;
       MrrDashboard_accumulateMetric_(total, metric);
     });
 
-    total.keyDeal = MrrDashboard_formatLegacyDeals_(total.keyDealsData);
+    rowMap[totalKey] = total;
     data[dateStr] = rowMap;
-    data[dateStr].BO = total;
   });
 
   return {
-    division: 'BO',
-    totalDeptKey: 'BO',
-    allLabel: 'BO全体',
-    metricDefinitions: MrrDashboard_getBoMetricDefinitions_(),
+    division: selectedDivision,
+    divisionLabel: MrrDashboard_getDivisionLabel_(selectedDivision),
+    choices: MrrDashboard_getDivisionChoices_(),
+    totalDeptKey: totalKey,
+    allLabel: allLabel,
+    metricDefinitions: MrrDashboard_getMetricDefinitions_(),
     weeks: weeks,
     weekLabels: weekLabels,
     depts: deptLabels,
-    data: data
+    data: data,
+    history: {
+      beforeDate: opts.beforeDate || '',
+      limit: opts.limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT,
+      hasMore: dateBatch.hasMore,
+      oldestDate: dateBatch.oldestDate || ''
+    }
   };
 }
 
-function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
+function getMrrDashboardDeals(selection, dateStr, deptLabel) {
+  var selectedDivision = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
+  var snapshotDate = MrrDashboard_normalizeSnapshotDate_(dateStr);
+  if (!snapshotDate) return { deals: [] };
+
+  var divisionKeys = MrrDashboard_getSelectedDivisionKeys_(selectedDivision);
+  var deptKeys = MrrDashboard_getDeptKeysForDivisions_(divisionKeys);
+  var scopedDeptKeys = MrrDashboard_filterDeptKeysByLabel_(deptKeys, deptLabel);
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + 'deals:' + selectedDivision + ':' + snapshotDate + ':' + (deptLabel || 'all');
+  var cached = MrrDashboard_cacheGet_(cacheKey);
+  if (cached) return cached;
+
+  var periodByDept = MrrDashboard_getSnapshotPeriodByDept_(scopedDeptKeys, snapshotDate);
+  var deals = MrrDashboard_readOppSnapshotDeals_(scopedDeptKeys, snapshotDate, periodByDept);
+  var result = { deals: deals };
+  MrrDashboard_cachePut_(cacheKey, result);
+  return result;
+}
+
+function MrrDashboard_getDeptKeysForDivisions_(divisionKeys) {
+  var divisionSet = MrrDashboard_toSet_(divisionKeys || []);
+  return Object.keys(DEPT_CONFIG).filter(function(deptKey) {
+    var cfg = DEPT_CONFIG[deptKey];
+    return cfg && divisionSet[cfg.division] && cfg.features && cfg.features.snapshot !== false;
+  });
+}
+
+function MrrDashboard_filterDeptKeysByLabel_(deptKeys, deptLabel) {
+  var label = String(deptLabel || '').trim();
+  if (!label || label.indexOf('全体') !== -1 || label === MRR_DASHBOARD_ALL_DIVISION) return deptKeys.slice();
+  return (deptKeys || []).filter(function(deptKey) {
+    return MrrDashboard_getDeptLabel_(deptKey) === label || deptKey === label;
+  });
+}
+
+function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit) {
+  var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
+  var result = { dateSet: {}, dates: [], hasMore: false, oldestDate: '' };
+  if (!sheet || sheet.getLastRow() < 1) return result;
+
+  var maxPerDivision = Number(limit || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT) || MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT;
+  var normalizedBefore = MrrDashboard_normalizeSnapshotDate_(beforeDate);
+  var deptSet = MrrDashboard_toSet_(deptKeys);
+  var divisionDates = {};
+  var values = sheet.getRange(1, 1, sheet.getLastRow(), 2).getValues();
+
+  values.forEach(function(row) {
+    var date = row[0];
+    var nameRaw = String(row[1] || '').trim();
+    if (!(date instanceof Date) || isNaN(date)) return;
+
+    var deptKey = MrrDashboard_parseDeptFromSnapshotName_(nameRaw, deptSet);
+    if (!deptKey || !DEPT_CONFIG[deptKey]) return;
+
+    var dateStr = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+    if (normalizedBefore && dateStr >= normalizedBefore) return;
+
+    var division = DEPT_CONFIG[deptKey].division;
+    if (!divisionDates[division]) divisionDates[division] = {};
+    divisionDates[division][dateStr] = true;
+  });
+
+  Object.keys(divisionDates).forEach(function(division) {
+    var dates = Object.keys(divisionDates[division]).sort(function(a, b) {
+      return a > b ? -1 : a < b ? 1 : 0;
+    });
+    if (dates.length > maxPerDivision) result.hasMore = true;
+    dates.slice(0, maxPerDivision).forEach(function(dateStr) {
+      result.dateSet[dateStr] = true;
+    });
+  });
+
+  result.dates = Object.keys(result.dateSet).sort(function(a, b) {
+    return a > b ? -1 : a < b ? 1 : 0;
+  });
+  result.oldestDate = result.dates.length ? result.dates[result.dates.length - 1] : '';
+  return result;
+}
+
+function MrrDashboard_readFcstSnapshots_(deptKeys, dateSet) {
   var sheet = getSharedSheet(FCST_SNAPSHOT_SHEET_NAME);
   var context = { dates: {}, metricsByDeptDate: {} };
   if (!sheet || sheet.getLastRow() < 1) return context;
@@ -61,6 +148,8 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
     if (!deptKey) return;
 
     var dateStr = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+    if (dateSet && !dateSet[dateStr]) return;
+
     var timestampKey = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     if (!latestByDeptDate[deptKey]) latestByDeptDate[deptKey] = {};
     if (!latestByDeptDate[deptKey][dateStr] || timestampKey > latestByDeptDate[deptKey][dateStr]) {
@@ -78,6 +167,8 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
     if (!deptKey) return;
 
     var dateStr = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+    if (dateSet && !dateSet[dateStr]) return;
+
     var timestampKey = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
     if (!latestByDeptDate[deptKey] || latestByDeptDate[deptKey][dateStr] !== timestampKey) return;
 
@@ -113,18 +204,35 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
   return context;
 }
 
-function MrrDashboard_readBoOppSnapshots_(deptKeys) {
+function MrrDashboard_getSnapshotPeriodByDept_(deptKeys, snapshotDate) {
+  var dateSet = {};
+  dateSet[snapshotDate] = true;
+  var fcst = MrrDashboard_readFcstSnapshots_(deptKeys, dateSet);
+  var result = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    var snapshotEntry = fcst &&
+      fcst.metricsByDeptDate &&
+      fcst.metricsByDeptDate[deptKey] &&
+      fcst.metricsByDeptDate[deptKey][snapshotDate];
+    result[deptKey] = snapshotEntry
+      ? MrrDashboard_pickSnapshotPeriodKeyFromKeys_(snapshotEntry.periodKeys || [], snapshotDate)
+      : '';
+  });
+  return result;
+}
+
+function MrrDashboard_readOppSnapshotDeals_(deptKeys, snapshotDate, periodByDept) {
   var sheet = getSharedSheet(OPP_HISTORY_V2_SHEET_NAME);
-  var context = { dates: {}, keyDealsByDeptDate: {} };
-  if (!sheet || sheet.getLastRow() < 2) return context;
+  if (!sheet || sheet.getLastRow() < 2) return [];
 
   var deptSet = MrrDashboard_toSet_(deptKeys);
+  var deals = [];
   var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues();
   values.forEach(function(row) {
     var dateStr = MrrDashboard_normalizeSnapshotDate_(row[1]);
     var deptKey = String(row[3] || '').trim();
     var status = String(row[5] || '').trim();
-    if (!dateStr || !deptSet[deptKey] || status === OPP_HISTORY_STATUS_REMOVED_FROM_P) return;
+    if (dateStr !== snapshotDate || !deptSet[deptKey] || status === OPP_HISTORY_STATUS_REMOVED_FROM_P) return;
 
     var payload;
     try {
@@ -133,12 +241,13 @@ function MrrDashboard_readBoOppSnapshots_(deptKeys) {
       payload = {};
     }
 
-    var legacyRow = OppHistory_payloadToLegacyRow_(payload, dateStr);
-    if (!legacyRow || !legacyRow.keyDeal) return;
+    var legacyRow = OppHistory_payloadToLegacyRow_(payload, snapshotDate);
+    if (!legacyRow || legacyRow.keyDeal !== true) return;
 
-    if (!context.keyDealsByDeptDate[deptKey]) context.keyDealsByDeptDate[deptKey] = {};
-    if (!context.keyDealsByDeptDate[deptKey][dateStr]) context.keyDealsByDeptDate[deptKey][dateStr] = [];
-    context.keyDealsByDeptDate[deptKey][dateStr].push({
+    var targetPeriod = periodByDept && periodByDept[deptKey];
+    if (targetPeriod && String(legacyRow.completedMonth || '') !== targetPeriod) return;
+
+    deals.push({
       dept: MrrDashboard_getDeptLabel_(deptKey),
       company: String(legacyRow.dealName || ''),
       mrr: Number(legacyRow.mrr) || 0,
@@ -148,21 +257,15 @@ function MrrDashboard_readBoOppSnapshots_(deptKeys) {
       completedMonth: String(legacyRow.completedMonth || ''),
       owner: String(legacyRow.subOwner || '')
     });
-    context.dates[dateStr] = true;
   });
 
-  Object.keys(context.keyDealsByDeptDate).forEach(function(deptKey) {
-    Object.keys(context.keyDealsByDeptDate[deptKey]).forEach(function(dateStr) {
-      context.keyDealsByDeptDate[deptKey][dateStr].sort(function(left, right) {
-        return Math.abs(right.mrr) - Math.abs(left.mrr);
-      });
-    });
+  deals.sort(function(left, right) {
+    return Math.abs(right.mrr) - Math.abs(left.mrr);
   });
-
-  return context;
+  return deals;
 }
 
-function MrrDashboard_buildBoDeptMetricFromContexts_(deptKey, snapshotDate, fcstContext, oppContext) {
+function MrrDashboard_buildDeptMetricFromContext_(deptKey, snapshotDate, fcstContext) {
   var snapshotEntry = fcstContext &&
     fcstContext.metricsByDeptDate &&
     fcstContext.metricsByDeptDate[deptKey] &&
@@ -171,10 +274,6 @@ function MrrDashboard_buildBoDeptMetricFromContexts_(deptKey, snapshotDate, fcst
     ? MrrDashboard_pickSnapshotPeriodKeyFromKeys_(snapshotEntry.periodKeys || [], snapshotDate)
     : '';
   var periodMetric = periodKey && snapshotEntry ? snapshotEntry.periods[periodKey] : null;
-  var keyDealsData = (oppContext &&
-    oppContext.keyDealsByDeptDate &&
-    oppContext.keyDealsByDeptDate[deptKey] &&
-    oppContext.keyDealsByDeptDate[deptKey][snapshotDate]) || [];
 
   return {
     target: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.target),
@@ -189,12 +288,13 @@ function MrrDashboard_buildBoDeptMetricFromContexts_(deptKey, snapshotDate, fcst
     debtMgmt: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.debtMgmt),
     debtMgmtLite: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.debtMgmtLite),
     expense: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.expense),
-    keyDeal: MrrDashboard_formatLegacyDeals_(keyDealsData),
-    keyDealsData: keyDealsData
+    periodKey: periodKey,
+    keyDeal: '',
+    keyDealsData: []
   };
 }
 
-function MrrDashboard_getBoMetricDefinitions_() {
+function MrrDashboard_getMetricDefinitions_() {
   return [
     { key: 'target', label: '目標', type: 'line', color: '#ea4335', dash: true },
     { key: 'fcstAdjusted', label: 'FCST(調整後)', type: 'bar', color: '#1a73e8' },
@@ -210,9 +310,7 @@ function MrrDashboard_getBoMetricDefinitions_() {
 }
 
 function MrrDashboard_getDivisionDeptKeys_(division) {
-  return Object.keys(DEPT_CONFIG).filter(function(deptKey) {
-    return DEPT_CONFIG[deptKey] && DEPT_CONFIG[deptKey].division === division;
-  });
+  return MrrDashboard_getDeptKeysForDivisions_([division]);
 }
 
 function MrrDashboard_getDeptLabel_(deptKey) {
@@ -276,7 +374,7 @@ function MrrDashboard_getFcstSnapshotRowKind_(payload, nameRaw, deptKey) {
 
   var name = MrrDashboard_parseSnapshotMemberName_(nameRaw);
   if (!name || name === String(deptKey || '') || name === SHARED_ALL_GROUP_LABEL) return '';
-  if (/全体$/.test(name) || /グループ$/.test(name)) return 'group';
+  if (/全体/.test(name) || /グループ/.test(name)) return 'group';
   return 'individual';
 }
 
@@ -289,7 +387,9 @@ function MrrDashboard_parseSnapshotMemberName_(nameRaw) {
 function MrrDashboard_isDepartmentTotalPayload_(payload, deptKey) {
   var meta = (payload && payload.__meta) || {};
   if (!meta.isTotal) return false;
-  if (meta.totalKind) return meta.totalKind === SHARED_TOTAL_KIND.DEPARTMENT && String(meta.dept || '') === String(deptKey);
+  if (typeof SHARED_TOTAL_KIND !== 'undefined' && meta.totalKind) {
+    return meta.totalKind === SHARED_TOTAL_KIND.DEPARTMENT && String(meta.dept || '') === String(deptKey);
+  }
   return SharedAppState_isDepartmentTotal_({
     isTotal: !!meta.isTotal,
     totalKind: meta.totalKind || '',
@@ -378,7 +478,7 @@ function MrrDashboard_emptyMetric_() {
     keyDeal: '',
     keyDealsData: []
   };
-  MrrDashboard_getBoMetricDefinitions_().forEach(function(def) {
+  MrrDashboard_getMetricDefinitions_().forEach(function(def) {
     if (!metric.hasOwnProperty(def.key)) metric[def.key] = 0;
   });
   return metric;
@@ -387,31 +487,15 @@ function MrrDashboard_emptyMetric_() {
 function MrrDashboard_accumulateMetric_(target, metric) {
   if (!target || !metric) return;
   Object.keys(metric).forEach(function(key) {
-    if (key === 'keyDeal' || key === 'keyDealsData') return;
+    if (key === 'keyDeal' || key === 'keyDealsData' || key === 'periodKey') return;
     if (typeof metric[key] !== 'number') return;
     target[key] = (Number(target[key]) || 0) + (Number(metric[key]) || 0);
   });
-  target.keyDealsData = target.keyDealsData.concat(metric.keyDealsData || []);
 }
 
 function MrrDashboard_getBreakdownNet_(value) {
   if (typeof value === 'number') return Number(value) || 0;
   return Number(value && value.net) || 0;
-}
-
-function MrrDashboard_formatLegacyDeals_(deals) {
-  return (deals || []).map(function(deal) {
-    var parts = [
-      String(deal.company || '').trim() + ' ' + MrrDashboard_toMan_(deal.mrr),
-      String(deal.phase || '').trim(),
-      MrrDashboard_toMan_(deal.yomi)
-    ];
-    return parts.join(' / ').trim();
-  }).join('\n');
-}
-
-function MrrDashboard_toMan_(value) {
-  return String(Math.round((Number(value) || 0) / 10000));
 }
 
 function MrrDashboard_toSet_(values) {
@@ -428,5 +512,5 @@ function MrrDashboard_normalizeSnapshotDate_(value) {
   }
   var text = String(value || '').trim();
   var match = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : text;
+  return match ? match[1] : '';
 }

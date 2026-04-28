@@ -1,4 +1,8 @@
-var MRR_SHEET_ID = '1dEITXn1wafXDjwtGFSUpAqohnjVLf7dBi888F7OrRL4';
+var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;
+var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;
+var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v3:mrr:';
+var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
+var MRR_DASHBOARD_ALL_DIVISION = 'COO';
 
 function mrrDashboard_doGet_() {
   return HtmlService.createHtmlOutputFromFile('mrr-index')
@@ -6,75 +10,72 @@ function mrrDashboard_doGet_() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-function getMrrDashboardData(division) {
-  var normalizedDivision = String(division || 'SS').toUpperCase();
-  if (normalizedDivision === 'BO') {
-    return MrrDashboard_getBoData_();
-  }
-  return MrrDashboard_getSsData_();
+function getMrrDashboardData(division, beforeDate) {
+  var selection = MrrDashboard_normalizeDivisionSelection_(division) || 'SS';
+  var normalizedBeforeDate = MrrDashboard_normalizeSnapshotDate_(beforeDate);
+  var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':before:' + (normalizedBeforeDate || 'latest');
+  var cached = MrrDashboard_cacheGet_(cacheKey);
+  if (cached) return cached;
+
+  var result = MrrDashboard_getSnapshotData_(selection, {
+    beforeDate: normalizedBeforeDate,
+    limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT
+  });
+  MrrDashboard_cachePut_(cacheKey, result);
+  return result;
 }
 
-function MrrDashboard_getSsData_() {
-  var ss = SpreadsheetApp.openById(MRR_SHEET_ID);
-  var sheet = ss.getSheets()[0];
-  var values = sheet.getDataRange().getValues();
-  var dataRows = values.slice(1);
+function getMrrDashboardChoices() {
+  return MrrDashboard_getDivisionChoices_();
+}
 
-  var weeksOrder = [];
-  var weeksSeen = {};
-  var weekLabels = {};
-  var deptsOrder = [];
-  var deptsSeen = {};
-  var data = {};
+function MrrDashboard_normalizeDivisionSelection_(division) {
+  var value = String(division || '').trim().toUpperCase();
+  if (value === MRR_DASHBOARD_ALL_DIVISION) return value;
+  return MRR_DASHBOARD_DIVISION_ORDER.indexOf(value) !== -1 ? value : '';
+}
 
-  var currentMonth = null;
-  var currentWeek = null;
+function MrrDashboard_getDivisionChoices_() {
+  return [
+    { key: 'SS', label: 'SS', description: 'SS事業部' },
+    { key: 'BO', label: 'BO', description: 'BO事業部' },
+    { key: 'CO', label: 'CO', description: 'CO事業部' },
+    { key: MRR_DASHBOARD_ALL_DIVISION, label: 'COO', description: '全事業部' }
+  ];
+}
 
-  dataRows.forEach(function(row) {
-    var month = row[0];
-    var week = row[1];
-    var dept = String(row[2] || '').trim();
-    var target = Number(row[3]) || 0;
-    var actual = Number(row[4]) || 0;
-    var expectedMrr = Number(row[5]) || 0;
-    var fcst = Number(row[6]) || 0;
-    var keyDeal = String(row[7] || '');
+function MrrDashboard_getSelectedDivisionKeys_(selection) {
+  var normalized = MrrDashboard_normalizeDivisionSelection_(selection);
+  if (normalized === MRR_DASHBOARD_ALL_DIVISION) return MRR_DASHBOARD_DIVISION_ORDER.slice();
+  return normalized ? [normalized] : ['SS'];
+}
 
-    if (month !== '' && month !== null) currentMonth = month;
-    if (week !== '' && week !== null) currentWeek = week;
+function MrrDashboard_getDivisionLabel_(selection) {
+  var normalized = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
+  if (normalized === MRR_DASHBOARD_ALL_DIVISION) return 'COO (全事業部)';
+  return normalized;
+}
 
-    if (!currentMonth || !currentWeek || !dept) return;
+function MrrDashboard_getTotalLabel_(selection) {
+  var normalized = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
+  if (normalized === MRR_DASHBOARD_ALL_DIVISION) return 'COO全体';
+  return normalized + '全体';
+}
 
-    var weekKey = String(currentMonth) + '月W' + String(currentWeek);
-    if (!weeksSeen[weekKey]) {
-      weeksSeen[weekKey] = true;
-      weeksOrder.push(weekKey);
-      weekLabels[weekKey] = weekKey;
+function MrrDashboard_cacheGet_(key) {
+  try {
+    var raw = CacheService.getScriptCache().get(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function MrrDashboard_cachePut_(key, value) {
+  try {
+    var raw = JSON.stringify(value);
+    if (raw.length < 90000) {
+      CacheService.getScriptCache().put(key, raw, MRR_DASHBOARD_CACHE_TTL_SECONDS);
     }
-    if (!data[weekKey]) data[weekKey] = {};
-
-    if (dept !== 'SS' && !deptsSeen[dept]) {
-      deptsSeen[dept] = true;
-      deptsOrder.push(dept);
-    }
-
-    data[weekKey][dept] = {
-      target: Math.round(target),
-      actual: Math.round(actual),
-      expectedMrr: Math.round(expectedMrr),
-      fcst: Math.round(fcst),
-      keyDeal: keyDeal,
-      keyDealsData: []
-    };
-  });
-
-  return {
-    division: 'SS',
-    totalDeptKey: 'SS',
-    allLabel: '全事業部',
-    weeks: weeksOrder,
-    weekLabels: weekLabels,
-    depts: deptsOrder,
-    data: data
-  };
+  } catch (e) {}
 }

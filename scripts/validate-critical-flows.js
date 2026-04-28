@@ -164,51 +164,63 @@ assertCount(client, 'function renderTopPage_()', 1, 'duplicate top page renderer
 
 const mrr = read('mrr-index.html');
 assertNoMojibake('mrr-index.html', mrr);
-['MRR進捗ダッシュボード', '読み込み中...', '全部署', 'getMrrDashboardData();'].forEach((token) => {
+['MRR進捗ダッシュボード', '読み込み中...', '表示する事業部を選択', 'COO'].forEach((token) => {
   assertIncludes(mrr, token, 'MRR template markers missing');
 });
 
 [
-  'data-division="SS"',
-  'data-division="BO"',
-  "switchDivision('BO')",
-  '.getMrrDashboardData(division);',
+  'DIVISION_CHOICES = [',
+  "{ key: 'SS', label: 'SS'",
+  "{ key: 'BO', label: 'BO'",
+  "{ key: 'CO', label: 'CO'",
+  "{ key: 'COO', label: 'COO'",
+  'onclick="goDivision_(\\\'',
+  ".getMrrDashboardData(division, beforeDate || '');",
+  '.getMrrDashboardDeals(currentDivision, context.week, context.dept);',
+  'function loadMoreSnapshots_()',
+  'Key Deal を読み込み中',
   'labels: D.weeks.map(getWeekLabel_)',
-  'Array.isArray(metric.keyDealsData) && metric.keyDealsData.length',
   'function buildMetricDatasets_(rows)',
-  'metricDefinitions: Array.isArray(result && result.metricDefinitions)'
+  'metricDefinitions: Array.isArray(result.metricDefinitions) ? result.metricDefinitions.slice() : []'
 ].forEach((token) => {
   assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
 });
 assertCount(
   mrr,
-  'metricDefinitions: Array.isArray(result && result.metricDefinitions)',
-  2,
+  'metricDefinitions: Array.isArray(result.metricDefinitions)',
+  1,
   'all active MRR result normalizers must preserve metric definitions'
 );
 
 const mrrDashboard = read('MrrDashboard.gs');
 [
-  'function getMrrDashboardData(division)',
-  "if (normalizedDivision === 'BO')",
-  'return MrrDashboard_getBoData_();',
-  'function MrrDashboard_getSsData_()',
-  "totalDeptKey: 'SS'",
-  "allLabel: '全事業部'"
+  'var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;',
+  'var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;',
+  "var MRR_DASHBOARD_ALL_DIVISION = 'COO';",
+  'function getMrrDashboardData(division, beforeDate)',
+  'function getMrrDashboardChoices()',
+  'function MrrDashboard_getSelectedDivisionKeys_(selection)',
+  'MrrDashboard_getSnapshotData_(selection, {'
 ].forEach((token) => {
   assertIncludes(mrrDashboard, token, 'MRR dashboard dispatcher incomplete');
 });
+assertNotIncludes(mrrDashboard, 'MRR_SHEET_ID', 'MRR runtime must not read the old SS-only sheet');
+assertNotIncludes(mrrDashboard, 'function MrrDashboard_getSsData_()', 'MRR runtime must use the shared snapshot path for SS');
 
 const mrrSnapshot = read('MrrSnapshotDashboard.gs');
 assertNoMojibake('MrrSnapshotDashboard.gs', mrrSnapshot);
 assertNotIncludes(mrrSnapshot, 'Object.keys(opp.dates', 'BO MRR week list must come from FCST snapshots only');
-assertNotIncludes(mrrSnapshot, 'Fallback_', 'BO MRR runtime must not use ad-hoc fallback naming');
+assertNotIncludes(mrrSnapshot, 'Fallback_', 'MRR runtime must not use ad-hoc fallback naming');
+assertNotIncludes(mrrSnapshot, 'function MrrDashboard_getBoData_()', 'MRR runtime must not keep BO-only snapshot entrypoints');
+assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoFcstSnapshots_', 'MRR runtime must not keep BO-only FCST readers');
+assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoOppSnapshots_', 'MRR runtime must not keep BO-only Opp readers');
 [
-  'function MrrDashboard_getBoData_()',
-  "totalDeptKey: 'BO'",
-  "allLabel: 'BO全体'",
-  'function MrrDashboard_readBoFcstSnapshots_(deptKeys)',
-  'function MrrDashboard_readBoOppSnapshots_(deptKeys)',
+  'function MrrDashboard_getSnapshotData_(selection, options)',
+  'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
+  'function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit)',
+  'dates.slice(0, maxPerDivision)',
+  'function MrrDashboard_readFcstSnapshots_(deptKeys, dateSet)',
+  'function MrrDashboard_readOppSnapshotDeals_(deptKeys, snapshotDate, periodByDept)',
   'getRange(1, 1, sheet.getLastRow(), 4).getValues()',
   'getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues()',
   'SharedAppState_isDepartmentTotal_({',
@@ -217,14 +229,16 @@ assertNotIncludes(mrrSnapshot, 'Fallback_', 'BO MRR runtime must not use ad-hoc 
   'function MrrDashboard_getFcstSnapshotRowKind_(payload, nameRaw, deptKey)',
   'function MrrDashboard_addFcstPayload_(sum, payload)',
   'var payload = MrrDashboard_selectFcstSnapshotPayload_(buckets[deptKey][dateStr][period]);',
-  'function MrrDashboard_getBoMetricDefinitions_()',
+  'function MrrDashboard_getMetricDefinitions_()',
   "key: 'fcstAdjusted'",
   "key: 'fcstMax'",
-  'keyDealsData: keyDealsData',
+  'legacyRow.keyDeal !== true',
+  "String(legacyRow.completedMonth || '') !== targetPeriod",
+  'keyDealsData: []',
   'MrrDashboard_pickSnapshotPeriodKeyFromKeys_',
-  'MrrDashboard_formatLegacyDeals_'
+  'MrrDashboard_getDeptKeysForDivisions_'
 ].forEach((token) => {
-  assertIncludes(mrrSnapshot, token, 'BO MRR snapshot path incomplete');
+  assertIncludes(mrrSnapshot, token, 'MRR shared snapshot path incomplete');
 });
 
 console.log('critical flow checks passed');

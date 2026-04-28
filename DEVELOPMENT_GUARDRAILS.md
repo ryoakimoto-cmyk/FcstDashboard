@@ -22,3 +22,12 @@ Last updated: 2026-04-28
 - cache key と payload shape は安易に変更しない。
 - 表示不具合の修正であっても、サーバー側の contract を緩める場合は影響範囲を先に明示する。
 - `npm run validate:syntax` と `npm run validate:critical` を通してから deploy する。
+
+## MRR ダッシュボード読み込みルール
+
+- SS / BO / CO / COO は同一の FCST スナップショット集計ロジックを使う。事業部ごとの専用ロジックや旧 SS 専用シートへの分岐を追加しない。
+- MRR 画面は未指定 URL では事業部選択画面を出し、選択後は `?app=mrr&division=SS|BO|CO|COO` の専用 URL にする。
+- 初期読み込みは選択された各事業部につき直近 2 snapshot_date までに制限する。COO は SS / BO / CO それぞれ最大 2 日付まで。
+- それより古い履歴はユーザー操作時だけ追加取得する。初期ロードで全履歴を読まない。
+- Key Deal は初期 payload に混ぜない。表示中の日付・部署で必要になった時だけ Opp スナップショットから取得する。
+- 5 分キャッシュを前提にする。ただし cache key は MRR 専用に分け、FCST / Opp 本体の cache key や payload shape を変更しない。

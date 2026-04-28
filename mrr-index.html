@@ -9,9 +9,85 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
+    min-height: 100vh;
     font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
-    background: #f4f7fb;
-    color: #1f2937;
+    background:
+      radial-gradient(circle at 12% 12%, rgba(26, 115, 232, 0.13), transparent 30%),
+      linear-gradient(135deg, #f7fbff 0%, #eef4f8 46%, #f8fafc 100%);
+    color: #172033;
+  }
+  .hidden { display: none !important; }
+  .loading {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(248, 250, 252, 0.88);
+    color: #1a73e8;
+    font-weight: 700;
+  }
+  .choice-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+  }
+  .choice-panel {
+    width: min(920px, 100%);
+    padding: 36px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
+  }
+  .choice-kicker {
+    margin: 0 0 8px;
+    color: #1a73e8;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+  .choice-title {
+    margin: 0;
+    font-size: clamp(30px, 5vw, 52px);
+    letter-spacing: -0.05em;
+  }
+  .choice-note {
+    margin: 14px 0 28px;
+    color: #64748b;
+  }
+  .choice-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .choice-card {
+    min-height: 150px;
+    padding: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 20px;
+    background: #ffffff;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  }
+  .choice-card:hover {
+    transform: translateY(-3px);
+    border-color: #1a73e8;
+    box-shadow: 0 18px 42px rgba(26, 115, 232, 0.16);
+  }
+  .choice-name {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 30px;
+    font-weight: 900;
+    color: #172033;
+  }
+  .choice-desc {
+    color: #64748b;
+    line-height: 1.6;
   }
   .app-shell {
     min-height: 100vh;
@@ -19,49 +95,52 @@
     flex-direction: column;
   }
   .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding: 16px 24px;
-    background: #ffffff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    background: rgba(255, 255, 255, 0.92);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    backdrop-filter: blur(16px);
   }
   .header-left,
   .header-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
   }
-  .header h1 {
+  h1 {
     margin: 0;
     font-size: 20px;
     color: #1a73e8;
+    letter-spacing: -0.02em;
   }
   .tabs {
     display: inline-flex;
     gap: 6px;
     padding: 4px;
     border-radius: 999px;
-    background: #eef2ff;
+    background: #e8eef8;
   }
   .tab {
     padding: 8px 14px;
-    border-radius: 999px;
     border: 0;
+    border-radius: 999px;
     background: transparent;
     color: #475569;
     cursor: pointer;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 800;
   }
   .tab.active {
     background: #1a73e8;
     color: #ffffff;
+    box-shadow: 0 8px 18px rgba(26, 115, 232, 0.25);
   }
   .selector,
   .week-nav {
@@ -72,95 +151,108 @@
   .selector label,
   .week-label {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 800;
   }
   .selector select {
     min-width: 160px;
-    padding: 6px 10px;
+    padding: 7px 10px;
     border: 1px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 10px;
     background: #ffffff;
     font-size: 13px;
+  }
+  .week-btn,
+  .load-more-btn {
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+    font-weight: 800;
   }
   .week-btn {
     width: 32px;
     height: 32px;
-    border: 1px solid #cbd5e1;
-    border-radius: 8px;
-    background: #ffffff;
-    cursor: pointer;
-    font-size: 16px;
-    line-height: 1;
-  }
-  .week-btn:hover,
-  .selector select:hover,
-  .tab:hover {
-    opacity: 0.9;
   }
   .week-label {
-    min-width: 88px;
+    min-width: 92px;
     text-align: center;
   }
   .content {
-    width: min(1440px, calc(100vw - 32px));
+    width: min(1540px, calc(100vw - 32px));
     margin: 0 auto;
-    padding: 24px 0 32px;
+    padding: 24px 0 36px;
+  }
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    color: #64748b;
+    font-size: 13px;
+  }
+  .load-more-btn {
+    padding: 8px 14px;
+    color: #1a73e8;
   }
   .cards {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
   }
   .card {
     padding: 16px 18px;
-    border-radius: 14px;
+    border-radius: 18px;
     background: #ffffff;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
   }
   .card-label {
-    font-size: 12px;
+    margin-bottom: 8px;
     color: #64748b;
-    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 700;
   }
   .card-value {
     font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-weight: 900;
+    letter-spacing: -0.03em;
   }
   .card-sub {
-    margin-top: 6px;
+    margin-top: 8px;
     font-size: 12px;
   }
   .val-pos { color: #15803d; }
   .val-neg { color: #dc2626; }
-  .val-neutral { color: #1f2937; }
+  .val-neutral { color: #172033; }
   .panel {
+    border-radius: 20px;
     background: #ffffff;
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.09);
   }
   .chart-panel {
+    min-height: 560px;
     padding: 20px;
     margin-bottom: 16px;
   }
   .chart-panel canvas {
-    max-height: 520px;
+    width: 100%;
+    min-height: 520px;
   }
   .filter-chip {
-    min-height: 24px;
-    margin-bottom: 12px;
+    min-height: 28px;
+    margin-bottom: 10px;
   }
   .filter-chip-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 12px;
+    padding: 6px 12px;
     border-radius: 999px;
     background: #e8f0fe;
     color: #1a73e8;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 800;
   }
   .filter-chip-clear {
     border: 0;
@@ -168,12 +260,12 @@
     color: inherit;
     cursor: pointer;
     font-size: 14px;
-    line-height: 1;
   }
   .deal-panel {
     overflow: hidden;
   }
   .deal-scroll {
+    max-height: 520px;
     overflow: auto;
   }
   .deal-table {
@@ -182,11 +274,11 @@
   }
   .deal-table th,
   .deal-table td {
-    padding: 10px 12px;
-    font-size: 13px;
+    padding: 11px 12px;
     border-bottom: 1px solid #e5e7eb;
     text-align: left;
     white-space: nowrap;
+    font-size: 13px;
   }
   .deal-table th {
     position: sticky;
@@ -194,73 +286,46 @@
     z-index: 1;
     background: #f8fafc;
     color: #334155;
-  }
-  .deal-table th.sortable {
     cursor: pointer;
-    user-select: none;
   }
-  .deal-table tr.pos {
-    background: #f0fdf4;
-  }
-  .deal-table tr.neg {
-    background: #fef2f2;
-  }
-  .no-deals,
-  .loading {
+  .deal-table tr.pos { background: #f0fdf4; }
+  .deal-table tr.neg { background: #fef2f2; }
+  .empty-state {
     padding: 48px 24px;
     text-align: center;
     color: #64748b;
   }
-  .loading {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.88);
-    font-size: 16px;
-    color: #1a73e8;
-    z-index: 100;
-  }
-  .loading.hidden {
-    display: none;
-  }
-  @media (max-width: 960px) {
-    .cards {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+  @media (max-width: 1100px) {
+    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 720px) {
-    .header {
-      padding: 14px 16px;
-      align-items: flex-start;
-    }
-    .content {
-      width: calc(100vw - 20px);
-      padding-top: 16px;
-    }
-    .cards {
-      grid-template-columns: 1fr;
-    }
-    .deal-table th,
-    .deal-table td {
-      font-size: 12px;
-      padding: 8px 10px;
-    }
+    .header { align-items: flex-start; padding: 14px 16px; }
+    .content { width: calc(100vw - 20px); padding-top: 16px; }
+    .cards,
+    .choice-grid { grid-template-columns: 1fr; }
+    .chart-panel { min-height: 420px; }
+    .chart-panel canvas { min-height: 380px; }
   }
 </style>
 </head>
 <body>
-<div class="app-shell">
-  <div id="loading" class="loading">読込中...</div>
+<div id="loading" class="loading hidden">読込中...</div>
 
+<section id="choiceShell" class="choice-shell hidden">
+  <div class="choice-panel">
+    <p class="choice-kicker">MRR DASHBOARD</p>
+    <h2 class="choice-title">表示する事業部を選択</h2>
+    <p class="choice-note">選択後は専用URLに切り替わります。初期表示では各事業部ごとに直近2日付のスナップショットだけを読み込みます。</p>
+    <div class="choice-grid" id="choiceGrid"></div>
+  </div>
+</section>
+
+<div id="appShell" class="app-shell hidden">
   <header class="header">
     <div class="header-left">
       <h1>MRR進捗ダッシュボード</h1>
-      <div class="tabs" id="divisionTabs">
-        <button type="button" class="tab active" data-division="SS" onclick="switchDivision('SS')">SS</button>
-        <button type="button" class="tab" data-division="BO" onclick="switchDivision('BO')">BO</button>
-      </div>
+      <div class="tabs" id="divisionTabs"></div>
       <div class="tabs">
         <button type="button" class="tab active" data-view="weekly" onclick="switchView('weekly')">週次</button>
         <button type="button" class="tab" data-view="dept" onclick="switchView('dept')">部署別</button>
@@ -272,14 +337,18 @@
         <select id="deptSelect" onchange="chartFilter = null; render();"></select>
       </div>
       <div class="week-nav" id="weekSelector" style="display:none;">
-        <button type="button" class="week-btn" onclick="moveWeek(-1)" aria-label="前の週">←</button>
+        <button type="button" class="week-btn" onclick="moveWeek(-1)" aria-label="前の日付">‹</button>
         <span id="weekLabel" class="week-label"></span>
-        <button type="button" class="week-btn" onclick="moveWeek(1)" aria-label="次の週">→</button>
+        <button type="button" class="week-btn" onclick="moveWeek(1)" aria-label="次の日付">›</button>
       </div>
     </div>
   </header>
 
   <main class="content">
+    <div class="meta-row">
+      <span id="historyMeta"></span>
+      <button type="button" id="loadMoreBtn" class="load-more-btn hidden" onclick="loadMoreSnapshots_()">さらに過去を読み込む</button>
+    </div>
     <section class="cards" id="cards"></section>
     <section class="panel chart-panel">
       <canvas id="mainChart"></canvas>
@@ -290,7 +359,12 @@
 </div>
 
 <script>
-var ALL_DEPTS_LABEL = '全部署';
+var DIVISION_CHOICES = [
+  { key: 'SS', label: 'SS', description: 'SS事業部' },
+  { key: 'BO', label: 'BO', description: 'BO事業部' },
+  { key: 'CO', label: 'CO', description: 'CO事業部' },
+  { key: 'COO', label: 'COO', description: '全事業部' }
+];
 var D = null;
 var chart = null;
 var currentDivision = getInitialDivision_();
@@ -299,90 +373,147 @@ var currentWeekIdx = 0;
 var chartFilter = null;
 var dealSortKey = '';
 var dealSortAsc = true;
-
-function emptyMetric_() {
-  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0, keyDeal: '', keyDealsData: [] };
-}
+var dealCache = {};
+var loadingDealKey = '';
+var loadingHistory = false;
 
 function getInitialDivision_() {
   try {
-    var params = new URLSearchParams(window.location.search || '');
-    var division = String(params.get('division') || '').toUpperCase();
-    return division === 'BO' ? 'BO' : 'SS';
+    var value = String(new URLSearchParams(window.location.search || '').get('division') || '').toUpperCase();
+    return normalizeDivision_(value);
   } catch (e) {
-    return 'SS';
+    return '';
   }
 }
 
-function getAllDeptLabel_() {
-  return (D && D.allLabel) || ALL_DEPTS_LABEL;
+function normalizeDivision_(value) {
+  value = String(value || '').trim().toUpperCase();
+  return DIVISION_CHOICES.some(function(choice) { return choice.key === value; }) ? value : '';
+}
+
+function showSelection_() {
+  document.getElementById('choiceShell').classList.remove('hidden');
+  document.getElementById('appShell').classList.add('hidden');
+  hideLoading_();
+  var grid = document.getElementById('choiceGrid');
+  grid.innerHTML = DIVISION_CHOICES.map(function(choice) {
+    return '<button type="button" class="choice-card" onclick="goDivision_(\'' + choice.key + '\')">' +
+      '<span class="choice-name">' + escapeHtml_(choice.label) + '</span>' +
+      '<span class="choice-desc">' + escapeHtml_(choice.description) + '</span>' +
+    '</button>';
+  }).join('');
+}
+
+function goDivision_(division) {
+  var url = new URL(window.location.href);
+  url.searchParams.set('app', 'mrr');
+  url.searchParams.set('division', division);
+  window.location.href = url.toString();
+}
+
+function showApp_() {
+  document.getElementById('choiceShell').classList.add('hidden');
+  document.getElementById('appShell').classList.remove('hidden');
 }
 
 function showLoading_(message) {
   var el = document.getElementById('loading');
-  if (!el) return;
   el.textContent = message || '読込中...';
   el.classList.remove('hidden');
 }
 
 function hideLoading_() {
-  var el = document.getElementById('loading');
-  if (!el) return;
-  el.classList.add('hidden');
+  document.getElementById('loading').classList.add('hidden');
 }
 
-function fmt(v) {
-  var num = Number(v) || 0;
-  return (num < 0 ? '-' : '') + Math.abs(num).toLocaleString('ja-JP');
-}
-
-function valClass_(v) {
-  var num = Number(v) || 0;
-  if (num > 0) return 'val-pos';
-  if (num < 0) return 'val-neg';
-  return 'val-neutral';
-}
-
-function getWeekMap_(week) {
-  return (D && D.data && D.data[week]) || {};
-}
-
-function getDeptData(week, dept) {
-  var rows = getWeekMap_(week);
-  if (dept === getAllDeptLabel_()) {
-    return rows[(D && D.totalDeptKey) || 'SS'] || emptyMetric_();
+function bootstrap_() {
+  buildDivisionTabs_();
+  if (!currentDivision) {
+    showSelection_();
+    return;
   }
-  return rows[dept] || emptyMetric_();
+  showApp_();
+  loadDivisionData_(currentDivision, '');
+}
+
+function buildDivisionTabs_() {
+  var tabs = document.getElementById('divisionTabs');
+  if (!tabs) return;
+  tabs.innerHTML = DIVISION_CHOICES.map(function(choice) {
+    return '<button type="button" class="tab" data-division="' + choice.key + '" onclick="goDivision_(\'' + choice.key + '\')">' +
+      escapeHtml_(choice.label) +
+    '</button>';
+  }).join('');
+}
+
+function loadDivisionData_(division, beforeDate) {
+  if (beforeDate) loadingHistory = true;
+  showLoading_(beforeDate ? '過去データを読み込み中...' : '読み込み中...');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (beforeDate && D) {
+        mergeDashboardData_(normalizeResult_(result || {}));
+      } else {
+        D = normalizeResult_(result || {});
+        currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+      }
+      currentDivision = D.division || division;
+      chartFilter = null;
+      updateDivisionTabs_();
+      buildDeptOptions_();
+      updateWeekLabel();
+      hideLoading_();
+      loadingHistory = false;
+      render();
+    })
+    .withFailureHandler(function(err) {
+      loadingHistory = false;
+      showLoading_('エラー: ' + getErrorMessage_(err));
+    })
+    .getMrrDashboardData(division, beforeDate || '');
 }
 
 function normalizeResult_(result) {
   return {
-    division: (result && result.division) || currentDivision,
-    totalDeptKey: (result && result.totalDeptKey) || 'SS',
-    allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
-    metricDefinitions: Array.isArray(result && result.metricDefinitions) ? result.metricDefinitions.slice() : [],
-    weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
-    weekLabels: result && result.weekLabels ? result.weekLabels : {},
-    depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
-    data: result && result.data ? result.data : {}
+    division: result.division || currentDivision,
+    divisionLabel: result.divisionLabel || result.division || currentDivision,
+    choices: Array.isArray(result.choices) ? result.choices : DIVISION_CHOICES,
+    totalDeptKey: result.totalDeptKey || currentDivision,
+    allLabel: result.allLabel || (currentDivision + '全体'),
+    metricDefinitions: Array.isArray(result.metricDefinitions) ? result.metricDefinitions.slice() : [],
+    weeks: Array.isArray(result.weeks) ? result.weeks.slice() : [],
+    weekLabels: result.weekLabels || {},
+    depts: Array.isArray(result.depts) ? result.depts.slice() : [],
+    data: result.data || {},
+    history: result.history || { hasMore: false, oldestDate: '' }
   };
 }
 
-function bootstrap_() {
-  showLoading_('読込中...');
-  google.script.run
-    .withSuccessHandler(function(result) {
-      D = normalizeResult_(result || {});
-      buildDeptOptions_();
-      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
-      updateWeekLabel();
-      hideLoading_();
-      render();
-    })
-    .withFailureHandler(function(err) {
-      showLoading_('エラー: ' + getErrorMessage_(err));
-    })
-    .getMrrDashboardData();
+function mergeDashboardData_(incoming) {
+  incoming.weeks.forEach(function(week) {
+    if (D.weeks.indexOf(week) === -1) D.weeks.push(week);
+  });
+  D.weeks.sort();
+  Object.keys(incoming.weekLabels || {}).forEach(function(key) {
+    D.weekLabels[key] = incoming.weekLabels[key];
+  });
+  incoming.depts.forEach(function(dept) {
+    if (D.depts.indexOf(dept) === -1) D.depts.push(dept);
+  });
+  Object.keys(incoming.data || {}).forEach(function(week) {
+    if (!D.data[week]) D.data[week] = {};
+    Object.keys(incoming.data[week] || {}).forEach(function(dept) {
+      D.data[week][dept] = incoming.data[week][dept];
+    });
+  });
+  D.history = incoming.history || D.history;
+  currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+}
+
+function updateDivisionTabs_() {
+  document.querySelectorAll('[data-division]').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.division === currentDivision);
+  });
 }
 
 function getErrorMessage_(err) {
@@ -392,9 +523,9 @@ function getErrorMessage_(err) {
 
 function buildDeptOptions_() {
   var select = document.getElementById('deptSelect');
-  if (!select) return;
+  if (!select || !D) return;
   select.innerHTML = '';
-  [ALL_DEPTS_LABEL].concat(D.depts || []).forEach(function(dept) {
+  [D.allLabel].concat(D.depts || []).forEach(function(dept) {
     var option = document.createElement('option');
     option.value = dept;
     option.textContent = dept;
@@ -404,22 +535,25 @@ function buildDeptOptions_() {
 
 function getSelectedDept_() {
   var select = document.getElementById('deptSelect');
-  return select && select.value ? select.value : ALL_DEPTS_LABEL;
+  return select && select.value ? select.value : (D && D.allLabel) || '';
 }
 
 function getSelectedWeek_() {
-  if (!D || !D.weeks || !D.weeks.length) return '';
+  if (!D || !D.weeks.length) return '';
   return D.weeks[currentWeekIdx] || '';
+}
+
+function getWeekLabel_(weekKey) {
+  return (D && D.weekLabels && D.weekLabels[weekKey]) || weekKey || '';
 }
 
 function updateWeekLabel() {
   var label = document.getElementById('weekLabel');
-  if (!label) return;
-  label.textContent = getSelectedWeek_() || '-';
+  if (label) label.textContent = getWeekLabel_(getSelectedWeek_()) || '-';
 }
 
 function moveWeek(direction) {
-  if (!D || !D.weeks || !D.weeks.length) return;
+  if (!D || !D.weeks.length) return;
   currentWeekIdx = Math.max(0, Math.min(D.weeks.length - 1, currentWeekIdx + direction));
   chartFilter = null;
   updateWeekLabel();
@@ -429,7 +563,7 @@ function moveWeek(direction) {
 function switchView(view) {
   currentView = view;
   chartFilter = null;
-  document.querySelectorAll('.tab').forEach(function(tab) {
+  document.querySelectorAll('[data-view]').forEach(function(tab) {
     tab.classList.toggle('active', tab.dataset.view === view);
   });
   document.getElementById('deptSelector').style.display = view === 'weekly' ? '' : 'none';
@@ -437,117 +571,150 @@ function switchView(view) {
   render();
 }
 
-function parseAmountPart_(text) {
-  var source = String(text || '').trim();
-  var match = source.match(/^(.*?)(?:\s+(-?[0-9,]+))(?:万|万円)?$/);
-  if (!match) {
-    return { label: source, amount: 0 };
-  }
-  return {
-    label: match[1].trim(),
-    amount: (parseInt(match[2].replace(/,/g, ''), 10) || 0) * 10000
-  };
-}
-
-function parseTrailingAmount_(text) {
-  var source = String(text || '').trim();
-  var match = source.match(/(-?[0-9,]+)/);
-  return match ? (parseInt(match[1].replace(/,/g, ''), 10) || 0) * 10000 : 0;
-}
-
-function parseDeals(text) {
-  return String(text || '')
-    .split(/\r?\n/)
-    .map(function(line) { return line.trim(); })
-    .filter(function(line) { return !!line; })
-    .map(function(line) {
-      var clean = line.replace(/^[・•●]/, '').trim();
-      var parts = clean.split('/').map(function(part) { return part.trim(); });
-      var main = parseAmountPart_(parts[0] || clean);
-      return {
-        company: main.label || clean,
-        mrr: main.amount,
-        phase: parts[1] || '-',
-        yomi: parseTrailingAmount_(parts[2] || ''),
-      };
-    });
+function loadMoreSnapshots_() {
+  if (!D || loadingHistory || !D.history || !D.history.hasMore || !D.history.oldestDate) return;
+  loadDivisionData_(currentDivision, D.history.oldestDate);
 }
 
 function render() {
   if (!D) return;
+  renderHistoryMeta_();
   renderCards();
   renderChart();
   renderDeals();
 }
 
+function renderHistoryMeta_() {
+  var meta = document.getElementById('historyMeta');
+  var button = document.getElementById('loadMoreBtn');
+  if (!meta || !button) return;
+  var count = D.weeks.length;
+  meta.textContent = (D.divisionLabel || D.division) + ' / 表示中スナップショット: ' + count + '日付';
+  button.classList.toggle('hidden', !(D.history && D.history.hasMore));
+}
+
+function emptyMetric_() {
+  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0 };
+}
+
+function getWeekMap_(week) {
+  return (D && D.data && D.data[week]) || {};
+}
+
+function getDeptData(week, dept) {
+  var rows = getWeekMap_(week);
+  if (!D) return emptyMetric_();
+  if (dept === D.allLabel) return rows[D.totalDeptKey] || emptyMetric_();
+  return rows[dept] || emptyMetric_();
+}
+
+function getMetricDefinitions_() {
+  return (D && Array.isArray(D.metricDefinitions)) ? D.metricDefinitions : [];
+}
+
 function renderCards() {
   var area = document.getElementById('cards');
   if (!area) return;
-
   if (!D.weeks.length) {
     area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">データなし</div></div>';
     return;
   }
-
-  var data;
-  if (currentView === 'weekly') {
-    data = getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_());
-  } else {
-    data = getDeptData(getSelectedWeek_(), ALL_DEPTS_LABEL);
-  }
-
+  var data = currentView === 'weekly'
+    ? getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_())
+    : getDeptData(getSelectedWeek_(), D.allLabel);
+  var defs = getMetricDefinitions_();
   var target = Number(data.target) || 0;
-  var actual = Number(data.actual) || 0;
-  var fcst = Number(data.fcst) || 0;
-  var expected = Number(data.expectedMrr) || 0;
-  var diffActual = actual - target;
-  var diffFcst = fcst - target;
-  var rate = target ? ((actual / target) * 100).toFixed(1) + '%' : '-';
-
-  area.innerHTML = [
-    buildCardHtml_('目標', fmt(target), ''),
-    buildCardHtml_('実績', fmt(actual), 'vs 目標 ' + (diffActual >= 0 ? '+' : '') + fmt(diffActual), valClass_(actual), valClass_(diffActual)),
-    buildCardHtml_('期待MRR', fmt(expected), '', valClass_(expected)),
-    buildCardHtml_('FCST', fmt(fcst), 'vs 目標 ' + (diffFcst >= 0 ? '+' : '') + fmt(diffFcst), valClass_(fcst), valClass_(diffFcst)),
-    buildCardHtml_('達成率', rate, '', rate !== '-' && parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral')
-  ].join('');
+  area.innerHTML = defs.map(function(def) {
+    var value = Number(data[def.key]) || 0;
+    var sub = '';
+    var subClass = 'val-neutral';
+    if (def.key !== 'target' && target) {
+      var diff = value - target;
+      sub = 'vs 目標 ' + (diff >= 0 ? '+' : '') + fmt(diff);
+      subClass = diff >= 0 ? 'val-pos' : 'val-neg';
+    }
+    return buildCardHtml_(def.label || def.key, fmt(value), sub, valClass_(value), subClass);
+  }).join('');
 }
 
 function buildCardHtml_(label, value, sub, valueClass, subClass) {
-  return (
-    '<div class="card">' +
-      '<div class="card-label">' + escapeHtml_(label) + '</div>' +
-      '<div class="card-value ' + escapeHtml_(valueClass || 'val-neutral') + '">' + escapeHtml_(value) + '</div>' +
-      (sub ? '<div class="card-sub ' + escapeHtml_(subClass || 'val-neutral') + '">' + escapeHtml_(sub) + '</div>' : '') +
-    '</div>'
-  );
+  return '<div class="card">' +
+    '<div class="card-label">' + escapeHtml_(label) + '</div>' +
+    '<div class="card-value ' + escapeHtml_(valueClass || 'val-neutral') + '">' + escapeHtml_(value) + '</div>' +
+    (sub ? '<div class="card-sub ' + escapeHtml_(subClass || 'val-neutral') + '">' + escapeHtml_(sub) + '</div>' : '') +
+  '</div>';
 }
 
-function makeTargetTickPlugin_(pluginId, targets) {
-  return {
-    id: pluginId,
-    afterDatasetsDraw: function(chartInstance) {
-      var bars = chartInstance.data.datasets
-        .map(function(_, idx) { return chartInstance.getDatasetMeta(idx); })
-        .filter(function(meta) { return meta.type === 'bar'; });
-      if (!bars.length || !targets.length) return;
-      var ctx = chartInstance.ctx;
-      ctx.save();
-      ctx.strokeStyle = '#ea4335';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([]);
-      targets.forEach(function(value, index) {
-        var y = chartInstance.scales.y.getPixelForValue(value);
-        var centerX = chartInstance.scales.x.getPixelForValue(index);
-        var bandHalf = chartInstance.scales.x.width / (chartInstance.data.labels.length * 2);
-        ctx.beginPath();
-        ctx.moveTo(centerX - bandHalf, y);
-        ctx.lineTo(centerX + bandHalf, y);
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-  };
+function renderChart() {
+  var canvas = document.getElementById('mainChart');
+  if (!canvas || !D) return;
+  if (chart) chart.destroy();
+  if (!D.weeks.length) return;
+
+  var ctx = canvas.getContext('2d');
+  var options = buildChartOptions_();
+  if (currentView === 'weekly') {
+    var dept = getSelectedDept_();
+    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: D.weeks.map(getWeekLabel_),
+        datasets: buildMetricDatasets_(rows)
+      },
+      options: Object.assign(options, {
+        onClick: function(_, elements) {
+          chartFilter = elements.length
+            ? toggleFilter_('week', D.weeks[elements[0].index])
+            : null;
+          renderDeals();
+        }
+      })
+    });
+    return;
+  }
+
+  var week = getSelectedWeek_();
+  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: D.depts,
+      datasets: buildMetricDatasets_(D.depts.map(function(dept) { return getDeptData(week, dept); }))
+    },
+    options: Object.assign(options, {
+      onClick: function(_, elements) {
+        chartFilter = elements.length
+          ? toggleFilter_('dept', D.depts[elements[0].index])
+          : null;
+        renderDeals();
+      }
+    }),
+    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
+  });
+}
+
+function toggleFilter_(type, value) {
+  return chartFilter && chartFilter.type === type && chartFilter.value === value
+    ? null
+    : { type: type, value: value };
+}
+
+function buildMetricDatasets_(rows) {
+  return getMetricDefinitions_().map(function(def) {
+    var isLine = def.type === 'line' || def.key === 'target';
+    return {
+      label: def.label || def.key,
+      data: rows.map(function(row) { return Number(row[def.key]) || 0; }),
+      type: isLine ? 'line' : 'bar',
+      borderColor: def.color || '#5f6368',
+      backgroundColor: isLine ? 'transparent' : ((def.color || '#5f6368') + '66'),
+      borderWidth: isLine ? 2 : 1,
+      borderDash: def.dash ? [8, 4] : [],
+      pointRadius: isLine ? 0 : undefined,
+      tension: 0
+    };
+  });
 }
 
 function buildChartOptions_() {
@@ -574,136 +741,48 @@ function buildChartOptions_() {
   };
 }
 
-function renderChart() {
-  var canvas = document.getElementById('mainChart');
-  if (!canvas || !D || !D.weeks.length) return;
-  if (chart) chart.destroy();
-  var ctx = canvas.getContext('2d');
-  var options = buildChartOptions_();
-
-  if (currentView === 'weekly') {
-    var dept = getSelectedDept_();
-    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: D.weeks,
-        datasets: [
-          {
-            label: '目標',
-            data: rows.map(function(row) { return row.target || 0; }),
-            type: 'line',
-            borderColor: '#ea4335',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            borderDash: [8, 4],
-            pointRadius: 0,
-            tension: 0
-          },
-          {
-            label: '実績',
-            data: rows.map(function(row) { return row.actual || 0; }),
-            backgroundColor: 'rgba(26,115,232,0.72)',
-            borderColor: '#1a73e8',
-            borderWidth: 1
-          },
-          {
-            label: '期待MRR',
-            data: rows.map(function(row) { return row.expectedMrr || 0; }),
-            backgroundColor: 'rgba(52,168,83,0.72)',
-            borderColor: '#34a853',
-            borderWidth: 1
-          },
-          {
-            label: 'FCST',
-            data: rows.map(function(row) { return row.fcst || 0; }),
-            backgroundColor: 'rgba(251,188,4,0.72)',
-            borderColor: '#fbbc04',
-            borderWidth: 1
-          }
-        ]
-      },
-      options: Object.assign(options, {
-        onClick: function(_, elements) {
-          if (!elements.length) {
-            chartFilter = null;
-          } else {
-            var label = D.weeks[elements[0].index];
-            chartFilter = chartFilter && chartFilter.type === 'week' && chartFilter.value === label
-              ? null
-              : { type: 'week', value: label };
-          }
-          renderDeals();
-        }
-      })
-    });
-    return;
-  }
-
-  var week = getSelectedWeek_();
-  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: D.depts,
-      datasets: [
-        {
-          label: '目標',
-          data: targets,
-          type: 'line',
-          borderColor: '#ea4335',
-          backgroundColor: 'transparent',
-          borderWidth: 0,
-          pointRadius: 0
-        },
-        {
-          label: '実績',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).actual || 0; }),
-          backgroundColor: 'rgba(26,115,232,0.72)',
-          borderColor: '#1a73e8',
-          borderWidth: 1
-        },
-        {
-          label: '期待MRR',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).expectedMrr || 0; }),
-          backgroundColor: 'rgba(52,168,83,0.72)',
-          borderColor: '#34a853',
-          borderWidth: 1
-        },
-        {
-          label: 'FCST',
-          data: D.depts.map(function(dept) { return getDeptData(week, dept).fcst || 0; }),
-          backgroundColor: 'rgba(251,188,4,0.72)',
-          borderColor: '#fbbc04',
-          borderWidth: 1
-        }
-      ]
-    },
-    options: Object.assign(options, {
-      onClick: function(_, elements) {
-        if (!elements.length) {
-          chartFilter = null;
-        } else {
-          var label = D.depts[elements[0].index];
-          chartFilter = chartFilter && chartFilter.type === 'dept' && chartFilter.value === label
-            ? null
-            : { type: 'dept', value: label };
-        }
-        renderDeals();
-      }
-    }),
-    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
-  });
+function makeTargetTickPlugin_(pluginId, targets) {
+  return {
+    id: pluginId,
+    afterDatasetsDraw: function(chartInstance) {
+      var bars = chartInstance.data.datasets
+        .map(function(_, idx) { return chartInstance.getDatasetMeta(idx); })
+        .filter(function(meta) { return meta.type === 'bar'; });
+      if (!bars.length || !targets.length) return;
+      var ctx = chartInstance.ctx;
+      ctx.save();
+      ctx.strokeStyle = '#ea4335';
+      ctx.lineWidth = 3;
+      targets.forEach(function(value, index) {
+        var y = chartInstance.scales.y.getPixelForValue(value);
+        var centerX = chartInstance.scales.x.getPixelForValue(index);
+        var bandHalf = chartInstance.scales.x.width / (chartInstance.data.labels.length * 2);
+        ctx.beginPath();
+        ctx.moveTo(centerX - bandHalf, y);
+        ctx.lineTo(centerX + bandHalf, y);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+  };
 }
 
 function renderDeals() {
   var area = document.getElementById('dealArea');
-  if (!area) return;
+  if (!area || !D || !D.weeks.length) return;
   renderFilterChip_();
 
-  var deals = collectDeals_();
+  var context = getDealContext_();
+  var cacheKey = [currentDivision, context.week, context.dept].join('|');
+  if (!dealCache[cacheKey]) {
+    if (loadingDealKey !== cacheKey) loadDeals_(cacheKey, context);
+    area.innerHTML = '<div class="empty-state">Key Deal を読み込み中...</div>';
+    return;
+  }
+
+  var deals = dealCache[cacheKey].slice();
   if (!deals.length) {
-    area.innerHTML = '<div class="no-deals">Key Deal はありません</div>';
+    area.innerHTML = '<div class="empty-state">Key Deal はありません</div>';
     return;
   }
 
@@ -725,52 +804,50 @@ function renderDeals() {
     sortTh_('mrr', 'MRR') +
     sortTh_('phase', 'フェーズ') +
     sortTh_('yomi', 'ヨミ') +
+    sortTh_('completedMonth', '完了予定月') +
     '</tr></thead><tbody>';
-
   deals.forEach(function(deal) {
     var rowClass = deal.mrr > 0 ? 'pos' : (deal.mrr < 0 ? 'neg' : '');
     html += '<tr class="' + rowClass + '">' +
-      '<td>' + escapeHtml_(deal.dept) + '</td>' +
-      '<td>' + escapeHtml_(deal.company) + '</td>' +
+      '<td>' + escapeHtml_(deal.dept || '') + '</td>' +
+      '<td>' + escapeHtml_(deal.company || '') + '</td>' +
       '<td class="' + valClass_(deal.mrr) + '">' + escapeHtml_(fmt(deal.mrr)) + '</td>' +
-      '<td>' + escapeHtml_(deal.phase) + '</td>' +
+      '<td>' + escapeHtml_(deal.phase || '') + '</td>' +
       '<td class="' + valClass_(deal.yomi) + '">' + escapeHtml_(fmt(deal.yomi)) + '</td>' +
-      '</tr>';
+      '<td>' + escapeHtml_(deal.completedMonth || '') + '</td>' +
+    '</tr>';
   });
   html += '</tbody></table></div>';
   area.innerHTML = html;
 }
 
-function collectDeals_() {
-  if (!D || !D.weeks.length) return [];
-  var deals = [];
+function getDealContext_() {
   var week = currentView === 'weekly'
     ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || D.weeks[D.weeks.length - 1])
     : getSelectedWeek_();
-  var depts = [];
-
+  var dept = D.allLabel;
   if (currentView === 'weekly') {
-    var selectedDept = getSelectedDept_();
-    depts = selectedDept === ALL_DEPTS_LABEL ? D.depts.slice() : [selectedDept];
-  } else {
-    depts = chartFilter && chartFilter.type === 'dept' && chartFilter.value
-      ? [chartFilter.value]
-      : D.depts.slice();
+    dept = getSelectedDept_();
+  } else if (chartFilter && chartFilter.type === 'dept') {
+    dept = chartFilter.value;
   }
+  return { week: week, dept: dept };
+}
 
-  depts.forEach(function(dept) {
-    parseDeals(getDeptData(week, dept).keyDeal).forEach(function(deal) {
-      deals.push({
-        dept: dept,
-        company: deal.company,
-        mrr: deal.mrr,
-        phase: deal.phase,
-        yomi: deal.yomi
-      });
-    });
-  });
-
-  return deals;
+function loadDeals_(cacheKey, context) {
+  loadingDealKey = cacheKey;
+  google.script.run
+    .withSuccessHandler(function(result) {
+      dealCache[cacheKey] = Array.isArray(result && result.deals) ? result.deals : [];
+      loadingDealKey = '';
+      renderDeals();
+    })
+    .withFailureHandler(function() {
+      dealCache[cacheKey] = [];
+      loadingDealKey = '';
+      renderDeals();
+    })
+    .getMrrDashboardDeals(currentDivision, context.week, context.dept);
 }
 
 function renderFilterChip_() {
@@ -795,7 +872,7 @@ function clearChartFilter_() {
 function sortTh_(key, label) {
   var indicator = '';
   if (dealSortKey === key) indicator = dealSortAsc ? ' ▲' : ' ▼';
-  return '<th class="sortable" onclick="setSortKey(\'' + key + '\')">' + escapeHtml_(label + indicator) + '</th>';
+  return '<th onclick="setSortKey(\'' + key + '\')">' + escapeHtml_(label + indicator) + '</th>';
 }
 
 function setSortKey(key) {
@@ -808,6 +885,18 @@ function setSortKey(key) {
   renderDeals();
 }
 
+function fmt(v) {
+  var num = Number(v) || 0;
+  return (num < 0 ? '-' : '') + Math.abs(num).toLocaleString('ja-JP');
+}
+
+function valClass_(v) {
+  var num = Number(v) || 0;
+  if (num > 0) return 'val-pos';
+  if (num < 0) return 'val-neg';
+  return 'val-neutral';
+}
+
 function escapeHtml_(value) {
   return String(value === null || value === undefined ? '' : value)
     .replace(/&/g, '&amp;')
@@ -815,302 +904,6 @@ function escapeHtml_(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function getDeptData(week, dept) {
-  var rows = getWeekMap_(week);
-  if (dept === ALL_DEPTS_LABEL || dept === getAllDeptLabel_()) {
-    return rows[(D && D.totalDeptKey) || 'SS'] || emptyMetric_();
-  }
-  return rows[dept] || emptyMetric_();
-}
-
-function normalizeResult_(result) {
-  return {
-    division: (result && result.division) || currentDivision,
-    totalDeptKey: (result && result.totalDeptKey) || 'SS',
-    allLabel: (result && result.allLabel) || ALL_DEPTS_LABEL,
-    metricDefinitions: Array.isArray(result && result.metricDefinitions) ? result.metricDefinitions.slice() : [],
-    weeks: Array.isArray(result && result.weeks) ? result.weeks.slice() : [],
-    weekLabels: result && result.weekLabels ? result.weekLabels : {},
-    depts: Array.isArray(result && result.depts) ? result.depts.slice() : [],
-    data: result && result.data ? result.data : {}
-  };
-}
-
-function bootstrap_() {
-  loadDivisionData_(currentDivision);
-}
-
-function loadDivisionData_(division) {
-  showLoading_('読み込み中...');
-  updateDivisionTabs_();
-  google.script.run
-    .withSuccessHandler(function(result) {
-      D = normalizeResult_(result || {});
-      currentDivision = D.division || division || 'SS';
-      buildDeptOptions_();
-      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
-      chartFilter = null;
-      updateDivisionTabs_();
-      updateDivisionQuery_();
-      updateWeekLabel();
-      hideLoading_();
-      render();
-    })
-    .withFailureHandler(function(err) {
-      showLoading_('エラー: ' + getErrorMessage_(err));
-    })
-    .getMrrDashboardData(division);
-}
-
-function switchDivision(division) {
-  if (currentDivision === division && D) return;
-  currentDivision = division;
-  chartFilter = null;
-  dealSortKey = '';
-  dealSortAsc = true;
-  loadDivisionData_(division);
-}
-
-function updateDivisionTabs_() {
-  document.querySelectorAll('[data-division]').forEach(function(tab) {
-    tab.classList.toggle('active', tab.dataset.division === currentDivision);
-  });
-}
-
-function updateDivisionQuery_() {
-  try {
-    var url = new URL(window.location.href);
-    url.searchParams.set('app', 'mrr');
-    url.searchParams.set('division', currentDivision);
-    window.history.replaceState({}, '', url.toString());
-  } catch (e) {}
-}
-
-function buildDeptOptions_() {
-  var select = document.getElementById('deptSelect');
-  if (!select) return;
-  select.innerHTML = '';
-  [getAllDeptLabel_()].concat(D.depts || []).forEach(function(dept) {
-    var option = document.createElement('option');
-    option.value = dept;
-    option.textContent = dept;
-    select.appendChild(option);
-  });
-}
-
-function getSelectedDept_() {
-  var select = document.getElementById('deptSelect');
-  return select && select.value ? select.value : getAllDeptLabel_();
-}
-
-function getWeekLabel_(weekKey) {
-  if (!weekKey) return '';
-  return (D && D.weekLabels && D.weekLabels[weekKey]) || weekKey;
-}
-
-function updateWeekLabel() {
-  var label = document.getElementById('weekLabel');
-  if (!label) return;
-  label.textContent = getWeekLabel_(getSelectedWeek_()) || '-';
-}
-
-function getMetricDefinitions_() {
-  return (D && Array.isArray(D.metricDefinitions) && D.metricDefinitions.length)
-    ? D.metricDefinitions
-    : [];
-}
-
-function renderCards() {
-  var area = document.getElementById('cards');
-  if (!area) return;
-
-  if (!D.weeks.length) {
-    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">データなし</div></div>';
-    return;
-  }
-
-  var data = currentView === 'weekly'
-    ? getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_())
-    : getDeptData(getSelectedWeek_(), getAllDeptLabel_());
-  var definitions = getMetricDefinitions_();
-  if (!definitions.length) {
-    renderDefaultCards_(area, data);
-    return;
-  }
-
-  var target = Number(data.target) || 0;
-  var html = definitions.map(function(def) {
-    var value = Number(data[def.key]) || 0;
-    var sub = '';
-    var subClass = 'val-neutral';
-    if (def.key !== 'target' && target) {
-      var diff = value - target;
-      sub = 'vs 目標 ' + (diff >= 0 ? '+' : '') + fmt(diff);
-      subClass = diff >= 0 ? 'val-pos' : 'val-neg';
-    }
-    return buildCardHtml_(def.label || def.key, fmt(value), sub, valClass_(value), subClass);
-  }).join('');
-
-  if (target) {
-    var actual = Number(data.confirmed || data.actual) || 0;
-    var rate = ((actual / target) * 100).toFixed(1) + '%';
-    html += buildCardHtml_('達成率', rate, '', parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral');
-  }
-  area.innerHTML = html;
-}
-
-function renderDefaultCards_(area, data) {
-  var target = Number(data.target) || 0;
-  var actual = Number(data.actual) || 0;
-  var fcst = Number(data.fcst) || 0;
-  var expected = Number(data.expectedMrr) || 0;
-  var diffActual = actual - target;
-  var diffFcst = fcst - target;
-  var rate = target ? ((actual / target) * 100).toFixed(1) + '%' : '-';
-
-  area.innerHTML = [
-    buildCardHtml_('目標', fmt(target), ''),
-    buildCardHtml_('実績', fmt(actual), 'vs 目標 ' + (diffActual >= 0 ? '+' : '') + fmt(diffActual), valClass_(actual), valClass_(diffActual)),
-    buildCardHtml_('期待MRR', fmt(expected), '', valClass_(expected)),
-    buildCardHtml_('FCST', fmt(fcst), 'vs 目標 ' + (diffFcst >= 0 ? '+' : '') + fmt(diffFcst), valClass_(fcst), valClass_(diffFcst)),
-    buildCardHtml_('達成率', rate, '', rate !== '-' && parseFloat(rate) < 100 ? 'val-neg' : 'val-neutral')
-  ].join('');
-}
-
-function buildMetricDatasets_(rows) {
-  var definitions = getMetricDefinitions_();
-  if (!definitions.length) {
-    definitions = [
-      { key: 'target', label: '目標', type: 'line', color: '#ea4335', dash: true },
-      { key: 'actual', label: '実績', type: 'bar', color: '#1a73e8' },
-      { key: 'expectedMrr', label: '期待MRR', type: 'bar', color: '#34a853' },
-      { key: 'fcst', label: 'FCST', type: 'bar', color: '#fbbc04' }
-    ];
-  }
-  return definitions.map(function(def) {
-    var isLine = def.type === 'line' || def.key === 'target';
-    return {
-      label: def.label || def.key,
-      data: rows.map(function(row) { return Number(row[def.key]) || 0; }),
-      type: isLine ? 'line' : 'bar',
-      borderColor: def.color || '#5f6368',
-      backgroundColor: isLine ? 'transparent' : ((def.color || '#5f6368') + '66'),
-      borderWidth: isLine ? 2 : 1,
-      borderDash: def.dash ? [8, 4] : [],
-      pointRadius: isLine ? 0 : undefined,
-      tension: 0
-    };
-  });
-}
-
-function renderChart() {
-  var canvas = document.getElementById('mainChart');
-  if (!canvas || !D || !D.weeks.length) return;
-  if (chart) chart.destroy();
-  var ctx = canvas.getContext('2d');
-  var options = buildChartOptions_();
-
-  if (currentView === 'weekly') {
-    var dept = getSelectedDept_();
-    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: D.weeks.map(getWeekLabel_),
-        datasets: buildMetricDatasets_(rows)
-      },
-      options: Object.assign(options, {
-        onClick: function(_, elements) {
-          if (!elements.length) {
-            chartFilter = null;
-          } else {
-            var label = D.weeks[elements[0].index];
-            chartFilter = chartFilter && chartFilter.type === 'week' && chartFilter.value === label
-              ? null
-              : { type: 'week', value: label };
-          }
-          renderDeals();
-        }
-      })
-    });
-    return;
-  }
-
-  var week = getSelectedWeek_();
-  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
-  chart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: D.depts,
-      datasets: buildMetricDatasets_(D.depts.map(function(dept) { return getDeptData(week, dept); }))
-    },
-    options: Object.assign(options, {
-      onClick: function(_, elements) {
-        if (!elements.length) {
-          chartFilter = null;
-        } else {
-          var label = D.depts[elements[0].index];
-          chartFilter = chartFilter && chartFilter.type === 'dept' && chartFilter.value === label
-            ? null
-            : { type: 'dept', value: label };
-        }
-        renderDeals();
-      }
-    }),
-    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
-  });
-}
-
-function collectDeals_() {
-  if (!D || !D.weeks.length) return [];
-  var deals = [];
-  var week = currentView === 'weekly'
-    ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || D.weeks[D.weeks.length - 1])
-    : getSelectedWeek_();
-  var depts = [];
-
-  if (currentView === 'weekly') {
-    var selectedDept = getSelectedDept_();
-    depts = (selectedDept === ALL_DEPTS_LABEL || selectedDept === getAllDeptLabel_()) ? D.depts.slice() : [selectedDept];
-  } else {
-    depts = chartFilter && chartFilter.type === 'dept' && chartFilter.value
-      ? [chartFilter.value]
-      : D.depts.slice();
-  }
-
-  depts.forEach(function(dept) {
-    getMetricDeals_(week, dept).forEach(function(deal) {
-      deals.push(deal);
-    });
-  });
-
-  return deals;
-}
-
-function getMetricDeals_(week, dept) {
-  var metric = getDeptData(week, dept);
-  if (Array.isArray(metric.keyDealsData) && metric.keyDealsData.length) {
-    return metric.keyDealsData.map(function(deal) {
-      return {
-        dept: deal.dept || dept,
-        company: deal.company || '',
-        mrr: Number(deal.mrr) || 0,
-        phase: deal.phase || '-',
-        yomi: Number(deal.yomi) || 0
-      };
-    });
-  }
-  return parseDeals(metric.keyDeal).map(function(deal) {
-    return {
-      dept: dept,
-      company: deal.company,
-      mrr: deal.mrr,
-      phase: deal.phase,
-      yomi: deal.yomi
-    };
-  });
 }
 
 bootstrap_();
