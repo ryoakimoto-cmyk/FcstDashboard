@@ -490,7 +490,7 @@ function loadCurrentData_(division) {
 function loadSnapshotData_(division, beforeDate) {
   loadingHistory = true;
   snapshotLoadError = '';
-  showLoading_('過去データを読み込み中...');
+  renderHistoryMeta_();
   google.script.run
     .withSuccessHandler(function(result) {
       mergeDashboardData_(normalizeResult_(result || {}));
@@ -500,13 +500,13 @@ function loadSnapshotData_(division, beforeDate) {
       updateDivisionTabs_();
       buildDeptOptions_();
       updateWeekLabel();
-      hideLoading_();
       loadingHistory = false;
       render();
     })
     .withFailureHandler(function(err) {
       loadingHistory = false;
-      showLoading_('エラー: ' + getErrorMessage_(err));
+      snapshotLoadError = getErrorMessage_(err);
+      renderHistoryMeta_();
     })
     .getMrrDashboardData(division, beforeDate || '');
 }

@@ -246,6 +246,11 @@ assertNoMojibake('mrr-index.html', mrr);
   assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
 });
 assertNotIncludes(mrr, 'prepareInitialSnapshots_();', 'MRR initial render must not auto-load snapshots');
+const loadSnapshotBody = (mrr.match(/function loadSnapshotData_\(division, beforeDate\) \{[\s\S]*?\n\}/) || [''])[0];
+assertIncludes(loadSnapshotBody, 'renderHistoryMeta_();', 'MRR history load must update metadata instead of blocking the screen');
+assertIncludes(loadSnapshotBody, 'snapshotLoadError = getErrorMessage_(err);', 'MRR history load failures must stay in history metadata');
+assertNotIncludes(loadSnapshotBody, "showLoading_('過去データを読み込み中...');", 'MRR history load must not show global loading overlay');
+assertNotIncludes(loadSnapshotBody, "showLoading_('エラー: ' + getErrorMessage_(err));", 'MRR history load failure must not replace the current screen');
 assertCount(
   mrr,
   'metricDefinitions: Array.isArray(result.metricDefinitions)',
