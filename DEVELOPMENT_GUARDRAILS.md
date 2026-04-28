@@ -53,3 +53,4 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - `DriveApp.getFolderById` / `DriveApp.getFileById` は full Drive scope を要求し、手動実行時に権限未承認で snapshot 作成を止めるため禁止。
 - DB ファイルは Drive API + `drive.file` scope で、作成時に `parents: [SNAPSHOT_DB_FOLDER_ID]` を指定して直接 FCSTDB フォルダ配下へ作る。
 - snapshot payload、cache key、既存シート schema を権限回避目的で変更しない。
+- Drive API が Apps Script の紐づく GCP project で無効な場合はコードでは解決できない。GCP project owner / admin が `drive.googleapis.com` を有効化してから `manualAuthorizeSnapshotDbFolder` を再実行する。
