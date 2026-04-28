@@ -54,6 +54,12 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 - `clasp` にはversion削除コマンドがないため、削除はApps Scriptエディタのプロジェクト履歴画面で行う。
 - 削除してよいのはproduction deploymentや直近rollback候補に使っていない古いversionだけ。削除前後に `clasp deployments` でproduction deploymentのversionを確認する。
 
+## Apps Script Runtime Diagnostics Rules
+
+- Do not use `clasp run` in this project. It is blocked by execution/API permissions and is not a reliable diagnostic path.
+- For runtime data checks, use explicit manual functions in the Apps Script editor, deployed web app behavior, logs, or direct Drive/Sheets inspection with existing OAuth permissions.
+- If a runtime diagnostic function is missing, add a bounded manual diagnostic function and deploy it through the normal validate -> push -> version -> deploy flow instead of trying `clasp run`.
+
 ## Snapshot DB Folder Rules
 
 - Snapshot DB ファイルは元ファイル `SPREADSHEET_ID` と同じ親フォルダへ作成する。
