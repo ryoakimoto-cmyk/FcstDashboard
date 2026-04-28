@@ -52,7 +52,7 @@ DB files now store app-owned growth/state data:
 
 ## Implementation notes
 
-`SnapshotStorage.gs` is the new storage layer. It creates DB spreadsheets with names like `FcstDashboard DB - <sheet name> - <timestamp>`, moves new DB files to the configured `FCSTDB` Drive folder, stores the active file ID in script properties, and rolls over to a new DB file before hitting the configured cell limit or after a cell-limit write error.
+`SnapshotStorage.gs` is the new storage layer. It creates DB spreadsheets with names like `FcstDashboard DB - <sheet name> 1`, moves new DB files to the configured `FCSTDB` Drive folder, stores the active file ID in script properties, and rolls over to a new DB file before hitting the configured cell limit or after a cell-limit write error. Numbering starts from `1` per DB-owned sheet type.
 
 Reads are DB-only for the DB-owned sheets above. The app does not read legacy sheets from the main spreadsheet for `FCSTスナップショット`, `案件リストスナップショット`, or `FCST調整`. This project has not started production operation for this storage split, so old compatibility paths should be cleaned up instead of preserved.
 

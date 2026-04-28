@@ -86,21 +86,24 @@ function SnapshotStorage_getActiveSheet_(sheetName, headers) {
 }
 
 function SnapshotStorage_createFile_(sheetName, headers) {
-  var timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd-HHmmss');
-  var ss = SpreadsheetApp.create('FcstDashboard DB - ' + sheetName + ' - ' + timestamp);
+  var ids = SnapshotStorage_getFileIds_(sheetName);
+  var ss = SpreadsheetApp.create(SnapshotStorage_buildFileName_(sheetName, ids.length + 1));
   var sheet = ss.getSheets()[0];
   sheet.setName(sheetName);
   SnapshotStorage_ensureSheetShape_(sheet, headers, true);
   SnapshotStorage_moveFileToDbFolder_(ss);
 
   var fileId = ss.getId();
-  var ids = SnapshotStorage_getFileIds_(sheetName);
   if (ids.indexOf(fileId) === -1) ids.push(fileId);
   SnapshotStorage_setFileIds_(sheetName, ids);
   SnapshotStorage_setActiveFileId_(sheetName, fileId);
   SnapshotStorage_recordIndex_(sheetName, ss, sheet, true);
   Logger.log('SnapshotStorage created file: sheet=' + sheetName + ' fileId=' + fileId + ' url=' + ss.getUrl());
   return sheet;
+}
+
+function SnapshotStorage_buildFileName_(sheetName, sequence) {
+  return 'FcstDashboard DB - ' + sheetName + ' ' + Math.max(1, Number(sequence) || 1);
 }
 
 function SnapshotStorage_moveFileToDbFolder_(spreadsheet) {
