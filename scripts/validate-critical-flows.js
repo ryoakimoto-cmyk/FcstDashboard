@@ -52,6 +52,8 @@ assertIncludes(appDataCache, 'function AppDataCache_warmDept_(deptKey)', 'shared
 
 const aggregatedCache = read('AggregatedCache.gs');
 assertIncludes(aggregatedCache, 'MrrDashboard_prewarmCurrentCache();', 'MRR current cache must be prewarmed by the 5-minute cache job');
+assertIncludes(aggregatedCache, 'function AggregatedCache_readMany(deptKeys)', 'bulk aggregated cache read helper missing');
+assertIncludes(aggregatedCache, 'function AggregatedCache_buildResultFromMap_(map)', 'aggregated cache decode builder missing');
 [
   "prefix + 'members'",
   "prefix + 'adjusted'",
@@ -292,13 +294,15 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'opts.currentOnly || opts.includeCurrent',
   'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
   'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey, diagnostics)',
-  'function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics)',
-  'function MrrDashboard_getValidatedCurrentInitData_(deptKey)',
+  'function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics, currentCache)',
+  'function MrrDashboard_getValidatedCurrentInitData_(deptKey, currentCache)',
   'function MrrDashboard_validateCurrentInitData_(deptKey, live)',
   "reason = 'department_total_missing'",
   'function MrrDashboard_readCurrentOppDeals_(deptKeys, periodByDept)',
+  'function MrrDashboard_readCurrentCacheMap_(deptKeys)',
   "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })",
-  'AggregatedCache_read(deptKey)',
+  'AggregatedCache_readMany(missing)',
+  "CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false })",
   'AppDataCache_getOpportunities(deptKey)',
   "weekLabels[MRR_DASHBOARD_LIVE_KEY] = '現在';",
   'function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit)',
@@ -334,6 +338,11 @@ assertNotIncludes(
   mrrSnapshot,
   'AppDataCache_refreshInitData(deptKey)',
   'MRR initial current data must not perform live refresh during user loading'
+);
+assertNotIncludes(
+  mrrSnapshot,
+  'AggregatedCache_read(deptKey)',
+  'MRR initial current data must bulk-read aggregated cache instead of per-dept full sheet reads'
 );
 
 console.log('critical flow checks passed');

@@ -89,9 +89,10 @@ function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKe
   var liveRows = {};
   var total = MrrDashboard_emptyMetric_();
   var hasLive = false;
+  var currentCache = MrrDashboard_readCurrentCacheMap_(deptKeys);
 
   (deptKeys || []).forEach(function(deptKey) {
-    var metric = MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics);
+    var metric = MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics, currentCache);
     if (!metric) return;
     liveRows[MrrDashboard_getDeptLabel_(deptKey)] = metric;
     MrrDashboard_accumulateMetric_(total, metric);
@@ -105,8 +106,44 @@ function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKe
   data[MRR_DASHBOARD_LIVE_KEY] = liveRows;
 }
 
-function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics) {
-  var validated = MrrDashboard_getValidatedCurrentInitData_(deptKey);
+function MrrDashboard_readCurrentCacheMap_(deptKeys) {
+  var result = {};
+  var missing = [];
+
+  (deptKeys || []).forEach(function(deptKey) {
+    try {
+      var live = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
+      if (live) {
+        result[deptKey] = { live: live, source: 'script_cache', error: '' };
+        return;
+      }
+    } catch (e) {
+      result[deptKey] = {
+        live: null,
+        source: '',
+        error: String(e && e.message ? e.message : e)
+      };
+    }
+    missing.push(deptKey);
+  });
+
+  if (missing.length) {
+    var bulk = AggregatedCache_readMany(missing);
+    missing.forEach(function(deptKey) {
+      if (bulk && bulk[deptKey]) {
+        result[deptKey] = { live: bulk[deptKey], source: 'aggregated_cache', error: '' };
+        try { CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false }); } catch (e2) {}
+      } else if (!result[deptKey]) {
+        result[deptKey] = { live: null, source: '', error: '' };
+      }
+    });
+  }
+
+  return result;
+}
+
+function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics, currentCache) {
+  var validated = MrrDashboard_getValidatedCurrentInitData_(deptKey, currentCache);
   if (!validated.ok) {
     MrrDashboard_addCurrentDiagnostic_(diagnostics, validated);
     return null;
@@ -124,40 +161,17 @@ function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics) {
   return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, validated.periodKey);
 }
 
-function MrrDashboard_getValidatedCurrentInitData_(deptKey) {
-  var cached = MrrDashboard_readCurrentInitData_(deptKey);
+function MrrDashboard_getValidatedCurrentInitData_(deptKey, currentCache) {
+  var cached = MrrDashboard_readCurrentInitData_(deptKey, currentCache);
   var checked = MrrDashboard_validateCurrentInitData_(deptKey, cached.live);
   checked.source = cached.source || '';
   if (!checked.ok && cached.error) checked.error = cached.error;
   return checked;
 }
 
-function MrrDashboard_readCurrentInitData_(deptKey) {
-  var live = null;
-  var source = '';
-  var errors = [];
-
-  try {
-    live = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
-    if (live) source = 'script_cache';
-  } catch (e) {
-    errors.push(String(e && e.message ? e.message : e));
-  }
-
-  if (!live) {
-    try {
-      live = AggregatedCache_read(deptKey);
-      if (live) source = 'aggregated_cache';
-    } catch (e2) {
-      errors.push(String(e2 && e2.message ? e2.message : e2));
-    }
-  }
-
-  return {
-    live: live,
-    source: source,
-    error: errors.join(' / ')
-  };
+function MrrDashboard_readCurrentInitData_(deptKey, currentCache) {
+  var cached = currentCache && currentCache[deptKey];
+  return cached || { live: null, source: '', error: '' };
 }
 
 function MrrDashboard_validateCurrentInitData_(deptKey, live) {

@@ -467,15 +467,19 @@ function loadCurrentData_(division) {
   showLoading_('現在値を読み込み中...');
   google.script.run
     .withSuccessHandler(function(result) {
-      D = normalizeResult_(result || {});
-      currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
-      currentDivision = D.division || division;
-      chartFilter = null;
-      updateDivisionTabs_();
-      buildDeptOptions_();
-      updateWeekLabel();
-      hideLoading_();
-      render();
+      try {
+        D = normalizeResult_(result || {});
+        currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
+        currentDivision = D.division || division;
+        chartFilter = null;
+        updateDivisionTabs_();
+        buildDeptOptions_();
+        updateWeekLabel();
+        hideLoading_();
+        render();
+      } catch (e) {
+        showLoading_('描画エラー: ' + getErrorMessage_(e));
+      }
     })
     .withFailureHandler(function(err) {
       showLoading_('エラー: ' + getErrorMessage_(err));
@@ -632,8 +636,16 @@ function render() {
   if (!D) return;
   renderHistoryMeta_();
   renderCards();
-  renderChart();
+  renderChartSafely_();
   renderDeals();
+}
+
+function renderChartSafely_() {
+  try {
+    renderChart();
+  } catch (e) {
+    renderChartError_('グラフ描画エラー: ' + getErrorMessage_(e));
+  }
 }
 
 function renderHistoryMeta_() {
@@ -729,6 +741,11 @@ function buildCardHtml_(label, value, sub, valueClass, subClass) {
 function renderChart() {
   var canvas = document.getElementById('mainChart');
   if (!canvas || !D) return;
+  clearChartError_();
+  if (typeof Chart !== 'function') {
+    renderChartError_('グラフライブラリを読み込めませんでした。数値とKey Dealは表示しています。');
+    return;
+  }
   if (chart) chart.destroy();
   if (!D.weeks.length) return;
 
@@ -773,6 +790,32 @@ function renderChart() {
     }),
     plugins: [makeTargetTickPlugin_('targetTicks', targets)]
   });
+}
+
+function clearChartError_() {
+  var canvas = document.getElementById('mainChart');
+  if (canvas) canvas.style.display = '';
+  var err = document.getElementById('chartError');
+  if (err && err.parentNode) err.parentNode.removeChild(err);
+}
+
+function renderChartError_(message) {
+  if (chart) {
+    try { chart.destroy(); } catch (e) {}
+    chart = null;
+  }
+  var canvas = document.getElementById('mainChart');
+  if (canvas) canvas.style.display = 'none';
+  var panel = document.querySelector('.chart-panel');
+  if (!panel) return;
+  var err = document.getElementById('chartError');
+  if (!err) {
+    err = document.createElement('div');
+    err.id = 'chartError';
+    err.className = 'empty-state';
+    panel.appendChild(err);
+  }
+  err.textContent = message;
 }
 
 function toggleFilter_(type, value) {

@@ -4,7 +4,28 @@ function AggregatedCache_read(deptKey) {
 
   var values = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
   var map = AggregatedCache_decodeMap_(deptKey, values);
+  return AggregatedCache_buildResultFromMap_(map);
+}
 
+function AggregatedCache_readMany(deptKeys) {
+  var result = {};
+  var keys = deptKeys || [];
+  if (!keys.length) return result;
+
+  var sheet = AggregatedCache_getSheet_(keys[0]);
+  if (!sheet || sheet.getLastRow() < 1) return result;
+
+  var values = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
+  keys.forEach(function(deptKey) {
+    var map = AggregatedCache_decodeMap_(deptKey, values);
+    var data = AggregatedCache_buildResultFromMap_(map);
+    if (data) result[deptKey] = data;
+  });
+  return result;
+}
+
+function AggregatedCache_buildResultFromMap_(map) {
+  map = map || {};
   if (!map.hasOwnProperty('members')) return null;
   if (!Array.isArray(map.members)) return null;
   if (map.hasOwnProperty('periodOptions') && !Array.isArray(map.periodOptions)) return null;
