@@ -117,6 +117,10 @@ assertIncludes(mrrDashboard, 'OppListSnapshot_getAllValues_(5)', 'MRR dashboard 
 assertIncludes(mrrDashboard, "source: 'snapshot'", 'MRR dashboard must report snapshot source');
 assertIncludes(mrrDashboard, "MrrDashboard_divisionKey_(cfg)", 'MRR dashboard must map SSCS departments into the SS division');
 assertIncludes(mrrDashboard, ".setTitle('MRR進捗ダッシュボード')", 'MRR dashboard server title must be valid UTF-8');
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_TOTAL_KEY = 'total';", 'MRR dashboard total key must be Apps Script RPC-safe');
+if (mrrDashboard.includes('__total__')) {
+  throw new Error('MRR dashboard response must not include properties ending with "__"');
+}
 const mrrBuild = getFunctionBody(mrrDashboard, 'MrrDashboard_buildFromSnapshots_');
 assertIncludes(mrrBuild, 'var rowDeptKey = String(nameRaw.split', 'MRR dashboard must recover department key from snapshot row name');
 assertIncludes(mrrBuild, 'var metaDeptKey = String(meta.dept ||', 'MRR dashboard must normalize snapshot meta dept');
@@ -153,6 +157,10 @@ const mrrClient = read('mrr-index.html');
 assertIncludes(mrrClient, 'MRR進捗ダッシュボード', 'MRR dashboard title must be valid UTF-8');
 assertIncludes(mrrClient, 'getMrrDashboardData()', 'MRR client must load backend dashboard data');
 assertIncludes(mrrClient, 'Key Deal はありません', 'MRR client must render empty Key Deal state without parser fallback');
+assertIncludes(mrrClient, "return (D && D.totalKey) || 'total';", 'MRR client total fallback key must be Apps Script RPC-safe');
+if (mrrClient.includes('__total__')) {
+  throw new Error('MRR client must not depend on properties ending with "__"');
+}
 
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');

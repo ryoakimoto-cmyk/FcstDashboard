@@ -1,7 +1,7 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v3';
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v4';
 var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2'];
-var MRR_DASHBOARD_TOTAL_KEY = '__total__';
+var MRR_DASHBOARD_TOTAL_KEY = 'total';
 
 function mrrDashboard_doGet_() {
   return HtmlService.createHtmlOutputFromFile('mrr-index')
