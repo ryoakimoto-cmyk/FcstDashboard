@@ -201,6 +201,8 @@ const mrrDashboard = read('MrrDashboard.gs');
 
 const mrrSnapshot = read('MrrSnapshotDashboard.gs');
 assertNoMojibake('MrrSnapshotDashboard.gs', mrrSnapshot);
+assertNotIncludes(mrrSnapshot, 'Object.keys(opp.dates', 'BO MRR week list must come from FCST snapshots only');
+assertNotIncludes(mrrSnapshot, 'Fallback_', 'BO MRR runtime must not use ad-hoc fallback naming');
 [
   'function MrrDashboard_getBoData_()',
   "totalDeptKey: 'BO'",
@@ -210,9 +212,11 @@ assertNoMojibake('MrrSnapshotDashboard.gs', mrrSnapshot);
   'getRange(1, 1, sheet.getLastRow(), 4).getValues()',
   'getRange(2, 1, sheet.getLastRow() - 1, OPP_HISTORY_V2_HEADERS.length).getValues()',
   'SharedAppState_isDepartmentTotal_({',
-  'function MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey)',
+  'function MrrDashboard_addFcstSnapshotPayloadToBucket_(buckets, deptKey, dateStr, period, payload, nameRaw)',
+  'function MrrDashboard_selectFcstSnapshotPayload_(bucket)',
+  'function MrrDashboard_getFcstSnapshotRowKind_(payload, nameRaw, deptKey)',
   'function MrrDashboard_addFcstPayload_(sum, payload)',
-  'var payload = bucket.totalPayload || (bucket.sumCount ? bucket.sumPayload : null);',
+  'var payload = MrrDashboard_selectFcstSnapshotPayload_(buckets[deptKey][dateStr][period]);',
   'function MrrDashboard_getBoMetricDefinitions_()',
   "key: 'fcstAdjusted'",
   "key: 'fcstMax'",

@@ -7,7 +7,6 @@ function MrrDashboard_getBoData_() {
   var datesSeen = {};
 
   Object.keys(fcst.dates || {}).forEach(function(dateStr) { datesSeen[dateStr] = true; });
-  Object.keys(opp.dates || {}).forEach(function(dateStr) { datesSeen[dateStr] = true; });
 
   var weeks = Object.keys(datesSeen).sort();
   var deptLabels = deptKeys.map(function(deptKey) {
@@ -89,22 +88,13 @@ function MrrDashboard_readBoFcstSnapshots_(deptKeys) {
       payload = {};
     }
 
-    var bucket = MrrDashboard_getFcstSnapshotBucket_(buckets, deptKey, dateStr, period);
-    if (MrrDashboard_isDepartmentTotalPayload_(payload, deptKey)) {
-      bucket.totalPayload = payload;
-      return;
-    }
-    if (MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey)) {
-      bucket.sumPayload = MrrDashboard_addFcstPayload_(bucket.sumPayload, payload);
-      bucket.sumCount++;
-    }
+    MrrDashboard_addFcstSnapshotPayloadToBucket_(buckets, deptKey, dateStr, period, payload, nameRaw);
   });
 
   Object.keys(buckets).forEach(function(deptKey) {
     Object.keys(buckets[deptKey]).forEach(function(dateStr) {
       Object.keys(buckets[deptKey][dateStr]).forEach(function(period) {
-        var bucket = buckets[deptKey][dateStr][period];
-        var payload = bucket.totalPayload || (bucket.sumCount ? bucket.sumPayload : null);
+        var payload = MrrDashboard_selectFcstSnapshotPayload_(buckets[deptKey][dateStr][period]);
         if (!payload) return;
 
         if (!context.metricsByDeptDate[deptKey]) context.metricsByDeptDate[deptKey] = {};
@@ -242,12 +232,58 @@ function MrrDashboard_getFcstSnapshotBucket_(buckets, deptKey, dateStr, period) 
   if (!buckets[deptKey][dateStr]) buckets[deptKey][dateStr] = {};
   if (!buckets[deptKey][dateStr][period]) {
     buckets[deptKey][dateStr][period] = {
-      totalPayload: null,
-      sumPayload: MrrDashboard_emptyFcstPayload_(),
-      sumCount: 0
+      departmentPayload: null,
+      groupPayload: MrrDashboard_emptyFcstPayload_(),
+      groupCount: 0,
+      individualPayload: MrrDashboard_emptyFcstPayload_(),
+      individualCount: 0
     };
   }
   return buckets[deptKey][dateStr][period];
+}
+
+function MrrDashboard_addFcstSnapshotPayloadToBucket_(buckets, deptKey, dateStr, period, payload, nameRaw) {
+  var bucket = MrrDashboard_getFcstSnapshotBucket_(buckets, deptKey, dateStr, period);
+  var rowKind = MrrDashboard_getFcstSnapshotRowKind_(payload, nameRaw, deptKey);
+  if (rowKind === 'department') {
+    bucket.departmentPayload = payload;
+    return;
+  }
+  if (rowKind === 'group') {
+    bucket.groupPayload = MrrDashboard_addFcstPayload_(bucket.groupPayload, payload);
+    bucket.groupCount++;
+    return;
+  }
+  if (rowKind === 'individual') {
+    bucket.individualPayload = MrrDashboard_addFcstPayload_(bucket.individualPayload, payload);
+    bucket.individualCount++;
+  }
+}
+
+function MrrDashboard_selectFcstSnapshotPayload_(bucket) {
+  if (!bucket) return null;
+  if (bucket.departmentPayload) return bucket.departmentPayload;
+  if (bucket.groupCount) return bucket.groupPayload;
+  if (bucket.individualCount) return bucket.individualPayload;
+  return null;
+}
+
+function MrrDashboard_getFcstSnapshotRowKind_(payload, nameRaw, deptKey) {
+  if (MrrDashboard_isDepartmentTotalPayload_(payload, deptKey)) return 'department';
+
+  var meta = (payload && payload.__meta) || {};
+  if (meta.isTotal) return 'group';
+
+  var name = MrrDashboard_parseSnapshotMemberName_(nameRaw);
+  if (!name || name === String(deptKey || '') || name === SHARED_ALL_GROUP_LABEL) return '';
+  if (/全体$/.test(name) || /グループ$/.test(name)) return 'group';
+  return 'individual';
+}
+
+function MrrDashboard_parseSnapshotMemberName_(nameRaw) {
+  var text = String(nameRaw || '');
+  var idx = text.indexOf(':');
+  return idx >= 0 ? text.slice(idx + 1) : text;
 }
 
 function MrrDashboard_isDepartmentTotalPayload_(payload, deptKey) {
@@ -261,17 +297,6 @@ function MrrDashboard_isDepartmentTotalPayload_(payload, deptKey) {
     groupCode: meta.groupCode || '',
     dept: meta.dept || deptKey
   }, deptKey);
-}
-
-function MrrDashboard_shouldIncludeInFcstFallback_(payload, nameRaw, deptKey) {
-  var meta = (payload && payload.__meta) || {};
-  if (meta.isTotal) return false;
-  var text = String(nameRaw || '');
-  var idx = text.indexOf(':');
-  var name = idx >= 0 ? text.slice(idx + 1) : text;
-  if (!name || name === String(deptKey || '') || name === SHARED_ALL_GROUP_LABEL) return false;
-  if (/全体$/.test(name) || /グループ$/.test(name)) return false;
-  return true;
 }
 
 function MrrDashboard_emptyFcstPayload_() {
