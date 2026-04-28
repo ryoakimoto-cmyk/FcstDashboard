@@ -208,11 +208,14 @@ function manualArmSnapshotStorageFreshStartCleanup() {
   PropertiesService.getScriptProperties().setProperty(SNAPSHOT_STORAGE_CLEANUP_ARM_PROP, String(expiresAt));
   var plan = SnapshotStorage_getFreshStartPlan();
   plan.armedUntil = Utilities.formatDate(new Date(expiresAt), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+  Logger.log(JSON.stringify(plan, null, 2));
   return plan;
 }
 
 function manualCleanupSnapshotStorageForFreshStart() {
-  return SnapshotStorage_cleanupForFreshStart();
+  var result = SnapshotStorage_cleanupForFreshStart();
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
 }
 
 function SnapshotStorage_cleanupForFreshStart() {
