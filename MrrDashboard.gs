@@ -39,15 +39,17 @@ function MrrDashboard_buildFromSnapshots_() {
     if (!(snapshotAt instanceof Date) || isNaN(snapshotAt)) return;
 
     var nameRaw = String(row[1] || '').trim();
-    var rowDeptKey = String(nameRaw.split(':')[0] || '').trim();
+    var rowInfo = FcstSnapshot_parseRowName_(nameRaw);
+    var rowDeptKey = String(rowInfo.deptKey || '').trim();
     var periodKey = String(row[2] || '').trim();
     var payload = MrrDashboard_parseJson_(row[3]);
-    var meta = payload.__meta || {};
-    var metaDeptKey = String(meta.dept || '').trim();
-    var deptKey = metaDeptKey || rowDeptKey;
+    var rawMeta = payload.__meta || {};
+    var metaDeptKey = String(rawMeta.dept || '').trim();
+    var meta = FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowInfo.name);
+    var deptKey = meta.dept || rowDeptKey;
     var deptMeta = catalog.byDeptKey[deptKey];
     if (!deptMeta || !periodKey) return;
-    if (!meta.isTotal || meta.totalKind !== 'department') return;
+    if (meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT) return;
     if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;
 
     var divisionKey = deptMeta.divisionKey;

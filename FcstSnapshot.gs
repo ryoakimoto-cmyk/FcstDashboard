@@ -43,17 +43,7 @@ function FcstSnapshot_createAt_(deptKey, members, notesMap, periodKeys, snapshot
 
       payload.weekOverWeek = FcstSnapshot_buildWeekOverWeek_(metric, prevMetricMap[mapKey] || {}, metricKeys);
       payload.note = String(notes[mapKey] || '');
-      var isDepartmentTotal = !!member.isTotal && member.totalKind === SHARED_TOTAL_KIND.DEPARTMENT;
-      payload.__meta = {
-        isTotal: !!member.isTotal,
-        group: member.group || '',
-        groupCode: member.groupCode || (isDepartmentTotal ? deptKey : ''),
-        dept: member.dept || (isDepartmentTotal ? deptKey : ''),
-        totalKind: member.totalKind || '',
-        captureMode: captureMode,
-        name: member.name
-      };
-      if (options.backfilled) payload.__meta.backfilled = true;
+      payload.__meta = FcstSnapshot_buildPayloadMeta_(member, options);
 
       rows.push([snapshotDate, deptKey + ':' + member.name, period, JSON.stringify(payload)]);
     });
@@ -90,6 +80,67 @@ function FcstSnapshot_normalizeCaptureMode_(captureMode) {
   var mode = String(captureMode || '').trim();
   if (mode === 'scheduled' || mode === 'auto-recovery' || mode === 'manual-backfill') return mode;
   return 'scheduled';
+}
+
+function FcstSnapshot_buildPayloadMeta_(member, options) {
+  var meta = {};
+  var totalKind = String(member && member.totalKind || '').trim();
+  if (!totalKind) {
+    totalKind = member && member.isTotal ? SHARED_TOTAL_KIND.GROUP : SHARED_TOTAL_KIND.INDIVIDUAL;
+  }
+  meta.totalKind = totalKind;
+
+  var group = String(member && member.group || '').trim();
+  if (group) meta.group = group;
+
+  if (options && options.backfilled) meta.backfilled = true;
+  return meta;
+}
+
+function FcstSnapshot_parseRowName_(nameRaw) {
+  var text = String(nameRaw || '').trim();
+  var idx = text.indexOf(':');
+  if (idx < 0) return { deptKey: '', name: text };
+  return {
+    deptKey: text.slice(0, idx),
+    name: text.slice(idx + 1)
+  };
+}
+
+function FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowName) {
+  var raw = payload && payload.__meta || {};
+  var name = String(rowName || raw.name || '').trim();
+  var totalKind = String(raw.totalKind || '').trim();
+  var legacyIsTotal = raw.isTotal === true;
+
+  if (!totalKind) {
+    if (legacyIsTotal) {
+      totalKind = (name === 'department-total' || String(raw.group || '') === SHARED_ALL_GROUP_LABEL)
+        ? SHARED_TOTAL_KIND.DEPARTMENT
+        : SHARED_TOTAL_KIND.GROUP;
+    } else {
+      totalKind = SHARED_TOTAL_KIND.INDIVIDUAL;
+    }
+  }
+
+  var isTotal = totalKind !== SHARED_TOTAL_KIND.INDIVIDUAL;
+  var dept = String(raw.dept || rowDeptKey || '').trim();
+  var group = String(raw.group || '').trim();
+  var groupCode = String(raw.groupCode || '').trim();
+
+  if (!group && totalKind === SHARED_TOTAL_KIND.DEPARTMENT) group = SHARED_ALL_GROUP_LABEL;
+  if (!group && totalKind === SHARED_TOTAL_KIND.GROUP) group = name;
+  if (!groupCode && totalKind === SHARED_TOTAL_KIND.DEPARTMENT) groupCode = dept;
+  if (!groupCode) groupCode = group;
+
+  return {
+    isTotal: isTotal,
+    totalKind: totalKind,
+    dept: dept,
+    group: group,
+    groupCode: groupCode,
+    backfilled: raw.backfilled === true
+  };
 }
 
 function FcstSnapshot_buildSnapshotInputFromLive_(liveData) {
@@ -343,9 +394,10 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
   rows.forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
+    var rowInfo = FcstSnapshot_parseRowName_(nameRaw);
     if (!(d instanceof Date) || isNaN(d)) return;
-    if (!nameRaw.startsWith(deptKey + ':')) return;
-    var name = nameRaw.slice(deptKey.length + 1);
+    if (rowInfo.deptKey !== deptKey) return;
+    var name = rowInfo.name;
     if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') !== timestampKey) return;
     var period = String(row[2] || '').trim();
     var payload;
@@ -356,14 +408,13 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt) {
     }
 
     if (!memberMap[name]) {
-      var meta = payload.__meta || {};
-      var isDepartmentTotalMember = !!meta.isTotal && meta.totalKind === SHARED_TOTAL_KIND.DEPARTMENT;
+      var meta = FcstSnapshot_normalizeMeta_(payload, rowInfo.deptKey, name);
       memberMap[name] = {
         name: name,
-        isTotal: !!meta.isTotal,
+        isTotal: meta.isTotal,
         group: meta.group || '',
-        groupCode: meta.groupCode || (isDepartmentTotalMember ? deptKey : ''),
-        dept: meta.dept || (isDepartmentTotalMember ? deptKey : ''),
+        groupCode: meta.groupCode || '',
+        dept: meta.dept || '',
         totalKind: meta.totalKind || '',
         sortOrder: 0
       };
@@ -621,16 +672,16 @@ function FcstSnapshot_getTrendWeekDetails(deptKey, periodKey, snapshotKey) {
 }
 
 function FcstSnapshot_isDepartmentTotalRowForDept_(payload, deptKey, nameRaw) {
-  var meta = payload && payload.__meta || {};
-  if (!meta.isTotal || meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT) return false;
-
   var expectedDept = String(deptKey || '').trim();
-  var rowDept = String(nameRaw || '').split(':')[0].trim();
-  var metaDept = String(meta.dept || '').trim();
+  var rowInfo = FcstSnapshot_parseRowName_(nameRaw);
+  var rowDept = String(rowInfo.deptKey || '').trim();
+  var rawMeta = payload && payload.__meta || {};
+  var metaDept = String(rawMeta.dept || '').trim();
+  var meta = FcstSnapshot_normalizeMeta_(payload, rowDept || expectedDept, rowInfo.name);
   if (!expectedDept) return false;
   if (rowDept && rowDept !== expectedDept) return false;
   if (metaDept && metaDept !== expectedDept) return false;
-  return true;
+  return meta.totalKind === SHARED_TOTAL_KIND.DEPARTMENT;
 }
 
 function FcstSnapshot_setupWeeklyTrigger() {

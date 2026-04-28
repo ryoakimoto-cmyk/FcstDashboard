@@ -122,9 +122,10 @@ if (mrrDashboard.includes('__total__')) {
   throw new Error('MRR dashboard response must not include properties ending with "__"');
 }
 const mrrBuild = getFunctionBody(mrrDashboard, 'MrrDashboard_buildFromSnapshots_');
-assertIncludes(mrrBuild, 'var rowDeptKey = String(nameRaw.split', 'MRR dashboard must recover department key from snapshot row name');
-assertIncludes(mrrBuild, 'var metaDeptKey = String(meta.dept ||', 'MRR dashboard must normalize snapshot meta dept');
-assertIncludes(mrrBuild, 'var deptKey = metaDeptKey || rowDeptKey', 'MRR dashboard must accept existing snapshots with blank meta dept');
+assertIncludes(mrrBuild, 'FcstSnapshot_parseRowName_(nameRaw)', 'MRR dashboard must recover department key from snapshot row name');
+assertIncludes(mrrBuild, 'FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowInfo.name)', 'MRR dashboard must use normalized snapshot metadata');
+assertIncludes(mrrBuild, 'var deptKey = meta.dept || rowDeptKey', 'MRR dashboard must accept existing snapshots with blank meta dept');
+assertIncludes(mrrBuild, 'meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT', 'MRR dashboard must identify department totals through normalized metadata');
 assertIncludes(mrrBuild, 'if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;', 'MRR dashboard must reject conflicting row/meta department keys');
 assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
 assertMatches(
@@ -141,12 +142,22 @@ if (mrrDashboard.includes('cfg.sfSheetKey || cfg.division')) {
 
 const fcstSnapshot = read('FcstSnapshot.gs');
 const fcstSnapshotCreateAt = getFunctionBody(fcstSnapshot, 'FcstSnapshot_createAt_');
-assertIncludes(fcstSnapshotCreateAt, 'member.totalKind === SHARED_TOTAL_KIND.DEPARTMENT', 'FCST snapshot must detect department total rows');
-assertIncludes(fcstSnapshotCreateAt, "dept: member.dept || (isDepartmentTotal ? deptKey : '')", 'FCST snapshot department total rows must persist meta.dept');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_buildPayloadMeta_', 'FCST snapshot must centralize write metadata shape');
+const fcstPayloadMeta = getFunctionBody(fcstSnapshot, 'FcstSnapshot_buildPayloadMeta_');
+assertIncludes(fcstSnapshotCreateAt, 'payload.__meta = FcstSnapshot_buildPayloadMeta_(member, options)', 'FCST snapshot writes must use normalized minimal metadata');
+assertIncludes(fcstPayloadMeta, 'meta.totalKind = totalKind', 'FCST snapshot write metadata must include row type');
+assertIncludes(fcstPayloadMeta, 'if (group) meta.group = group', 'FCST snapshot write metadata must include historical group when present');
+['isTotal:', 'dept:', 'name:', 'captureMode:', 'groupCode:'].forEach((token) => {
+  if (fcstPayloadMeta.includes(token)) {
+    throw new Error('FCST snapshot write metadata must not persist redundant field: ' + token);
+  }
+});
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_parseRowName_', 'FCST snapshot reads must parse row identity from snapshot row name');
+assertIncludes(fcstSnapshot, 'function FcstSnapshot_normalizeMeta_', 'FCST snapshot reads must normalize legacy and minimal metadata');
 assertIncludes(fcstSnapshot, 'function FcstSnapshot_isDepartmentTotalRowForDept_', 'FCST snapshot reads must normalize department total rows');
 assertIncludes(
   getFunctionBody(fcstSnapshot, 'FcstSnapshot_isDepartmentTotalRowForDept_'),
-  "var rowDept = String(nameRaw || '').split(':')[0].trim()",
+  'FcstSnapshot_parseRowName_(nameRaw)',
   'FCST snapshot reads must accept existing department total rows with blank meta.dept'
 );
 if (fcstSnapshot.includes("meta.totalKind !== 'department' || meta.dept !== deptKey")) {
