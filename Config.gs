@@ -44,7 +44,7 @@ const SSCS_CONFLICT_COLUMNS = [
 ];
 
 const DEPT_CONFIG = {
-  BOCS:    { label: 'BOCS',   division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
+  BOAM:    { label: 'BOAM',   division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
   BOE1:    { label: 'BO東1',  division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
   BOE2:    { label: 'BO東2',  division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },
   BOW:     { label: 'BO西',   division: 'BO', sfSheet: SF_DATA_SHEET_BO, features: { oppList: true, adjustment: true, snapshot: true, chart: true, proposalProducts: true } },

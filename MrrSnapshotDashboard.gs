@@ -30,6 +30,10 @@ function MrrDashboard_getSnapshotData_(selection, options) {
     data[dateStr] = rowMap;
   });
 
+  if (!opts.beforeDate) {
+    MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey);
+  }
+
   return {
     division: selectedDivision,
     divisionLabel: MrrDashboard_getDivisionLabel_(selectedDivision),
@@ -52,7 +56,9 @@ function MrrDashboard_getSnapshotData_(selection, options) {
 
 function getMrrDashboardDeals(selection, dateStr, deptLabel) {
   var selectedDivision = MrrDashboard_normalizeDivisionSelection_(selection) || 'SS';
-  var snapshotDate = MrrDashboard_normalizeSnapshotDate_(dateStr);
+  var requestedDate = String(dateStr || '').trim();
+  var isLive = requestedDate === MRR_DASHBOARD_LIVE_KEY;
+  var snapshotDate = isLive ? MRR_DASHBOARD_LIVE_KEY : MrrDashboard_normalizeSnapshotDate_(requestedDate);
   if (!snapshotDate) return { deals: [] };
 
   var divisionKeys = MrrDashboard_getSelectedDivisionKeys_(selectedDivision);
@@ -62,11 +68,98 @@ function getMrrDashboardDeals(selection, dateStr, deptLabel) {
   var cached = MrrDashboard_cacheGet_(cacheKey);
   if (cached) return cached;
 
-  var periodByDept = MrrDashboard_getSnapshotPeriodByDept_(scopedDeptKeys, snapshotDate);
-  var deals = MrrDashboard_readOppSnapshotDeals_(scopedDeptKeys, snapshotDate, periodByDept);
+  var periodByDept = isLive
+    ? MrrDashboard_getCurrentPeriodByDept_(scopedDeptKeys)
+    : MrrDashboard_getSnapshotPeriodByDept_(scopedDeptKeys, snapshotDate);
+  var deals = isLive
+    ? MrrDashboard_readCurrentOppDeals_(scopedDeptKeys, periodByDept)
+    : MrrDashboard_readOppSnapshotDeals_(scopedDeptKeys, snapshotDate, periodByDept);
   var result = { deals: deals };
   MrrDashboard_cachePut_(cacheKey, result);
   return result;
+}
+
+function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey) {
+  var liveRows = {};
+  var total = MrrDashboard_emptyMetric_();
+  var hasLive = false;
+
+  (deptKeys || []).forEach(function(deptKey) {
+    var metric = MrrDashboard_buildCurrentDeptMetric_(deptKey);
+    if (!metric) return;
+    liveRows[MrrDashboard_getDeptLabel_(deptKey)] = metric;
+    MrrDashboard_accumulateMetric_(total, metric);
+    hasLive = true;
+  });
+
+  if (!hasLive) return;
+  liveRows[totalKey] = total;
+  if (weeks.indexOf(MRR_DASHBOARD_LIVE_KEY) === -1) weeks.push(MRR_DASHBOARD_LIVE_KEY);
+  weekLabels[MRR_DASHBOARD_LIVE_KEY] = '現在';
+  data[MRR_DASHBOARD_LIVE_KEY] = liveRows;
+}
+
+function MrrDashboard_buildCurrentDeptMetric_(deptKey) {
+  var live = AppDataCache_getInitData(deptKey);
+  if (!live || live.error) {
+    throw new Error('MRR current FCST source failed: ' + deptKey + ' / ' + (live && live.error ? live.error : 'empty payload'));
+  }
+
+  var member = MrrDashboard_findCurrentDepartmentTotalMember_(deptKey, live.members || []);
+  if (!member) return null;
+
+  var periodKey = MrrDashboard_pickCurrentPeriodKey_(live);
+  if (!periodKey) return null;
+
+  var periodMetric = MrrDashboard_buildCurrentPeriodMetric_(live, member, periodKey);
+  return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, periodKey);
+}
+
+function MrrDashboard_findCurrentDepartmentTotalMember_(deptKey, members) {
+  for (var i = 0; i < (members || []).length; i++) {
+    var member = members[i] || {};
+    if (SharedAppState_isDepartmentTotal_(member, deptKey)) return member;
+  }
+  return null;
+}
+
+function MrrDashboard_pickCurrentPeriodKey_(live) {
+  var monthKeys = MrrDashboard_getCurrentMonthKeys_(live && live.periodOptions);
+  if (!monthKeys.length) return '';
+
+  var currentMonth = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  if (monthKeys.indexOf(currentMonth) !== -1) return currentMonth;
+
+  var futureMonth = monthKeys.find(function(monthKey) {
+    return monthKey >= currentMonth;
+  });
+  return futureMonth || monthKeys[monthKeys.length - 1];
+}
+
+function MrrDashboard_getCurrentMonthKeys_(periodOptions) {
+  var seen = {};
+  var keys = [];
+  (periodOptions || []).forEach(function(option) {
+    (option && option.months || []).forEach(function(monthKey) {
+      var key = String(monthKey || '').trim();
+      if (!/^\d{4}-\d{2}$/.test(key) || seen[key]) return;
+      seen[key] = true;
+      keys.push(key);
+    });
+  });
+  return keys.sort(function(a, b) { return a < b ? -1 : a > b ? 1 : 0; });
+}
+
+function MrrDashboard_buildCurrentPeriodMetric_(live, member, periodKey) {
+  var metric = {};
+  Object.keys((member && member[periodKey]) || {}).forEach(function(key) {
+    metric[key] = member[periodKey][key];
+  });
+  var adjustedKey = String(member && member.name || '') + '|' + String(periodKey || '');
+  if (live && live.fcstAdjusted && live.fcstAdjusted[adjustedKey]) {
+    metric.fcstAdjusted = live.fcstAdjusted[adjustedKey];
+  }
+  return metric;
 }
 
 function MrrDashboard_getDeptKeysForDivisions_(divisionKeys) {
@@ -273,6 +366,10 @@ function MrrDashboard_buildDeptMetricFromContext_(deptKey, snapshotDate, fcstCon
     : '';
   var periodMetric = periodKey && snapshotEntry ? snapshotEntry.periods[periodKey] : null;
 
+  return MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, periodKey);
+}
+
+function MrrDashboard_buildMetricFromPeriodMetric_(periodMetric, periodKey) {
   return {
     target: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.target),
     fcstAdjusted: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.fcstAdjusted),
@@ -281,11 +378,14 @@ function MrrDashboard_buildDeptMetricFromContext_(deptKey, snapshotDate, fcstCon
     actual: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.confirmed),
     expectedMrr: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.expectedMrr),
     fcst: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.fcstCommit),
-    fcstMax: Number(periodMetric && periodMetric.fcstMax) || 0,
     received: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.received),
     debtMgmt: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.debtMgmt),
     debtMgmtLite: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.debtMgmtLite),
     expense: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.expense),
+    confirmedReceived: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.confirmedReceived),
+    confirmedDebtMgmt: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.confirmedDebtMgmt),
+    confirmedDebtMgmtLite: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.confirmedDebtMgmtLite),
+    confirmedExpense: MrrDashboard_getBreakdownNet_(periodMetric && periodMetric.confirmedExpense),
     periodKey: periodKey,
     keyDeal: '',
     keyDealsData: []
@@ -299,11 +399,14 @@ function MrrDashboard_getMetricDefinitions_() {
     { key: 'fcstCommit', label: 'FCST(コミット)', type: 'bar', color: '#7c4dff' },
     { key: 'confirmed', label: '確定', type: 'bar', color: '#0b8043' },
     { key: 'expectedMrr', label: '期待MRR', type: 'bar', color: '#f29900' },
-    { key: 'fcstMax', label: 'FCSTMAX', type: 'bar', color: '#5f6368' },
-    { key: 'received', label: '受領', type: 'bar', color: '#188038' },
-    { key: 'debtMgmt', label: '債権管理', type: 'bar', color: '#0f766e' },
-    { key: 'debtMgmtLite', label: '債権管理 Lite', type: 'bar', color: '#0891b2' },
-    { key: 'expense', label: '経費', type: 'bar', color: '#b45309' }
+    { key: 'received', label: 'FCST 受領', type: 'bar', color: '#188038' },
+    { key: 'confirmedReceived', label: '確定 受領', type: 'bar', color: '#38bdf8' },
+    { key: 'debtMgmt', label: 'FCST 債権管理', type: 'bar', color: '#0f766e' },
+    { key: 'confirmedDebtMgmt', label: '確定 債権管理', type: 'bar', color: '#2dd4bf' },
+    { key: 'debtMgmtLite', label: 'FCST 債権管理 Lite', type: 'bar', color: '#0891b2' },
+    { key: 'confirmedDebtMgmtLite', label: '確定 債権管理 Lite', type: 'bar', color: '#67e8f9' },
+    { key: 'expense', label: 'FCST 経費', type: 'bar', color: '#b45309' },
+    { key: 'confirmedExpense', label: '確定 経費', type: 'bar', color: '#fb923c' }
   ];
 }
 
@@ -404,11 +507,14 @@ function MrrDashboard_emptyFcstPayload_() {
     fcstCommit: MrrDashboard_emptyBreakdown_(),
     confirmed: MrrDashboard_emptyBreakdown_(),
     expectedMrr: MrrDashboard_emptyBreakdown_(),
-    fcstMax: 0,
     received: MrrDashboard_emptyBreakdown_(),
     debtMgmt: MrrDashboard_emptyBreakdown_(),
     debtMgmtLite: MrrDashboard_emptyBreakdown_(),
-    expense: MrrDashboard_emptyBreakdown_()
+    expense: MrrDashboard_emptyBreakdown_(),
+    confirmedReceived: MrrDashboard_emptyBreakdown_(),
+    confirmedDebtMgmt: MrrDashboard_emptyBreakdown_(),
+    confirmedDebtMgmtLite: MrrDashboard_emptyBreakdown_(),
+    confirmedExpense: MrrDashboard_emptyBreakdown_()
   };
 }
 
@@ -427,11 +533,14 @@ function MrrDashboard_addFcstPayload_(sum, payload) {
     'received',
     'debtMgmt',
     'debtMgmtLite',
-    'expense'
+    'expense',
+    'confirmedReceived',
+    'confirmedDebtMgmt',
+    'confirmedDebtMgmtLite',
+    'confirmedExpense'
   ].forEach(function(key) {
     MrrDashboard_addBreakdownTo_(sum[key], payload && payload[key]);
   });
-  sum.fcstMax += Number(payload && payload.fcstMax) || 0;
   return sum;
 }
 
@@ -462,9 +571,54 @@ function MrrDashboard_pickSnapshotPeriodKeyFromKeys_(periodKeys, snapshotDate) {
 }
 
 function MrrDashboard_formatWeekLabel_(snapshotDate) {
+  if (String(snapshotDate || '') === MRR_DASHBOARD_LIVE_KEY) return '現在';
   var match = String(snapshotDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return String(snapshotDate || '');
   return Number(match[2]) + '/' + Number(match[3]);
+}
+
+function MrrDashboard_getCurrentPeriodByDept_(deptKeys) {
+  var result = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    var live = AppDataCache_getInitData(deptKey);
+    if (!live || live.error) {
+      throw new Error('MRR current FCST source failed: ' + deptKey + ' / ' + (live && live.error ? live.error : 'empty payload'));
+    }
+    result[deptKey] = MrrDashboard_pickCurrentPeriodKey_(live);
+  });
+  return result;
+}
+
+function MrrDashboard_readCurrentOppDeals_(deptKeys, periodByDept) {
+  var deals = [];
+  (deptKeys || []).forEach(function(deptKey) {
+    var result = AppDataCache_getOpportunities(deptKey);
+    if (!result || result.error) {
+      throw new Error('MRR current Opp source failed: ' + deptKey + ' / ' + (result && result.error ? result.error : 'empty payload'));
+    }
+
+    var targetPeriod = periodByDept && periodByDept[deptKey];
+    (result.rows || []).forEach(function(row) {
+      if (!row || row.keyDeal !== true) return;
+      if (targetPeriod && String(row.completedMonth || '') !== targetPeriod) return;
+
+      deals.push({
+        dept: MrrDashboard_getDeptLabel_(deptKey),
+        company: String(row.dealName || ''),
+        mrr: Number(row.mrr) || 0,
+        phase: String(row.phase || ''),
+        yomi: Number(row.fcstCommit) || 0,
+        oppId: String(row.oppId || ''),
+        completedMonth: String(row.completedMonth || ''),
+        owner: String(row.subOwner || '')
+      });
+    });
+  });
+
+  deals.sort(function(left, right) {
+    return Math.abs(right.mrr) - Math.abs(left.mrr);
+  });
+  return deals;
 }
 
 function MrrDashboard_emptyMetric_() {

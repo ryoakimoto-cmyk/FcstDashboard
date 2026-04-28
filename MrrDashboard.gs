@@ -1,8 +1,9 @@
 var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;
 var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;
-var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v4:mrr:';
+var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v5:mrr:';
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_ALL_DIVISION = 'COO';
+var MRR_DASHBOARD_LIVE_KEY = 'live';
 
 function mrrDashboard_doGet_(e) {
   var tmpl = HtmlService.createTemplateFromFile('mrr-index');

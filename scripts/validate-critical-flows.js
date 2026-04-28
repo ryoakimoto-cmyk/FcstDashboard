@@ -68,7 +68,18 @@ assertIncludes(aggregatedCache, 'AppDataCache_warmDept_(dk);', 'scheduled warmup
 assertIncludes(aggregatedCache, '.timeBased().everyMinutes(5).create();', 'scheduled warmup must run every 5 minutes');
 
 const sfDataReader = read('SfDataReader.gs');
-['groupCode', 'totalKind', 'fcstMin', 'fcstMax'].forEach((token) => {
+[
+  'groupCode',
+  'totalKind',
+  'fcstMin',
+  'fcstMax',
+  'confirmedReceived',
+  'confirmedDebtMgmt',
+  'confirmedDebtMgmtLite',
+  'confirmedExpense',
+  '月額_受領',
+  '月額_債権管理'
+].forEach((token) => {
   assertIncludes(sfDataReader, token, 'shared member/metric shape incomplete');
 });
 
@@ -82,6 +93,8 @@ assertIncludes(config, 'function isProposalProductsEnabled_(deptKey)', 'proposal
   "const SNAPSHOT_DB_INDEX_SHEET_NAME = 'SnapshotDBIndex';"
 ].forEach((token) => assertIncludes(config, token, 'opp history v2 sheet constants missing'));
 assertNotIncludes(config, 'const OPP_LIST_SNAPSHOT_SHEET_NAME', 'legacy opp snapshot sheet constant must be removed');
+assertIncludes(config, 'BOAM:', 'BO active department key must be BOAM');
+assertNotIncludes(config, 'BOCS:', 'retired BO department key must not be used');
 
 const snapshotStorage = read('SnapshotStorage.gs');
 [
@@ -99,7 +112,13 @@ const fcstSnapshot = read('FcstSnapshot.gs');
   'function FcstSnapshot_headers_()',
   'function FcstSnapshot_getAllValues_(columnCount)',
   'SnapshotStorage_getAllValues_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), columnCount || 4)',
-  'SnapshotStorage_appendRows_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), rows)'
+  'SnapshotStorage_appendRows_(FCST_SNAPSHOT_SHEET_NAME, FcstSnapshot_headers_(), rows)',
+  "'fcstMin'",
+  "'fcstMax'",
+  "'confirmedReceived'",
+  "'confirmedDebtMgmt'",
+  "'confirmedDebtMgmtLite'",
+  "'confirmedExpense'"
 ].forEach((token) => assertIncludes(fcstSnapshot, token, 'FCST snapshot storage-aware path missing'));
 assertNotIncludes(fcstSnapshot, 'getSharedSheet(FCST_SNAPSHOT_SHEET_NAME)', 'FCST snapshot must not read/write main snapshot sheet directly');
 
@@ -221,6 +240,7 @@ const mrrDashboard = read('MrrDashboard.gs');
 [
   'var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;',
   'var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;',
+  "var MRR_DASHBOARD_LIVE_KEY = 'live';",
   "var MRR_DASHBOARD_ALL_DIVISION = 'COO';",
   "var tmpl = HtmlService.createTemplateFromFile('mrr-index');",
   'tmpl.mrrInitialDivision = initialDivision || \'\';',
@@ -243,9 +263,17 @@ assertNotIncludes(mrrSnapshot, 'function MrrDashboard_getBoData_()', 'MRR runtim
 assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoFcstSnapshots_', 'MRR runtime must not keep BO-only FCST readers');
 assertNotIncludes(mrrSnapshot, 'function MrrDashboard_readBoOppSnapshots_', 'MRR runtime must not keep BO-only Opp readers');
 assertNotIncludes(mrrSnapshot, 'getSharedSheet(FCST_SNAPSHOT_SHEET_NAME)', 'MRR must not read FCST snapshots from main spreadsheet directly');
+assertNotIncludes(mrrSnapshot, "key: 'fcstMin'", 'MRR view must not show FCSTMIN');
+assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX');
 [
   'function MrrDashboard_getSnapshotData_(selection, options)',
   'function getMrrDashboardDeals(selection, dateStr, deptLabel)',
+  'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey)',
+  'function MrrDashboard_buildCurrentDeptMetric_(deptKey)',
+  'function MrrDashboard_readCurrentOppDeals_(deptKeys, periodByDept)',
+  'AppDataCache_getInitData(deptKey)',
+  'AppDataCache_getOpportunities(deptKey)',
+  "weekLabels[MRR_DASHBOARD_LIVE_KEY] = '現在';",
   'function MrrDashboard_getFcstSnapshotDateBatch_(deptKeys, beforeDate, limit)',
   'dates.slice(0, maxPerDivision)',
   'function MrrDashboard_readFcstSnapshots_(deptKeys, dateSet)',
@@ -261,7 +289,12 @@ assertNotIncludes(mrrSnapshot, 'getSharedSheet(FCST_SNAPSHOT_SHEET_NAME)', 'MRR 
   'var payload = MrrDashboard_selectFcstSnapshotPayload_(buckets[deptKey][dateStr][period]);',
   'function MrrDashboard_getMetricDefinitions_()',
   "key: 'fcstAdjusted'",
-  "key: 'fcstMax'",
+  "key: 'confirmedReceived'",
+  "key: 'confirmedDebtMgmt'",
+  "key: 'confirmedDebtMgmtLite'",
+  "key: 'confirmedExpense'",
+  "label: 'FCST 受領'",
+  "label: '確定 受領'",
   'legacyRow.keyDeal !== true',
   "String(legacyRow.completedMonth || '') !== targetPeriod",
   'keyDealsData: []',

@@ -5,9 +5,18 @@ function FcstSnapshot_create(deptKey, members, notesMap, periodKeys) {
   var notes = notesMap || {};
   var rows = [];
 
-  var metricKeys = ['fcstAdjusted', 'fcstCommit', 'confirmed', 'expectedMrr'];
+  var metricKeys = ['fcstAdjusted', 'fcstCommit', 'fcstMin', 'fcstMax', 'confirmed', 'expectedMrr'];
   if (DEPT_CONFIG[deptKey].features.proposalProducts) {
-    metricKeys = metricKeys.concat(['received', 'debtMgmt', 'debtMgmtLite', 'expense']);
+    metricKeys = metricKeys.concat([
+      'received',
+      'debtMgmt',
+      'debtMgmtLite',
+      'expense',
+      'confirmedReceived',
+      'confirmedDebtMgmt',
+      'confirmedDebtMgmtLite',
+      'confirmedExpense'
+    ]);
   }
 
   (members || []).forEach(function(member) {
@@ -17,7 +26,7 @@ function FcstSnapshot_create(deptKey, members, notesMap, periodKeys) {
       var mapKey = member.name + '|' + period;
       var payload = {};
       Object.keys(metric).forEach(function(k) {
-        if (metricKeys.indexOf(k) !== -1 || k === 'target' || k === 'fcstMax' || k === 'keyDeals') {
+        if (metricKeys.indexOf(k) !== -1 || k === 'target' || k === 'keyDeals') {
           payload[k] = metric[k];
         }
       });
@@ -373,7 +382,16 @@ function FcstSnapshot_extractMetricPayload_(payload) {
 
 function FcstSnapshot_buildWeekOverWeek_(currentMetric, prevMetric, metricKeysOpt) {
   var metricKeys = metricKeysOpt || ['fcstAdjusted', 'fcstCommit', 'confirmed', 'expectedMrr'];
-  ['received', 'debtMgmt', 'debtMgmtLite', 'expense'].forEach(function(metricKey) {
+  [
+    'received',
+    'debtMgmt',
+    'debtMgmtLite',
+    'expense',
+    'confirmedReceived',
+    'confirmedDebtMgmt',
+    'confirmedDebtMgmtLite',
+    'confirmedExpense'
+  ].forEach(function(metricKey) {
     if ((currentMetric && currentMetric.hasOwnProperty(metricKey)) || (prevMetric && prevMetric.hasOwnProperty(metricKey))) {
       metricKeys.push(metricKey);
     }
