@@ -87,10 +87,12 @@ function SnapshotStorage_getActiveSheet_(sheetName, headers) {
 
 function SnapshotStorage_createFile_(sheetName, headers) {
   var ids = SnapshotStorage_getFileIds_(sheetName);
-  var ss = SnapshotStorage_createSpreadsheetInDbFolder_(SnapshotStorage_buildFileName_(sheetName, ids.length + 1));
+  var dbFolder = SnapshotStorage_getDbFolder_();
+  var ss = SpreadsheetApp.create(SnapshotStorage_buildFileName_(sheetName, ids.length + 1));
   var sheet = ss.getSheets()[0];
   sheet.setName(sheetName);
   SnapshotStorage_ensureSheetShape_(sheet, headers, true);
+  SnapshotStorage_moveFileToDbFolder_(ss, dbFolder);
 
   var fileId = ss.getId();
   if (ids.indexOf(fileId) === -1) ids.push(fileId);
@@ -106,94 +108,38 @@ function SnapshotStorage_buildFileName_(sheetName, sequence) {
 }
 
 function manualAuthorizeSnapshotDbFolder() {
-  var folderId = SnapshotStorage_getDbFolderId_();
-  SnapshotStorage_assertDriveFileScope_();
+  var folder = SnapshotStorage_getDbFolder_();
   var result = {
     ok: true,
-    folderId: folderId,
-    folderUrl: folderId ? SnapshotStorage_getFolderUrl_(folderId) : '',
-    storageScope: 'drive.file'
+    folderId: folder ? folder.getId() : '',
+    folderName: folder ? folder.getName() : '',
+    folderUrl: folder ? folder.getUrl() : '',
+    storageScope: 'drive'
   };
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
 
-function SnapshotStorage_getDbFolderId_() {
-  return String(typeof SNAPSHOT_DB_FOLDER_ID !== 'undefined' ? SNAPSHOT_DB_FOLDER_ID : '').trim();
-}
-
-function SnapshotStorage_getFolderUrl_(folderId) {
-  return folderId ? 'https://drive.google.com/drive/folders/' + encodeURIComponent(folderId) : '';
-}
-
-function SnapshotStorage_assertDriveFileScope_() {
-  var response = SnapshotStorage_driveFetch_(
-    'https://www.googleapis.com/drive/v3/about?fields=user',
-    { method: 'get' }
-  );
-  var code = response.getResponseCode();
-  if (code < 200 || code >= 300) {
-    throw new Error('Snapshot DB Drive API authorization failed. Re-run manualAuthorizeSnapshotDbFolder and authorize Drive file access. status=' + code + ' body=' + response.getContentText());
-  }
-}
-
-function SnapshotStorage_createSpreadsheetInDbFolder_(fileName) {
-  var folderId = SnapshotStorage_getDbFolderId_();
-  if (!folderId) {
-    return SpreadsheetApp.create(fileName);
-  }
-
-  var response = SnapshotStorage_driveFetch_(
-    'https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id%2CwebViewLink',
-    {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify({
-        name: fileName,
-        mimeType: 'application/vnd.google-apps.spreadsheet',
-        parents: [folderId]
-      })
-    }
-  );
-  var code = response.getResponseCode();
-  var text = response.getContentText();
-  if (code < 200 || code >= 300) {
-    throw new Error('Snapshot DB file could not be created in configured folder. Run manualAuthorizeSnapshotDbFolder and authorize Drive file access. folder=' + folderId + ' / status=' + code + ' body=' + text);
-  }
-
-  var payload = {};
+function SnapshotStorage_getDbFolder_() {
   try {
-    payload = JSON.parse(text || '{}');
-  } catch (e) {
-    throw new Error('Snapshot DB file creation response could not be parsed. body=' + text);
-  }
-  if (!payload.id) {
-    throw new Error('Snapshot DB file creation response did not include file id. body=' + text);
-  }
-
-  return SpreadsheetApp.openById(payload.id);
-}
-
-function SnapshotStorage_driveFetch_(url, options) {
-  var fetchOptions = options || {};
-  fetchOptions.muteHttpExceptions = true;
-  fetchOptions.headers = fetchOptions.headers || {};
-  fetchOptions.headers.Authorization = 'Bearer ' + ScriptApp.getOAuthToken();
-  return UrlFetchApp.fetch(url, fetchOptions);
-}
-
-function SnapshotStorage_trashFile_(fileId) {
-  var response = SnapshotStorage_driveFetch_(
-    'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?supportsAllDrives=true',
-    {
-      method: 'patch',
-      contentType: 'application/json',
-      payload: JSON.stringify({ trashed: true })
+    var file = DriveApp.getFileById(SPREADSHEET_ID);
+    var parents = file.getParents();
+    if (parents.hasNext()) {
+      return parents.next();
     }
-  );
-  var code = response.getResponseCode();
-  if (code < 200 || code >= 300) {
-    throw new Error('Drive API trash failed. status=' + code + ' body=' + response.getContentText());
+  } catch (e) {
+    throw new Error('Snapshot DB source folder is not accessible. Run manualAuthorizeSnapshotDbFolder and authorize Drive access. source=' + SPREADSHEET_ID + ' / ' + (e && e.message ? e.message : e));
+  }
+  throw new Error('Snapshot DB source file has no parent folder. source=' + SPREADSHEET_ID);
+}
+
+function SnapshotStorage_moveFileToDbFolder_(spreadsheet, dbFolder) {
+  var fileId = spreadsheet.getId();
+  try {
+    DriveApp.getFileById(fileId).moveTo(dbFolder);
+  } catch (e) {
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch (ignored) {}
+    throw new Error('Snapshot DB file could not be moved to source folder. Run manualAuthorizeSnapshotDbFolder and authorize Drive access. folder=' + (dbFolder ? dbFolder.getId() : '') + ' / ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -338,7 +284,7 @@ function SnapshotStorage_cleanupForFreshStart() {
     if (!fileId || seenFiles[fileId]) return;
     seenFiles[fileId] = true;
     try {
-      SnapshotStorage_trashFile_(fileId);
+      DriveApp.getFileById(fileId).setTrashed(true);
       trashedDbFiles.push(fileId);
     } catch (e) {
       clearErrors.push('Failed to trash DB file ' + fileId + ': ' + (e && e.message ? e.message : e));

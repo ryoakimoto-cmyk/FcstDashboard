@@ -49,8 +49,7 @@ Get-ChildItem -Recurse -Include *.gs,*.html | Select-String -Pattern 'SnapshotSt
 
 ## Snapshot DB Folder Rules
 
-- Snapshot DB ファイルのフォルダ格納では `DriveApp` を使わない。
-- `DriveApp.getFolderById` / `DriveApp.getFileById` は full Drive scope を要求し、手動実行時に権限未承認で snapshot 作成を止めるため禁止。
-- DB ファイルは Drive API + `drive.file` scope で、作成時に `parents: [SNAPSHOT_DB_FOLDER_ID]` を指定して直接 FCSTDB フォルダ配下へ作る。
+- Snapshot DB ファイルは元ファイル `SPREADSHEET_ID` と同じ親フォルダへ作成する。
+- Google Drive API の GCP 有効化が必要な実装にはしない。`googleapis.com/drive/v3` 直叩きは禁止。
+- フォルダ移動は Apps Script 組み込みの `DriveApp` を使う。初回のみ Apps Script の Drive 権限承認が必要。
 - snapshot payload、cache key、既存シート schema を権限回避目的で変更しない。
-- Drive API が Apps Script の紐づく GCP project で無効な場合はコードでは解決できない。GCP project owner / admin が `drive.googleapis.com` を有効化してから `manualAuthorizeSnapshotDbFolder` を再実行する。
