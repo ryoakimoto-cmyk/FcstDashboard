@@ -75,6 +75,25 @@ if (snapshotStorage.includes('googleapis.com/drive/v3')) {
   throw new Error('SnapshotStorage must avoid Drive API enablement dependency');
 }
 
+const mrrDashboard = read('MrrDashboard.gs');
+assertIncludes(mrrDashboard, 'CacheLayer_read(MRR_DASHBOARD_CACHE_DEPT, MRR_DASHBOARD_CACHE_KEY, { skipSharedSheet: true })', 'MRR dashboard must use 5-minute cache before snapshot reads');
+assertIncludes(mrrDashboard, 'FcstSnapshot_getAllValues_(4)', 'MRR dashboard must read FCST snapshots through snapshot storage helper');
+assertIncludes(mrrDashboard, 'OppListSnapshot_getAllValues_(5)', 'MRR dashboard must read Opp snapshots through snapshot storage helper');
+assertIncludes(mrrDashboard, "source: 'snapshot'", 'MRR dashboard must report snapshot source');
+assertIncludes(mrrDashboard, "MrrDashboard_divisionKey_(cfg)", 'MRR dashboard must map SSCS departments into the SS division');
+assertIncludes(mrrDashboard, ".setTitle('MRR進捗ダッシュボード')", 'MRR dashboard server title must be valid UTF-8');
+if (mrrDashboard.includes('MRR_SHEET_ID') || mrrDashboard.includes('SpreadsheetApp.openById(MRR_SHEET_ID)')) {
+  throw new Error('MRR dashboard must not read the legacy fixed MRR spreadsheet');
+}
+if (mrrDashboard.includes('cfg.sfSheetKey || cfg.division')) {
+  throw new Error('MRR dashboard must not prioritize sfSheetKey over division; SSCS belongs to SS');
+}
+
+const mrrClient = read('mrr-index.html');
+assertIncludes(mrrClient, 'MRR進捗ダッシュボード', 'MRR dashboard title must be valid UTF-8');
+assertIncludes(mrrClient, 'getMrrDashboardData()', 'MRR client must load backend dashboard data');
+assertIncludes(mrrClient, 'Key Deal はありません', 'MRR client must render empty Key Deal state without parser fallback');
+
 const code = read('Code.gs');
 assertIncludes(code, 'AppDataCache_getInitData', 'Code.gs must use shared init cache');
 assertIncludes(code, 'AppDataCache_getOpportunities', 'Code.gs must use shared opp cache');
