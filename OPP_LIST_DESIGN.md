@@ -18,3 +18,4 @@ This file was refreshed on 2026-04-24 to avoid mixing the removed legacy snapsho
 ## Reference
 
 - See [OPP_HISTORY_TRACKING.md](/C:/Users/RyoAkimoto/.codex/worktrees/7f00/FcstDashboard/OPP_HISTORY_TRACKING.md) for the canonical tracking summary.
+- See [DEVELOPMENT_GUARDRAILS.md](./DEVELOPMENT_GUARDRAILS.md) before adding fallback, inferred matching, or relaxed runtime conditions.

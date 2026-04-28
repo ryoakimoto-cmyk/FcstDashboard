@@ -23,3 +23,4 @@ Last updated: 2026-04-24
 - Existing UI-facing snapshot readers still receive the legacy row shape via an adapter so current Opp screens do not break.
 - Weekly batch trigger remains Monday 03:00 Asia/Tokyo through `createOppSnapshot`.
 - `monthly_dropout` rows are stored in `Opp履歴` with `_status = removed_from_p`.
+- Fallback 判定の追加は禁止事項を含む運用ルールです。実装前に必ず [DEVELOPMENT_GUARDRAILS.md](./DEVELOPMENT_GUARDRAILS.md) を確認する。
