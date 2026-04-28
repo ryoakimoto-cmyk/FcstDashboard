@@ -428,8 +428,7 @@ function SfDataReader_toNumber_(value) {
 }
 
 function SfDataReader_toBoolean_(value) {
-  if (value === true || value === false) return value;
-  return /^(true|yes|1|y)$/i.test(String(value || '').trim());
+  return value === true;
 }
 
 function SfDataReader_stripLegalForm_(name) {

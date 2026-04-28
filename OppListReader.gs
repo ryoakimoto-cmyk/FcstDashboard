@@ -169,8 +169,7 @@ function OppListReader_toNumber_(value) {
 }
 
 function OppListReader_toBoolean_(value) {
-  if (value === true || value === false) return value;
-  return /^(true|yes|1|y)$/i.test(String(value || '').trim());
+  return value === true;
 }
 
 function OppListReader_formatCell_(value) {

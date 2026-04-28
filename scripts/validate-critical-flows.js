@@ -94,6 +94,19 @@ const sfDataReader = read('SfDataReader.gs');
 const config = read('Config.gs');
 assertIncludes(config, 'function isProposalProductsEnabled_(deptKey)', 'proposalProducts helper missing');
 
+const oppListReader = read('OppListReader.gs');
+assertIncludes(
+  getFunctionBody(oppListReader, 'OppListReader_toBoolean_'),
+  'return value === true;',
+  'Opp list Key Deal boolean parsing must accept only boolean true'
+);
+
+assertIncludes(
+  getFunctionBody(sfDataReader, 'SfDataReader_toBoolean_'),
+  'return value === true;',
+  'FCST Key Deal boolean parsing must accept only boolean true'
+);
+
 const manifest = read('appsscript.json');
 assertIncludes(manifest, '"https://www.googleapis.com/auth/drive"', 'snapshot DB folder writes require Apps Script DriveApp scope');
 
@@ -124,15 +137,26 @@ if (mrrDashboard.includes('__total__')) {
 const mrrBuild = getFunctionBody(mrrDashboard, 'MrrDashboard_buildFromSnapshots_');
 assertIncludes(mrrBuild, 'FcstSnapshot_parseRowName_(nameRaw)', 'MRR dashboard must recover department key from snapshot row name');
 assertIncludes(mrrBuild, 'FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowInfo.name)', 'MRR dashboard must use normalized snapshot metadata');
-assertIncludes(mrrBuild, 'var deptKey = meta.dept || rowDeptKey', 'MRR dashboard must accept existing snapshots with blank meta dept');
+assertIncludes(mrrBuild, 'var deptKey = rowDeptKey', 'MRR dashboard must use snapshot row prefix as the canonical department key');
 assertIncludes(mrrBuild, 'meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT', 'MRR dashboard must identify department totals through normalized metadata');
-assertIncludes(mrrBuild, 'if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;', 'MRR dashboard must reject conflicting row/meta department keys');
+if (mrrBuild.includes('meta.dept || rowDeptKey') || mrrBuild.includes('metaDeptKey')) {
+  throw new Error('MRR dashboard must not fallback between payload __meta.dept and snapshot row prefix');
+}
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];", 'MRR dashboard must include CO as a first-class division');
+assertIncludes(mrrDashboard, "if (sfSheetKey === 'CO') return 'CO';", 'MRR dashboard must classify CO departments');
 assertIncludes(mrrDashboard, 'function MrrDashboard_invalidateCache_', 'MRR dashboard cache invalidation helper missing');
+assertIncludes(mrrDashboard, "var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v5';", 'MRR dashboard cache key must change when aggregation eligibility changes');
 assertMatches(
   getFunctionBody(mrrDashboard, 'getMrrDashboardData'),
   /(data\.divisions\s*&&\s*data\.divisions\.length|Array\.isArray\(data\.divisions\)\s*&&\s*data\.divisions\.length)/,
   'MRR dashboard must not 5-minute-cache an empty divisions result'
 );
+const mrrMetricValue = getFunctionBody(mrrDashboard, 'MrrDashboard_metricValue_');
+assertIncludes(mrrMetricValue, 'MRR_DASHBOARD_NUMERIC_METRIC_KEYS[metricKey]', 'MRR dashboard must explicitly separate numeric metrics from net-object metrics');
+assertIncludes(mrrMetricValue, "typeof value.net === 'number'", 'MRR dashboard must only use numeric net values for net-object metrics');
+if (mrrMetricValue.includes('value && value.net') || mrrMetricValue.includes('Number(value.net)')) {
+  throw new Error('MRR dashboard must not loosely fallback to arbitrary net values');
+}
 if (mrrDashboard.includes('MRR_SHEET_ID') || mrrDashboard.includes('SpreadsheetApp.openById(MRR_SHEET_ID)')) {
   throw new Error('MRR dashboard must not read the legacy fixed MRR spreadsheet');
 }

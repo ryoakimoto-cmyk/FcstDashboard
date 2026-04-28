@@ -1,7 +1,12 @@
 var MRR_DASHBOARD_CACHE_DEPT = '__mrr_dashboard__';
-var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v4';
-var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2'];
+var MRR_DASHBOARD_CACHE_KEY = 'snapshotData:v5';
+var MRR_DASHBOARD_OLD_CACHE_KEYS = ['snapshotData:v1', 'snapshotData:v2', 'snapshotData:v4'];
 var MRR_DASHBOARD_TOTAL_KEY = 'total';
+var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
+var MRR_DASHBOARD_NUMERIC_METRIC_KEYS = {
+  fcstMin: true,
+  fcstMax: true
+};
 
 function mrrDashboard_doGet_() {
   return HtmlService.createHtmlOutputFromFile('mrr-index')
@@ -43,14 +48,11 @@ function MrrDashboard_buildFromSnapshots_() {
     var rowDeptKey = String(rowInfo.deptKey || '').trim();
     var periodKey = String(row[2] || '').trim();
     var payload = MrrDashboard_parseJson_(row[3]);
-    var rawMeta = payload.__meta || {};
-    var metaDeptKey = String(rawMeta.dept || '').trim();
     var meta = FcstSnapshot_normalizeMeta_(payload, rowDeptKey, rowInfo.name);
-    var deptKey = meta.dept || rowDeptKey;
+    var deptKey = rowDeptKey;
     var deptMeta = catalog.byDeptKey[deptKey];
     if (!deptMeta || !periodKey) return;
     if (meta.totalKind !== SHARED_TOTAL_KIND.DEPARTMENT) return;
-    if (metaDeptKey && rowDeptKey && metaDeptKey !== rowDeptKey) return;
 
     var divisionKey = deptMeta.divisionKey;
     var division = MrrDashboard_ensureDivision_(divisions, divisionKey, deptMeta.divisionLabel);
@@ -77,7 +79,7 @@ function MrrDashboard_buildFromSnapshots_() {
     MrrDashboard_fillTotalsAndDeals_(division, dealsByDivisionDate[divisionKey] || {});
   });
 
-  var orderedDivisions = ['SS', 'BO'].filter(function(key) {
+  var orderedDivisions = MRR_DASHBOARD_DIVISION_ORDER.filter(function(key) {
     return !!divisions[key];
   }).map(function(key) {
     return divisions[key];
@@ -101,7 +103,7 @@ function MrrDashboard_buildDeptCatalog_() {
   Object.keys(configMap || {}).forEach(function(deptKey) {
     var cfg = configMap[deptKey] || {};
     var divisionKey = MrrDashboard_divisionKey_(cfg);
-    if (['SS', 'BO'].indexOf(divisionKey) === -1) return;
+    if (MRR_DASHBOARD_DIVISION_ORDER.indexOf(divisionKey) === -1) return;
     var meta = {
       key: deptKey,
       label: String(cfg.label || cfg.departmentName || deptKey).trim(),
@@ -127,11 +129,12 @@ function MrrDashboard_buildDeptCatalog_() {
 
 function MrrDashboard_divisionKey_(cfg) {
   var division = String(cfg && cfg.division || '').trim().toUpperCase();
-  if (division === 'SS' || division === 'BO') return division;
+  if (MRR_DASHBOARD_DIVISION_ORDER.indexOf(division) !== -1) return division;
 
   var sfSheetKey = String(cfg && cfg.sfSheetKey || '').trim().toUpperCase();
   if (sfSheetKey === 'SS' || sfSheetKey === 'SSCS') return 'SS';
   if (sfSheetKey === 'BO') return 'BO';
+  if (sfSheetKey === 'CO') return 'CO';
   return '';
 }
 
@@ -258,7 +261,7 @@ function MrrDashboard_fillTotalsAndDeals_(division, dealsByDate) {
 function MrrDashboard_extractMetrics_(payload) {
   var metrics = MrrDashboard_emptyMetrics_();
   MrrDashboard_metricDefs_().forEach(function(def) {
-    metrics[def.key] = MrrDashboard_metricValue_(payload && payload[def.key]);
+    metrics[def.key] = MrrDashboard_metricValue_(def.key, payload && payload[def.key]);
   });
   return metrics;
 }
@@ -291,9 +294,12 @@ function MrrDashboard_metricDefs_() {
   ];
 }
 
-function MrrDashboard_metricValue_(value) {
-  if (typeof value === 'number') return MrrDashboard_num_(value);
-  return MrrDashboard_num_(value && value.net);
+function MrrDashboard_metricValue_(metricKey, value) {
+  if (MRR_DASHBOARD_NUMERIC_METRIC_KEYS[metricKey]) {
+    return typeof value === 'number' ? MrrDashboard_num_(value) : 0;
+  }
+  if (!value || typeof value !== 'object') return 0;
+  return typeof value.net === 'number' ? MrrDashboard_num_(value.net) : 0;
 }
 
 function MrrDashboard_periodLabel_(periodKey) {
