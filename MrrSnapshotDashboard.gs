@@ -310,8 +310,18 @@ function MrrDashboard_findPeriodOption_(periodOptions, periodKey) {
 }
 
 function MrrDashboard_periodFilterMatches_(filter, completedMonth) {
-  var monthKey = String(completedMonth || '').trim();
+  var monthKey = MrrDashboard_normalizeCompletedMonthKey_(completedMonth);
   return !!(filter && filter.periodKey && filter.months && filter.months[monthKey]);
+}
+
+function MrrDashboard_normalizeCompletedMonthKey_(completedMonth) {
+  if (completedMonth instanceof Date && !isNaN(completedMonth)) {
+    return Utilities.formatDate(completedMonth, 'Asia/Tokyo', 'yyyy-MM');
+  }
+  var text = String(completedMonth || '').trim();
+  var match = text.match(/^(\d{4})[-\/](\d{1,2})(?:[-\/]\d{1,2})?$/);
+  if (!match) return text;
+  return match[1] + '-' + String(Number(match[2])).padStart(2, '0');
 }
 
 function MrrDashboard_validateCurrentInitData_(deptKey, live, periodKey) {

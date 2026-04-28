@@ -321,6 +321,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'function MrrDashboard_getDefaultPeriodKey_(periodOptions)',
   'FcstPeriods_getQuarterKeyFromMonthKey_(todayMonthKey)',
   'function MrrDashboard_periodFilterMatches_(filter, completedMonth)',
+  'function MrrDashboard_normalizeCompletedMonthKey_(completedMonth)',
+  "text.match(/^(\\d{4})[-\\/](\\d{1,2})(?:[-\\/]\\d{1,2})?$/)",
   "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })",
   'AggregatedCache_readMany(missing)',
   'bulkError = String(e1 && e1.message ? e1.message : e1);',
