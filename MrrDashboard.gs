@@ -1,6 +1,7 @@
 var MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT = 2;
 var MRR_DASHBOARD_CACHE_TTL_SECONDS = 300;
-var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v6:mrr:';
+var MRR_DASHBOARD_CACHE_PREFIX = 'snapshotLiveData:v7:mrr:';
+var MRR_DASHBOARD_CACHE_CHUNK_SIZE = 85000;
 var MRR_DASHBOARD_DIVISION_ORDER = ['SS', 'BO', 'CO'];
 var MRR_DASHBOARD_ALL_DIVISION = 'COO';
 var MRR_DASHBOARD_LIVE_KEY = 'live';
@@ -89,8 +90,10 @@ function MrrDashboard_getTotalLabel_(selection) {
 
 function MrrDashboard_cacheGet_(key) {
   try {
-    var raw = CacheService.getScriptCache().get(key);
-    return raw ? JSON.parse(raw) : null;
+    var cache = CacheService.getScriptCache();
+    var raw = cache.get(key);
+    if (raw) return JSON.parse(raw);
+    return MrrDashboard_cacheReadChunked_(cache, key);
   } catch (e) {
     return null;
   }
@@ -98,9 +101,48 @@ function MrrDashboard_cacheGet_(key) {
 
 function MrrDashboard_cachePut_(key, value) {
   try {
+    var cache = CacheService.getScriptCache();
     var raw = JSON.stringify(value);
-    if (raw.length < 90000) {
-      CacheService.getScriptCache().put(key, raw, MRR_DASHBOARD_CACHE_TTL_SECONDS);
+    if (raw.length <= MRR_DASHBOARD_CACHE_CHUNK_SIZE) {
+      MrrDashboard_cacheRemoveChunked_(cache, key);
+      cache.put(key, raw, MRR_DASHBOARD_CACHE_TTL_SECONDS);
+      return;
     }
+    cache.remove(key);
+    MrrDashboard_cacheWriteChunked_(cache, key, raw);
   } catch (e) {}
+}
+
+function MrrDashboard_cacheWriteChunked_(cache, key, raw) {
+  var chunks = Math.ceil(raw.length / MRR_DASHBOARD_CACHE_CHUNK_SIZE);
+  cache.put(key + ':chunks', String(chunks), MRR_DASHBOARD_CACHE_TTL_SECONDS);
+  for (var i = 0; i < chunks; i++) {
+    cache.put(
+      key + ':chunk:' + i,
+      raw.substr(i * MRR_DASHBOARD_CACHE_CHUNK_SIZE, MRR_DASHBOARD_CACHE_CHUNK_SIZE),
+      MRR_DASHBOARD_CACHE_TTL_SECONDS
+    );
+  }
+}
+
+function MrrDashboard_cacheReadChunked_(cache, key) {
+  var count = parseInt(cache.get(key + ':chunks') || '0', 10);
+  if (!count) return null;
+  var parts = [];
+  for (var i = 0; i < count; i++) {
+    var chunk = cache.get(key + ':chunk:' + i);
+    if (!chunk) return null;
+    parts.push(chunk);
+  }
+  return JSON.parse(parts.join(''));
+}
+
+function MrrDashboard_cacheRemoveChunked_(cache, key) {
+  var count = parseInt(cache.get(key + ':chunks') || '0', 10);
+  if (!count) return;
+  var keys = [key + ':chunks'];
+  for (var i = 0; i < count; i++) {
+    keys.push(key + ':chunk:' + i);
+  }
+  try { cache.removeAll(keys); } catch (e) {}
 }

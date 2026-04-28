@@ -255,7 +255,11 @@ const mrrDashboard = read('MrrDashboard.gs');
   'function MrrDashboard_getSelectedDivisionKeys_(selection)',
   'MrrDashboard_getSnapshotData_(selection, {',
   "selection + ':current'",
-  'currentOnly: true'
+  'currentOnly: true',
+  'var MRR_DASHBOARD_CACHE_CHUNK_SIZE = 85000;',
+  'function MrrDashboard_cacheWriteChunked_(cache, key, raw)',
+  'function MrrDashboard_cacheReadChunked_(cache, key)',
+  'function MrrDashboard_cacheRemoveChunked_(cache, key)'
 ].forEach((token) => {
   assertIncludes(mrrDashboard, token, 'MRR dashboard dispatcher incomplete');
 });
