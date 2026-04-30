@@ -1,14 +1,16 @@
 # Development Guardrails
 
-## Parallel agent default
+## Parallel agent mandatory rule
 
-- For urgent cross-cutting fixes, default to parallel agent work when the user requests implementation or investigation and the work spans multiple files, layers, lanes, or likely root causes.
-- Split work into independent tracks when possible: server/data contract, client/UI behavior, cache/storage behavior, and validation/deploy safety.
+- Before starting FcstDashboard work, read this file and treat this section as mandatory operating procedure.
+- For any non-trivial implementation, investigation, regression analysis, deploy risk check, or cross-layer question, run multiple agents in parallel by default. Do not wait for the user to repeat the instruction.
+- Split work into independent tracks whenever possible: server/data contract, client/UI behavior, cache/storage behavior, validation/deploy safety, and root-cause hypothesis review.
 - The main agent owns integration, final code review, validation, deployment, and user-facing status. Subagents are for bounded investigation or disjoint implementation only.
+- If parallel agents cannot be used because the task is truly trivial, the tool rejects the request, or the next action is a narrow blocking step that must be done locally, state that reason explicitly before continuing.
 - Close or stop subagents after their result is consumed unless there is a clear reason to reuse the same context.
 - Do not use subagents to bypass lane ownership, write-scope rules, or required impact disclosure. If a fix crosses lanes, surface the boundary explicitly before editing.
 
-Last updated: 2026-04-28
+Last updated: 2026-04-30
 
 ## Fallback 判定の追加ルール
 
