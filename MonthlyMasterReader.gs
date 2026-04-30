@@ -64,6 +64,39 @@ function MonthlyMasterReader_getContext(deptKey) {
   return { users: users, monthlyUsers: monthlyUsers, targets: targets };
 }
 
+function MonthlyMasterReader_getTargetBreakdowns(deptKeys, monthSet) {
+  var result = {};
+  var deptSet = {};
+  (deptKeys || []).forEach(function(deptKey) {
+    deptKey = String(deptKey || '').trim();
+    if (!deptKey) return;
+    deptSet[deptKey] = true;
+    result[deptKey] = { net: 0, newExp: 0, churn: 0 };
+  });
+  if (!Object.keys(deptSet).length) return result;
+
+  var sheet = getSharedSheet(MONTHLY_TARGET_MASTER_SHEET_NAME);
+  if (!sheet) return result;
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) return result;
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = MonthlyMasterReader_buildHeaderMap_(headers);
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  values.forEach(function(row) {
+    var dept = MonthlyMasterReader_formatCell_(MonthlyMasterReader_valueByKeys_(row, headerMap, ['担当部署', 'dept'])).trim();
+    if (!deptSet[dept]) return;
+    var ym = MonthlyMasterReader_normalizeMonth_(MonthlyMasterReader_valueByKeys_(row, headerMap, ['対象月']));
+    if (!ym || !monthSet || !monthSet[ym]) return;
+    var target = result[dept] || (result[dept] = { net: 0, newExp: 0, churn: 0 });
+    target.net += MonthlyMasterReader_toNumberOrBlank_(MonthlyMasterReader_valueByKeys_(row, headerMap, ['Net目標']));
+    target.newExp += MonthlyMasterReader_toNumberOrBlank_(MonthlyMasterReader_valueByKeys_(row, headerMap, ['New+Exp目標']));
+    target.churn += MonthlyMasterReader_toNumberOrBlank_(MonthlyMasterReader_valueByKeys_(row, headerMap, ['Churn目標']));
+  });
+  return result;
+}
+
 function MonthlyMasterReader_buildHeaderMap_(headers) {
   var map = {};
   (headers || []).forEach(function(header, idx) {

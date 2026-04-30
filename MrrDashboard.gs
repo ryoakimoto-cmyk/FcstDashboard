@@ -44,13 +44,14 @@ function getMrrDashboardCurrentData(division, periodKey) {
   var normalizedPeriodKey = MrrDashboard_normalizePeriodKey_(periodKey);
   var cacheKey = MRR_DASHBOARD_CACHE_PREFIX + selection + ':current:period:' + (normalizedPeriodKey || 'default');
   var cached = MrrDashboard_cacheGet_(cacheKey);
-  if (cached) return cached;
+  if (cached) return MrrDashboard_applyFreshCurrentTargets_(cached, selection, normalizedPeriodKey);
 
   var result = MrrDashboard_getSnapshotData_(selection, {
     currentOnly: true,
     limit: MRR_DASHBOARD_INITIAL_SNAPSHOT_DATE_LIMIT,
     periodKey: normalizedPeriodKey
   });
+  result = MrrDashboard_applyFreshCurrentTargets_(result, selection, normalizedPeriodKey);
   if (MrrDashboard_isCurrentResultCacheable_(result)) {
     MrrDashboard_cachePut_(cacheKey, result);
   }

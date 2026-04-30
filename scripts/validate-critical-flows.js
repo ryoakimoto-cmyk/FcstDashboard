@@ -315,6 +315,8 @@ const mrrDashboard = read('MrrDashboard.gs');
   'function MrrDashboard_getSelectedDivisionKeys_(selection)',
   'MrrDashboard_getSnapshotData_(selection, {',
   "selection + ':current:period:'",
+  'if (cached) return MrrDashboard_applyFreshCurrentTargets_(cached, selection, normalizedPeriodKey);',
+  'result = MrrDashboard_applyFreshCurrentTargets_(result, selection, normalizedPeriodKey);',
   'currentOnly: true',
   'var MRR_DASHBOARD_CACHE_CHUNK_SIZE = 85000;',
   'function MrrDashboard_cacheWriteChunked_(cache, key, raw)',
@@ -344,6 +346,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'function MrrDashboard_addCurrentData_(deptKeys, weeks, weekLabels, data, totalKey, diagnostics, periodKey, currentCache)',
   'function MrrDashboard_buildCurrentDeptMetric_(deptKey, diagnostics, currentCache, periodKey)',
   'function MrrDashboard_getValidatedCurrentInitData_(deptKey, currentCache, periodKey)',
+  'function MrrDashboard_shouldRefreshCurrentInit_(reason)',
+  'AggregatedCache_refresh(deptKey)',
   'function MrrDashboard_validateCurrentInitData_(deptKey, live, periodKey)',
   "reason = 'department_total_missing'",
   'function MrrDashboard_readCurrentOppDeals_(deptKeys, periodFilterByDept)',
@@ -359,6 +363,8 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
   'AggregatedCache_readMany(missing)',
   'bulkError = String(e1 && e1.message ? e1.message : e1);',
   "CacheLayer_write(deptKey, 'initData', bulk[deptKey], { persistToSheet: false })",
+  'function MrrDashboard_applyFreshCurrentTargets_(result, selection, periodKey)',
+  'MonthlyMasterReader_getTargetBreakdowns(deptKeys, periodFilter.months)',
   'function MrrDashboard_getCurrentOppSheetContexts_(deptKeys)',
   'function MrrDashboard_getLiveOppPeriodFilterByDept_(deptKeys, periodKey)',
   'function MrrDashboard_buildStandalonePeriodFilter_(periodKey)',
@@ -399,6 +405,20 @@ assertNotIncludes(mrrSnapshot, "key: 'fcstMax'", 'MRR view must not show FCSTMAX
 ].forEach((token) => {
   assertIncludes(mrrSnapshot, token, 'MRR shared snapshot path incomplete');
 });
+
+const monthlyMasterReader = read('MonthlyMasterReader.gs');
+[
+  'function MonthlyMasterReader_getTargetBreakdowns(deptKeys, monthSet)',
+  'getSharedSheet(MONTHLY_TARGET_MASTER_SHEET_NAME)',
+  "MonthlyMasterReader_valueByKeys_(row, headerMap, ['担当部署', 'dept'])",
+  "MonthlyMasterReader_valueByKeys_(row, headerMap, ['対象月'])",
+  "MonthlyMasterReader_valueByKeys_(row, headerMap, ['Net目標'])",
+  "MonthlyMasterReader_valueByKeys_(row, headerMap, ['New+Exp目標'])",
+  "MonthlyMasterReader_valueByKeys_(row, headerMap, ['Churn目標'])"
+].forEach((token) => {
+  assertIncludes(monthlyMasterReader, token, 'MRR fresh target reader must read monthly target master directly');
+});
+
 assertIncludes(
   mrrSnapshot,
   "return Utilities.formatDate(today, 'Asia/Tokyo', 'yyyy-MM');",
@@ -412,7 +432,7 @@ assertIncludes(
 assertNotIncludes(
   mrrSnapshot,
   'AppDataCache_refreshInitData(deptKey)',
-  'MRR initial current data must not perform live refresh during user loading'
+  'MRR current repair must not use the broad AppDataCache init refresh path'
 );
 assertNotIncludes(
   mrrSnapshot,
