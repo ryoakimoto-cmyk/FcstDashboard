@@ -230,9 +230,9 @@ assertNoMojibake('mrr-index.html', mrr);
   "{ key: 'COO', label: 'COO'",
   'var GAS_MRR_INITIAL_DIVISION =',
   'var GAS_MRR_WEBAPP_URL =',
-  'onclick="goDivision_(\\\'',
-  'window.top.location.href = url.toString();',
-  ".getMrrDashboardCurrentData(division, selectedPeriod || '');",
+  'function selectBu_(division)',
+  'syncUrl_(normalized);',
+  ".getMrrDashboardCurrentData(currentDivision, selectedPeriod || '');",
   'var snapshotHistoryLoaded = false;',
   'snapshotHistoryLoaded = false;',
   'snapshotHistoryLoaded = true;',
@@ -247,23 +247,24 @@ assertNoMojibake('mrr-index.html', mrr);
   'function renderPeriodControls_()',
   'function selectMrrQuarter_(quarterKey)',
   'function selectMrrPeriod_(periodKey)',
-  '対象Q:',
-  '対象月:',
+  '対象Q',
+  '対象月',
   'diagnostics: result.diagnostics || { current: [] }',
   'function getCurrentDiagnosticWarnings_()',
   'function getSnapshotCount_()',
   'function loadMoreSnapshots_()',
-  "button.textContent = !snapshotHistoryLoaded ? '履歴を読み込む' : 'さらに過去を読み込む';",
+  '履歴を読み込む',
+  'さらに過去を読み込む',
   'Key Deal を読み込み中',
-  'labels: D.weeks.map(getWeekLabel_)',
-  'function buildMetricDatasets_(rows)',
+  'labels: labels',
+  'function buildPrimaryDatasets_(rows)',
   'metricDefinitions: Array.isArray(result.metricDefinitions) ? result.metricDefinitions.slice() : []'
 ].forEach((token) => {
   assertIncludes(mrr, token, 'MRR division/snapshot client path missing');
 });
 assertNotIncludes(mrr, 'prepareInitialSnapshots_();', 'MRR initial render must not auto-load snapshots');
 const loadSnapshotBody = (mrr.match(/function loadSnapshotData_\(division, beforeDate\) \{[\s\S]*?\n\}/) || [''])[0];
-assertIncludes(loadSnapshotBody, 'renderHistoryMeta_();', 'MRR history load must update metadata instead of blocking the screen');
+assertIncludes(loadSnapshotBody, 'renderMeta_();', 'MRR history load must update metadata instead of blocking the screen');
 assertIncludes(loadSnapshotBody, 'snapshotLoadError = getErrorMessage_(err);', 'MRR history load failures must stay in history metadata');
 assertNotIncludes(loadSnapshotBody, "showLoading_('過去データを読み込み中...');", 'MRR history load must not show global loading overlay');
 assertNotIncludes(loadSnapshotBody, "showLoading_('エラー: ' + getErrorMessage_(err));", 'MRR history load failure must not replace the current screen');
@@ -273,6 +274,28 @@ assertCount(
   1,
   'all active MRR result normalizers must preserve metric definitions'
 );
+[
+  'chart.js@4.4.0',
+  'var targetLinePlugin =',
+  'body[data-bu="BO"] .modules-section { display: revert; }',
+  'body:not([data-bu="BO"]) .grid-2col { grid-template-columns: 1fr; }',
+  'function transformServerResponse_',
+  'function renderRatios_',
+  'function renderModules_'
+].forEach((token) => {
+  assertIncludes(mrr, token, 'MRR migrated presentation layer is incomplete');
+});
+[
+  'console.log',
+  'chartjs-plugin-annotation',
+  'Tailwind',
+  'Bootstrap',
+  'linear-gradient',
+  '#0b8043',
+  '最重要'
+].forEach((token) => {
+  assertNotIncludes(mrr, token, 'MRR migrated UI must not keep rejected visual/debug artifacts');
+});
 
 const mrrDashboard = read('MrrDashboard.gs');
 [

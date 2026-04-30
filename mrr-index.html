@@ -1,404 +1,845 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-build="2026-04-30-mrr-ui-v1">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MRR進捗ダッシュボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    font-family: "Segoe UI", "Hiragino Sans", "Meiryo", sans-serif;
-    background:
-      radial-gradient(circle at 12% 12%, rgba(26, 115, 232, 0.13), transparent 30%),
-      linear-gradient(135deg, #f7fbff 0%, #eef4f8 46%, #f8fafc 100%);
-    color: #172033;
-  }
-  .hidden { display: none !important; }
-  .loading {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(248, 250, 252, 0.88);
-    color: #1a73e8;
-    font-weight: 700;
-  }
-  .choice-shell {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-  }
-  .choice-panel {
-    width: min(920px, 100%);
-    padding: 36px;
-    border-radius: 28px;
-    background: rgba(255, 255, 255, 0.88);
-    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
-  }
-  .choice-kicker {
-    margin: 0 0 8px;
-    color: #1a73e8;
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-  }
-  .choice-title {
-    margin: 0;
-    font-size: clamp(30px, 5vw, 52px);
-    letter-spacing: -0.05em;
-  }
-  .choice-note {
-    margin: 14px 0 28px;
-    color: #64748b;
-  }
-  .choice-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .choice-card {
-    min-height: 150px;
-    padding: 20px;
-    border: 1px solid rgba(148, 163, 184, 0.28);
-    border-radius: 20px;
-    background: #ffffff;
-    text-align: left;
-    cursor: pointer;
-    transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
-  }
-  .choice-card:hover {
-    transform: translateY(-3px);
-    border-color: #1a73e8;
-    box-shadow: 0 18px 42px rgba(26, 115, 232, 0.16);
-  }
-  .choice-name {
-    display: block;
-    margin-bottom: 12px;
-    font-size: 30px;
-    font-weight: 900;
-    color: #172033;
-  }
-  .choice-desc {
-    color: #64748b;
-    line-height: 1.6;
-  }
-  .app-shell {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-  .header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 16px 24px;
-    background: rgba(255, 255, 255, 0.92);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-    backdrop-filter: blur(16px);
-  }
-  .header-left,
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  h1 {
-    margin: 0;
-    font-size: 20px;
-    color: #1a73e8;
-    letter-spacing: -0.02em;
-  }
-  .tabs {
-    display: inline-flex;
-    gap: 6px;
-    padding: 4px;
-    border-radius: 999px;
-    background: #e8eef8;
-  }
-  .tab {
-    padding: 8px 14px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: #475569;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 800;
-  }
-  .tab.active {
-    background: #1a73e8;
-    color: #ffffff;
-    box-shadow: 0 8px 18px rgba(26, 115, 232, 0.25);
-  }
-  .selector,
-  .week-nav {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .selector label,
-  .week-label {
-    font-size: 13px;
-    font-weight: 800;
-  }
-  .selector select {
-    min-width: 160px;
-    padding: 7px 10px;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    background: #ffffff;
-    font-size: 13px;
-  }
-  .week-btn,
-  .load-more-btn {
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    background: #ffffff;
-    cursor: pointer;
-    font-weight: 800;
-  }
-  .week-btn {
-    width: 32px;
-    height: 32px;
-  }
-  .week-label {
-    min-width: 92px;
-    text-align: center;
-  }
-  .content {
-    width: min(1540px, calc(100vw - 32px));
-    margin: 0 auto;
-    padding: 24px 0 36px;
-  }
-  .meta-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-    color: #64748b;
-    font-size: 13px;
-  }
-  .load-more-btn {
-    padding: 8px 14px;
-    color: #1a73e8;
-  }
-  .period-panel {
-    display: grid;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding: 14px 16px;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.78);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
-  }
-  .period-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .period-label {
-    min-width: 54px;
-    color: #475569;
-    font-size: 12px;
-    font-weight: 900;
-  }
-  .period-chips {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .period-chip {
-    padding: 7px 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 999px;
-    background: #ffffff;
-    color: #475569;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 900;
-  }
-  .period-chip.active {
-    border-color: #1a73e8;
-    background: #1a73e8;
-    color: #ffffff;
-    box-shadow: 0 8px 18px rgba(26, 115, 232, 0.22);
-  }
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 14px;
-    margin-bottom: 18px;
-  }
-  .card {
-    padding: 16px 18px;
-    border-radius: 18px;
-    background: #ffffff;
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
-  }
-  .card-label {
-    margin-bottom: 8px;
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .card-value {
-    font-size: 28px;
-    font-weight: 900;
-    letter-spacing: -0.03em;
-  }
-  .card-sub {
-    margin-top: 8px;
-    font-size: 12px;
-  }
-  .val-pos { color: #15803d; }
-  .val-neg { color: #dc2626; }
-  .val-neutral { color: #172033; }
-  .panel {
-    border-radius: 20px;
-    background: #ffffff;
-    box-shadow: 0 18px 46px rgba(15, 23, 42, 0.09);
-  }
-  .chart-panel {
-    min-height: 560px;
-    padding: 20px;
-    margin-bottom: 16px;
-  }
-  .chart-panel canvas {
-    width: 100%;
-    min-height: 520px;
-  }
-  .filter-chip {
-    min-height: 28px;
-    margin-bottom: 10px;
-  }
-  .filter-chip-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: #e8f0fe;
-    color: #1a73e8;
-    font-size: 12px;
-    font-weight: 800;
-  }
-  .filter-chip-clear {
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .deal-panel {
-    overflow: hidden;
-  }
-  .deal-scroll {
-    max-height: 520px;
-    overflow: auto;
-  }
-  .deal-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .deal-table th,
-  .deal-table td {
-    padding: 11px 12px;
-    border-bottom: 1px solid #e5e7eb;
-    text-align: left;
-    white-space: nowrap;
-    font-size: 13px;
-  }
-  .deal-table th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: #f8fafc;
-    color: #334155;
-    cursor: pointer;
-  }
-  .deal-table tr.pos { background: #f0fdf4; }
-  .deal-table tr.neg { background: #fef2f2; }
-  .empty-state {
-    padding: 48px 24px;
-    text-align: center;
-    color: #64748b;
-  }
-  @media (max-width: 1100px) {
-    .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-  @media (max-width: 720px) {
-    .header { align-items: flex-start; padding: 14px 16px; }
-    .content { width: calc(100vw - 20px); padding-top: 16px; }
-    .cards,
-    .choice-grid { grid-template-columns: 1fr; }
-    .chart-panel { min-height: 420px; }
-    .chart-panel canvas { min-height: 380px; }
-  }
+:root {
+  --black: #000000;
+  --white: #FFFFFF;
+  --c33: #333333;
+  --bg-gray: #C8C8C8;
+  --sansan-blue: #004E98;
+  --passion-red: #D70C18;
+  --bg: #f5f5f5;
+  --bg-soft: #ECECEC;
+  --surface: #FFFFFF;
+  --border: #DCDCDC;
+  --border-strong: #BFBFBF;
+  --text-1: var(--c33);
+  --text-2: #6b6b6b;
+  --text-3: #999999;
+  --bu-main: #0075b5;
+  --bu-strong: #004E98;
+  --bu-sub1: #70c1e9;
+  --bu-sub2: #358fad;
+  --bu-sub3: #a2d4db;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+}
+body[data-bu="SS"] {
+  --bu-main: #004E98;
+  --bu-strong: #003366;
+  --bu-sub1: #45A8F5;
+  --bu-sub2: #7094C4;
+  --bu-sub3: #C8E9FF;
+}
+body[data-bu="CO"] {
+  --bu-main: #D70C18;
+  --bu-strong: #a30910;
+  --bu-sub1: #FF8B83;
+  --bu-sub2: #FFA8A2;
+  --bu-sub3: #FFE8E7;
+}
+body[data-bu="COO"] {
+  --bu-main: #004E98;
+  --bu-strong: #002D5C;
+  --bu-sub1: #7094C4;
+  --bu-sub2: #87B2D9;
+  --bu-sub3: #C8E9FF;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: 'Noto Sans JP', system-ui, sans-serif;
+  font-size: 14px;
+}
+body.mode-weekly .period-nav { display: none; }
+body.mode-weekly .dept-select { display: inline-flex; }
+body.mode-dept .period-nav { display: inline-flex; }
+body.mode-dept .dept-select { display: none; }
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.hidden { display: none !important; }
+.choice-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+.choice-panel {
+  width: min(920px, 100%);
+  padding: 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+}
+.choice-kicker {
+  margin: 0 0 8px;
+  color: var(--passion-red);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+.choice-title {
+  margin: 0;
+  color: var(--text-1);
+  font-size: clamp(30px, 4vw, 46px);
+  font-weight: 900;
+  letter-spacing: -.04em;
+}
+.choice-note {
+  margin: 12px 0 28px;
+  color: var(--text-2);
+}
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.choice-card {
+  min-height: 140px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--bu-main);
+  border-radius: 6px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.choice-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+.choice-name {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 28px;
+  font-weight: 900;
+}
+.choice-desc { color: var(--text-2); }
+.app-shell { min-height: 100vh; }
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 18px;
+  font-weight: 900;
+}
+.brand-bar {
+  width: 4px;
+  height: 22px;
+  display: inline-block;
+  background: var(--passion-red);
+}
+.divider-v {
+  width: 1px;
+  height: 30px;
+  background: var(--border);
+}
+.seg-wrap { display: grid; gap: 4px; }
+.seg-label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.seg {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.seg button {
+  min-width: 46px;
+  padding: 7px 12px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 700;
+}
+.seg button:last-child { border-right: 0; }
+.seg button.active {
+  background: var(--bu-main);
+  color: var(--white);
+}
+.header-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+}
+.header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-size: 12px;
+}
+.header-status strong { color: var(--text-1); }
+.header-status-sub { color: var(--text-3); }
+.updated-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bu-main);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: .42; transform: scale(.88); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.period-nav, .dept-select {
+  align-items: center;
+  gap: 8px;
+}
+.period-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  cursor: pointer;
+  font-weight: 900;
+}
+.history-btn {
+  border-radius: 6px;
+  border: 1px solid var(--bu-main);
+  background: var(--surface);
+  color: var(--bu-strong);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.history-btn:disabled {
+  border-color: var(--border);
+  color: var(--text-3);
+  cursor: wait;
+}
+.period-current {
+  min-width: 104px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.current-badge {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 10px;
+}
+.dept-select select {
+  min-width: 150px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+}
+.main {
+  width: min(1480px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 22px 0 38px;
+}
+.notice {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--passion-red);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font-size: 13px;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.chip strong { color: var(--text-1); }
+.chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bu-main);
+}
+.target-period-bar {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.period-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.period-label {
+  width: 54px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.period-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.period-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+.period-chip.active {
+  border-color: var(--bu-main);
+  background: var(--bu-main);
+  color: var(--white);
+}
+.section {
+  margin-top: 20px;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+  color: var(--text-1);
+  font-size: 15px;
+  font-weight: 900;
+}
+.section-head::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--passion-red);
+}
+.kpi-primary {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: 12px;
+}
+.kpi-secondary,
+.extra-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.extra-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.kpi-card {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.bd-target { border-left-color: var(--border-strong); }
+.bd-adj { border-left-color: var(--bu-strong); }
+.bd-confirmed { border-left-color: var(--c33); }
+.bd-commit { border-left-color: var(--bu-main); }
+.bd-mrr { border-left-color: var(--bu-sub2); }
+.bd-extra-a { border-left-color: var(--bu-sub1); }
+.bd-extra-b { border-left-color: var(--bu-sub2); }
+.bd-extra-c { border-left-color: var(--bu-sub3); }
+.kpi-derive-from {
+  margin-bottom: 5px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.kpi-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 900;
+}
+.kpi-meta-tag {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+}
+.kpi-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 10px;
+}
+.kpi-value {
+  color: var(--text-1);
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -.03em;
+}
+.kpi-card.is-secondary .kpi-value { font-size: 22px; }
+.kpi-unit {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.kpi-trend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin-top: 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 700;
+}
+.kpi-trend-row.up { color: var(--c33); }
+.kpi-trend-row.down { color: var(--passion-red); }
+.kpi-trend-row.flat { color: var(--text-3); }
+.kpi-trend-label { color: var(--text-3); }
+.kpi-progress {
+  margin-top: 10px;
+}
+.kpi-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+.kpi-progress-pct { color: var(--text-1); }
+.kpi-progress-track {
+  height: 5px;
+  background: var(--bg-soft);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.kpi-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--c33);
+}
+.kpi-progress-fill.is-under { background: var(--passion-red); }
+.ratios-card,
+.modules-card,
+.chart-card,
+.deal-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.ratios-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.ratio-tile {
+  min-height: 156px;
+  padding: 14px;
+  border-right: 1px solid var(--border);
+}
+.ratio-tile:last-child { border-right: 0; }
+.ratio-name {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 900;
+}
+.ratio-formula {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.ratio-value {
+  margin-top: 12px;
+  color: var(--text-1);
+  font-size: 28px;
+  font-weight: 900;
+}
+.ratio-value.warn { color: var(--passion-red); }
+.ratio-status {
+  display: inline-flex;
+  margin-top: 2px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 700;
+}
+.ratio-status.ok { color: var(--c33); border-color: var(--border-strong); }
+.ratio-status.warn { color: var(--passion-red); border-color: var(--passion-red); }
+.ratio-trend {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.ratio-bar {
+  height: 4px;
+  margin-top: 10px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+.ratio-bar-fill {
+  height: 100%;
+  background: var(--c33);
+}
+.ratio-bar-fill.warn { background: var(--passion-red); }
+.modules-section { display: none; }
+body[data-bu="BO"] .modules-section { display: revert; }
+body:not([data-bu="BO"]) .grid-2col { grid-template-columns: 1fr; }
+.modules-card {
+  padding: 14px;
+}
+.module-row + .module-row { margin-top: 16px; }
+.module-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.module-row-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+}
+.module-tag {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.stack-bar {
+  display: flex;
+  width: 100%;
+  height: 18px;
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+.stack-seg { min-width: 0; }
+.stack-bar-seg-receive { background: var(--bu-strong); }
+.stack-bar-seg-bond { background: var(--bu-main); }
+.stack-bar-seg-bondlite { background: var(--bu-sub1); }
+.stack-bar-seg-cost { background: var(--bu-sub2); }
+.module-mini {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-top: 0;
+}
+.module-cell {
+  padding: 8px;
+  border-right: 1px solid var(--border);
+}
+.module-cell:last-child { border-right: 0; }
+.module-cell-label {
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 700;
+}
+.module-cell-value {
+  margin-top: 4px;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 900;
+}
+.grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.chart-card {
+  min-height: 440px;
+  padding: 14px;
+}
+.chart-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.chart-title {
+  font-size: 13px;
+  font-weight: 900;
+}
+.chart-wrap {
+  position: relative;
+  height: 380px;
+}
+.module-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.module-toggle button {
+  padding: 5px 10px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+.module-toggle button:last-child { border-right: 0; }
+.module-toggle button.active {
+  background: var(--bu-main);
+  color: var(--white);
+}
+.filter-chip {
+  min-height: 28px;
+  margin: 10px 0;
+}
+.filter-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--bu-main);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.filter-chip-clear {
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 900;
+}
+.deal-panel {
+  padding: 14px;
+}
+.deal-scroll {
+  max-height: 320px;
+  overflow: auto;
+}
+.deal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.deal-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  padding: 9px 8px;
+  font-weight: 900;
+}
+.deal-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  white-space: nowrap;
+}
+.empty-state {
+  padding: 22px;
+  color: var(--text-3);
+  text-align: center;
+}
+.val-neg { color: var(--passion-red); }
+.val-pos, .val-neutral { color: var(--text-1); }
+.is-loading .kpi-card,
+.is-loading .ratios-card,
+.is-loading .modules-card,
+.is-loading .chart-card,
+.is-loading .deal-panel {
+  opacity: .48;
+}
+@media (max-width: 1024px) {
+  .header { flex-wrap: wrap; }
+  .header-right { width: 100%; justify-content: flex-start; }
+  .kpi-primary, .kpi-secondary, .extra-kpis, .grid-2col { grid-template-columns: 1fr; }
+  .choice-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .main { width: min(100% - 18px, 1480px); }
+  .choice-grid { grid-template-columns: 1fr; }
+  .module-mini { grid-template-columns: 1fr 1fr; }
+  .chart-wrap { height: 320px; }
+}
 </style>
 </head>
-<body>
-<div id="loading" class="loading hidden">読込中...</div>
-
+<body data-bu="BO" class="mode-dept">
 <section id="choiceShell" class="choice-shell hidden">
   <div class="choice-panel">
     <p class="choice-kicker">MRR DASHBOARD</p>
     <h2 class="choice-title">表示する事業部を選択</h2>
-    <p class="choice-note">選択後は専用URLに切り替わります。初期表示では現在値だけを読み込み、履歴は必要な時だけ追加取得します。</p>
+    <p class="choice-note">選択後は専用URLに切り替わります。初期表示では現在値を優先して表示し、履歴は必要な時だけ読み込みます。</p>
     <div class="choice-grid" id="choiceGrid"></div>
   </div>
 </section>
 
 <div id="appShell" class="app-shell hidden">
   <header class="header">
-    <div class="header-left">
-      <h1>MRR進捗ダッシュボード</h1>
-      <div class="tabs" id="divisionTabs"></div>
-      <div class="tabs">
-        <button type="button" class="tab active" data-view="weekly" onclick="switchView('weekly')">週次</button>
-        <button type="button" class="tab" data-view="dept" onclick="switchView('dept')">部署別</button>
+    <div class="brand"><span class="brand-bar"></span>MRR進捗ダッシュボード</div>
+    <div class="divider-v"></div>
+    <div class="seg-wrap">
+      <span class="seg-label">事業部</span>
+      <div class="seg" id="bu-seg"></div>
+    </div>
+    <div class="seg-wrap">
+      <span class="seg-label">ビュー</span>
+      <div class="seg" id="view-seg">
+        <button type="button" data-view="weekly">週次</button>
+        <button type="button" data-view="dept" class="active">部署別</button>
       </div>
     </div>
     <div class="header-right">
-      <div class="selector" id="deptSelector">
-        <label for="deptSelect">部署</label>
-        <select id="deptSelect" onchange="chartFilter = null; render();"></select>
+      <div class="header-status">
+        <span class="updated-dot"></span>
+        最終更新 <strong id="headerUpdated">—</strong>
+        <span class="header-status-sub" id="headerUpdatedSub"></span>
       </div>
-      <div class="week-nav" id="weekSelector" style="display:none;">
-        <button type="button" class="week-btn" onclick="moveWeek(-1)" aria-label="前の日付">‹</button>
-        <span id="weekLabel" class="week-label"></span>
-        <button type="button" class="week-btn" onclick="moveWeek(1)" aria-label="次の日付">›</button>
+      <div class="period-nav" id="period-nav">
+        <button type="button" class="period-btn" onclick="moveWeek(-1)" aria-label="前の日付">‹</button>
+        <span class="period-current" id="periodCurrentLabel">—</span>
+        <button type="button" class="period-btn" onclick="moveWeek(1)" aria-label="次の日付">›</button>
+        <button type="button" class="history-btn" id="historyLoadBtn" onclick="loadMoreSnapshots_()">履歴を読み込む</button>
+      </div>
+      <div class="dept-select" id="deptSelector">
+        <select id="deptSelect" onchange="chartFilter = null; render();"></select>
       </div>
     </div>
   </header>
 
-  <main class="content">
-    <section class="period-panel" id="periodControls"></section>
+  <main class="main" id="main">
+    <div class="notice hidden" id="inlineNotice"></div>
     <div class="meta-row">
-      <span id="historyMeta"></span>
-      <button type="button" id="loadMoreBtn" class="load-more-btn hidden" onclick="loadMoreSnapshots_()">さらに過去を読み込む</button>
+      <span class="chip"><span class="chip-dot"></span>事業部 <strong id="chip-bu">BO</strong></span>
+      <span class="chip">スナップショット <strong id="chipSnapshot">未読込</strong></span>
+      <span class="chip">対象期間 <strong id="chipPeriod">—</strong></span>
+      <span class="chip">データソース <strong>Salesforce + Snapshot</strong></span>
     </div>
-    <section class="cards" id="cards"></section>
-    <section class="panel chart-panel">
-      <canvas id="mainChart"></canvas>
+    <section class="target-period-bar" id="periodControls"></section>
+
+    <section class="section">
+      <h2 class="section-head">主要KPI</h2>
+      <div class="kpi-primary" id="kpiPrimary"></div>
+      <div class="kpi-secondary" id="kpiSecondary"></div>
+      <div class="extra-kpis" id="extraKpis"></div>
     </section>
-    <div id="filterChip" class="filter-chip"></div>
-    <section class="panel deal-panel" id="dealArea"></section>
+
+    <section class="section" id="ratioSection">
+      <h2 class="section-head">主要比率</h2>
+      <div class="ratios-card" id="ratiosCard"></div>
+    </section>
+
+    <section class="section modules-section" id="modulesSection">
+      <h2 class="section-head">モジュール構成</h2>
+      <div class="modules-card" id="modulesCard"></div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-head">部署別 推移</h2>
+      <div class="grid-2col">
+        <div class="chart-card">
+          <div class="chart-card-head">
+            <div class="chart-title">主要指標 × 部署</div>
+          </div>
+          <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+        </div>
+        <div class="chart-card modules-section">
+          <div class="chart-card-head">
+            <div class="chart-title">モジュール内訳 × 部署</div>
+            <div class="module-toggle">
+              <button type="button" data-module-mode="fcstCommit" class="active" onclick="setModuleChartMode_('fcstCommit')">FCST</button>
+              <button type="button" data-module-mode="confirmed" onclick="setModuleChartMode_('confirmed')">確定</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="moduleChart"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-head">Key Deal</h2>
+      <div id="filterChip" class="filter-chip"></div>
+      <div class="deal-panel" id="dealArea"></div>
+    </section>
   </main>
 </div>
 
@@ -412,9 +853,11 @@ var DIVISION_CHOICES = [
   { key: 'COO', label: 'COO', description: '全事業部' }
 ];
 var D = null;
+var M = null;
 var chart = null;
+var modChart = null;
 var currentDivision = getInitialDivision_();
-var currentView = 'weekly';
+var currentView = 'dept';
 var currentWeekIdx = 0;
 var chartFilter = null;
 var dealSortKey = '';
@@ -427,7 +870,27 @@ var snapshotLoadError = '';
 var snapshotHistoryLoaded = false;
 var selectedQuarterKey = '';
 var selectedPeriod = '';
+var moduleChartMode = 'fcstCommit';
 var MRR_LIVE_WEEK_KEY = 'live';
+var PRIMARY_KEYS = ['target', 'fcstAdjusted', 'confirmed'];
+var SECONDARY_KEYS = ['fcstCommit', 'expectedMrr'];
+var MODULE_KEYS = [
+  'received', 'debtMgmt', 'debtMgmtLite', 'expense',
+  'confirmedReceived', 'confirmedDebtMgmt', 'confirmedDebtMgmtLite', 'confirmedExpense'
+];
+var METRIC_STYLE = {
+  target: { className: 'bd-target', tag: '目標', derive: '' },
+  fcstAdjusted: { className: 'bd-adj', tag: '調整後', derive: '' },
+  confirmed: { className: 'bd-confirmed', tag: '実績', derive: '' },
+  fcstCommit: { className: 'bd-commit', tag: 'コミット', derive: 'SALESFORCE案件レコード集計' },
+  expectedMrr: { className: 'bd-mrr', tag: '期待', derive: 'SALESFORCE案件レコード集計' }
+};
+var MODULE_DEFS = [
+  { key: 'receive', label: '受領', fcst: 'received', confirmed: 'confirmedReceived', seg: 'stack-bar-seg-receive' },
+  { key: 'bond', label: '債権管理', fcst: 'debtMgmt', confirmed: 'confirmedDebtMgmt', seg: 'stack-bar-seg-bond' },
+  { key: 'bondLite', label: '債権管理 Lite', fcst: 'debtMgmtLite', confirmed: 'confirmedDebtMgmtLite', seg: 'stack-bar-seg-bondlite' },
+  { key: 'cost', label: '経費', fcst: 'expense', confirmed: 'confirmedExpense', seg: 'stack-bar-seg-cost' }
+];
 
 function getInitialDivision_() {
   var embedded = normalizeDivision_(GAS_MRR_INITIAL_DIVISION || '');
@@ -445,29 +908,29 @@ function normalizeDivision_(value) {
   return DIVISION_CHOICES.some(function(choice) { return choice.key === value; }) ? value : '';
 }
 
+function bootstrap_() {
+  buildDivisionTabs_();
+  bindViewTabs_();
+  if (!currentDivision) {
+    showSelection_();
+    return;
+  }
+  showApp_();
+  setBuVisual_(currentDivision);
+  refreshAllData();
+}
+
 function showSelection_() {
   document.getElementById('choiceShell').classList.remove('hidden');
   document.getElementById('appShell').classList.add('hidden');
-  hideLoading_();
+  setNotice_('');
   var grid = document.getElementById('choiceGrid');
   grid.innerHTML = DIVISION_CHOICES.map(function(choice) {
-    return '<button type="button" class="choice-card" onclick="goDivision_(\'' + choice.key + '\')">' +
+    return '<button type="button" class="choice-card" data-choice-bu="' + choice.key + '" onclick="selectBu_(\'' + choice.key + '\')">' +
       '<span class="choice-name">' + escapeHtml_(choice.label) + '</span>' +
       '<span class="choice-desc">' + escapeHtml_(choice.description) + '</span>' +
     '</button>';
   }).join('');
-}
-
-function goDivision_(division) {
-  var baseUrl = GAS_MRR_WEBAPP_URL || window.location.href;
-  var url = new URL(baseUrl);
-  url.searchParams.set('app', 'mrr');
-  url.searchParams.set('division', division);
-  try {
-    window.top.location.href = url.toString();
-  } catch (e) {
-    window.location.href = url.toString();
-  }
 }
 
 function showApp_() {
@@ -475,71 +938,94 @@ function showApp_() {
   document.getElementById('appShell').classList.remove('hidden');
 }
 
-function showLoading_(message) {
-  var el = document.getElementById('loading');
-  el.textContent = message || '読込中...';
-  el.classList.remove('hidden');
-}
-
-function hideLoading_() {
-  document.getElementById('loading').classList.add('hidden');
-}
-
-function bootstrap_() {
-  buildDivisionTabs_();
-  if (!currentDivision) {
-    showSelection_();
-    return;
-  }
-  showApp_();
-  loadCurrentData_(currentDivision);
-}
-
 function buildDivisionTabs_() {
-  var tabs = document.getElementById('divisionTabs');
+  var tabs = document.getElementById('bu-seg');
   if (!tabs) return;
   tabs.innerHTML = DIVISION_CHOICES.map(function(choice) {
-    return '<button type="button" class="tab" data-division="' + choice.key + '" onclick="goDivision_(\'' + choice.key + '\')">' +
+    return '<button type="button" data-bu="' + choice.key + '" onclick="selectBu_(\'' + choice.key + '\')">' +
       escapeHtml_(choice.label) +
     '</button>';
   }).join('');
 }
 
-function loadCurrentData_(division) {
+function bindViewTabs_() {
+  document.querySelectorAll('#view-seg button').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      switchView(btn.dataset.view);
+    });
+  });
+}
+
+function selectBu_(division) {
+  var normalized = normalizeDivision_(division);
+  if (!normalized) return;
+  currentDivision = normalized;
+  selectedPeriod = '';
+  selectedQuarterKey = '';
+  chartFilter = null;
+  dealCache = {};
+  dealErrorCache = {};
+  setBuVisual_(normalized);
+  showApp_();
+  syncUrl_(normalized);
+  refreshAllData();
+  setTimeout(refreshChartColors, 50);
+}
+
+function setBuVisual_(division) {
+  document.body.dataset.bu = normalizeDivision_(division) || 'BO';
+  document.getElementById('chip-bu').textContent = document.body.dataset.bu;
+  document.querySelectorAll('#bu-seg button').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.bu === document.body.dataset.bu);
+  });
+}
+
+function syncUrl_(division) {
+  try {
+    var base = GAS_MRR_WEBAPP_URL || window.location.href;
+    var url = new URL(base);
+    url.searchParams.set('app', 'mrr');
+    url.searchParams.set('division', division);
+    window.history.replaceState(null, '', url.toString());
+  } catch (e) {}
+}
+
+function refreshAllData() {
   loadingHistory = false;
   snapshotLoadError = '';
   snapshotHistoryLoaded = false;
   dealCache = {};
   dealErrorCache = {};
   loadingDealKey = '';
-  showLoading_('現在値を読み込み中...');
+  setLoading_(true, '現在値を読み込み中...');
   google.script.run
     .withSuccessHandler(function(result) {
       try {
         D = normalizeResult_(result || {});
         syncPeriodStateFromData_();
         currentWeekIdx = D.weeks.length ? D.weeks.length - 1 : 0;
-        currentDivision = D.division || division;
-        chartFilter = null;
-        updateDivisionTabs_();
+        currentDivision = D.division || currentDivision;
+        setBuVisual_(currentDivision);
         buildDeptOptions_();
-        updateWeekLabel();
-        hideLoading_();
+        updateViewMode_();
+        setLoading_(false);
         render();
       } catch (e) {
-        showLoading_('描画エラー: ' + getErrorMessage_(e));
+        setLoading_(false);
+        setNotice_('描画エラー: ' + getErrorMessage_(e));
       }
     })
     .withFailureHandler(function(err) {
-      showLoading_('エラー: ' + getErrorMessage_(err));
+      setLoading_(false);
+      setNotice_('エラー: ' + getErrorMessage_(err));
     })
-    .getMrrDashboardCurrentData(division, selectedPeriod || '');
+    .getMrrDashboardCurrentData(currentDivision, selectedPeriod || '');
 }
 
 function loadSnapshotData_(division, beforeDate) {
   loadingHistory = true;
   snapshotLoadError = '';
-  renderHistoryMeta_();
+  renderMeta_();
   google.script.run
     .withSuccessHandler(function(result) {
       mergeDashboardData_(normalizeResult_(result || {}));
@@ -547,16 +1033,14 @@ function loadSnapshotData_(division, beforeDate) {
       snapshotHistoryLoaded = true;
       currentDivision = D.division || division;
       chartFilter = null;
-      updateDivisionTabs_();
       buildDeptOptions_();
-      updateWeekLabel();
       loadingHistory = false;
       render();
     })
     .withFailureHandler(function(err) {
       loadingHistory = false;
       snapshotLoadError = getErrorMessage_(err);
-      renderHistoryMeta_();
+      renderMeta_();
     })
     .getMrrDashboardData(division, beforeDate || '', selectedPeriod || '');
 }
@@ -581,6 +1065,32 @@ function normalizeResult_(result) {
   };
 }
 
+function transformServerResponse_() {
+  var activeWeek = getActiveWeek_();
+  var scopeDept = currentView === 'weekly' ? getSelectedDept_() : D.allLabel;
+  var currentMetric = getDeptData(activeWeek, scopeDept);
+  var prevWeek = getPreviousWeek_(activeWeek);
+  var prevMetric = prevWeek ? getDeptData(prevWeek, scopeDept) : null;
+  var emptySet = getEmptyDeptSet_();
+  return {
+    bu: currentDivision,
+    view: currentView,
+    snapshotAt: getSnapshotTimestamp_(activeWeek),
+    period: getSelectedPeriodInfo_(),
+    totals: currentMetric,
+    totalsPrev: prevMetric,
+    departments: (D.depts || []).map(function(dept) {
+      var metric = getDeptData(activeWeek, dept);
+      var row = { name: dept, isEmpty: !!emptySet[dept] };
+      getRenderableMetricDefs_().forEach(function(def) {
+        row[def.key] = hasOwn_(metric, def.key) ? normalizeNumberOrNull_(metric[def.key]) : null;
+      });
+      return row;
+    }),
+    modules: buildModulesModel_(activeWeek)
+  };
+}
+
 function mergeDashboardData_(incoming) {
   incoming.weeks.forEach(function(week) {
     if (D.weeks.indexOf(week) === -1) D.weeks.push(week);
@@ -598,10 +1108,6 @@ function mergeDashboardData_(incoming) {
       D.data[week][dept] = incoming.data[week][dept];
     });
   });
-  if (incoming.diagnostics && Array.isArray(incoming.diagnostics.current) && incoming.diagnostics.current.length) {
-    D.diagnostics = D.diagnostics || {};
-    D.diagnostics.current = incoming.diagnostics.current.slice();
-  }
   if (incoming.periodOptions && incoming.periodOptions.length) D.periodOptions = incoming.periodOptions.slice();
   if (incoming.selectedPeriod) D.selectedPeriod = incoming.selectedPeriod;
   if (incoming.selectedQuarterKey) D.selectedQuarterKey = incoming.selectedQuarterKey;
@@ -616,159 +1122,25 @@ function syncPeriodStateFromData_() {
   if (!getMrrQuarterOption_(options, nextQuarter)) {
     nextQuarter = D.selectedQuarterKey || (options[0] && options[0].key) || '';
   }
-
   var nextPeriod = selectedPeriod || D.selectedPeriod || nextQuarter;
-  if (!isValidMrrPeriod_(options, nextPeriod)) {
-    nextPeriod = D.selectedPeriod || nextQuarter;
-  }
-  if (!isValidMrrPeriod_(options, nextPeriod)) {
-    nextPeriod = nextQuarter;
-  }
-
+  if (!isValidMrrPeriod_(options, nextPeriod)) nextPeriod = D.selectedPeriod || nextQuarter;
+  if (!isValidMrrPeriod_(options, nextPeriod)) nextPeriod = nextQuarter;
   selectedPeriod = nextPeriod || '';
   selectedQuarterKey = getMrrQuarterKeyForPeriod_(options, selectedPeriod) || nextQuarter || '';
   D.selectedPeriod = selectedPeriod;
   D.selectedQuarterKey = selectedQuarterKey;
 }
 
-function getMrrQuarterOption_(periodOptions, quarterKey) {
-  var key = String(quarterKey || '');
-  return (periodOptions || []).find(function(option) {
-    return option && option.key === key;
-  }) || null;
-}
-
-function getMrrQuarterKeyForPeriod_(periodOptions, periodKey) {
-  var key = String(periodKey || '');
-  var option = (periodOptions || []).find(function(item) {
-    return item && (item.key === key || (item.months || []).indexOf(key) !== -1);
-  });
-  return option ? option.key : '';
-}
-
-function isValidMrrPeriod_(periodOptions, periodKey) {
-  var key = String(periodKey || '');
-  if (!key) return false;
-  return (periodOptions || []).some(function(option) {
-    return option && (option.key === key || (option.months || []).indexOf(key) !== -1);
-  });
-}
-
-function selectMrrQuarter_(quarterKey) {
-  if (!D || selectedQuarterKey === quarterKey && selectedPeriod === quarterKey) return;
-  selectedQuarterKey = quarterKey;
-  selectedPeriod = quarterKey;
-  reloadForPeriod_();
-}
-
-function selectMrrPeriod_(periodKey) {
-  if (!D || selectedPeriod === periodKey) return;
-  selectedPeriod = periodKey;
-  selectedQuarterKey = getMrrQuarterKeyForPeriod_(D.periodOptions || [], periodKey) || selectedQuarterKey;
-  reloadForPeriod_();
-}
-
-function reloadForPeriod_() {
-  chartFilter = null;
-  dealCache = {};
-  loadingDealKey = '';
-  loadCurrentData_(currentDivision);
-}
-
-function sortWeeks_(weeks) {
-  return (weeks || []).slice().sort(function(a, b) {
-    if (a === MRR_LIVE_WEEK_KEY && b !== MRR_LIVE_WEEK_KEY) return 1;
-    if (b === MRR_LIVE_WEEK_KEY && a !== MRR_LIVE_WEEK_KEY) return -1;
-    return a < b ? -1 : (a > b ? 1 : 0);
-  });
-}
-
-function updateDivisionTabs_() {
-  document.querySelectorAll('[data-division]').forEach(function(tab) {
-    tab.classList.toggle('active', tab.dataset.division === currentDivision);
-  });
-}
-
-function getErrorMessage_(err) {
-  if (!err) return 'Unknown error';
-  return err.message || err.toString() || 'Unknown error';
-}
-
-function buildDeptOptions_() {
-  var select = document.getElementById('deptSelect');
-  if (!select || !D) return;
-  select.innerHTML = '';
-  [D.allLabel].concat(D.depts || []).forEach(function(dept) {
-    var option = document.createElement('option');
-    option.value = dept;
-    option.textContent = dept;
-    select.appendChild(option);
-  });
-}
-
-function getSelectedDept_() {
-  var select = document.getElementById('deptSelect');
-  return select && select.value ? select.value : (D && D.allLabel) || '';
-}
-
-function getSelectedWeek_() {
-  if (!D || !D.weeks.length) return '';
-  return D.weeks[currentWeekIdx] || '';
-}
-
-function getWeekLabel_(weekKey) {
-  return (D && D.weekLabels && D.weekLabels[weekKey]) || weekKey || '';
-}
-
-function updateWeekLabel() {
-  var label = document.getElementById('weekLabel');
-  if (label) label.textContent = getWeekLabel_(getSelectedWeek_()) || '-';
-}
-
-function moveWeek(direction) {
-  if (!D || !D.weeks.length) return;
-  currentWeekIdx = Math.max(0, Math.min(D.weeks.length - 1, currentWeekIdx + direction));
-  chartFilter = null;
-  updateWeekLabel();
-  render();
-}
-
-function switchView(view) {
-  currentView = view;
-  chartFilter = null;
-  document.querySelectorAll('[data-view]').forEach(function(tab) {
-    tab.classList.toggle('active', tab.dataset.view === view);
-  });
-  document.getElementById('deptSelector').style.display = view === 'weekly' ? '' : 'none';
-  document.getElementById('weekSelector').style.display = view === 'dept' ? '' : 'none';
-  render();
-}
-
-function loadMoreSnapshots_() {
-  if (!D || loadingHistory) return;
-  if (!snapshotHistoryLoaded) {
-    loadSnapshotData_(currentDivision, '');
-    return;
-  }
-  if (!D.history || !D.history.hasMore || !D.history.oldestDate) return;
-  loadSnapshotData_(currentDivision, D.history.oldestDate);
-}
-
 function render() {
   if (!D) return;
+  M = transformServerResponse_();
   renderPeriodControls_();
-  renderHistoryMeta_();
-  renderCards();
-  renderChartSafely_();
+  renderMeta_();
+  renderKpis_();
+  renderRatios_();
+  renderModules_();
+  renderCharts_();
   renderDeals();
-}
-
-function renderChartSafely_() {
-  try {
-    renderChart();
-  } catch (e) {
-    renderChartError_('グラフ描画エラー: ' + getErrorMessage_(e));
-  }
 }
 
 function renderPeriodControls_() {
@@ -798,259 +1170,432 @@ function renderPeriodControls_() {
     });
   }
   area.innerHTML =
-    '<div class="period-row"><span class="period-label">対象Q:</span><div class="period-chips">' + quarterHtml + '</div></div>' +
-    '<div class="period-row"><span class="period-label">対象月:</span><div class="period-chips">' + monthHtml + '</div></div>';
+    '<div class="period-row"><span class="period-label">対象Q</span><div class="period-chips">' + quarterHtml + '</div></div>' +
+    '<div class="period-row"><span class="period-label">対象月</span><div class="period-chips">' + monthHtml + '</div></div>';
 }
 
-function renderHistoryMeta_() {
-  var meta = document.getElementById('historyMeta');
-  var button = document.getElementById('loadMoreBtn');
-  if (!meta || !button) return;
+function renderMeta_() {
   var snapshotCount = getSnapshotCount_();
-  var parts = [(D.divisionLabel || D.division)];
-  if (selectedPeriod) parts.push('対象: ' + getMrrPeriodLabel_(selectedPeriod));
-  if (D.weeks.indexOf(MRR_LIVE_WEEK_KEY) !== -1) parts.push('現在値表示中');
-  parts.push('スナップショット: ' + (snapshotHistoryLoaded ? snapshotCount + '日付' : '未読込'));
-  var currentWarnings = getCurrentDiagnosticWarnings_();
-  if (currentWarnings.length) parts.push('現在値警告: ' + currentWarnings.join(', '));
+  var activeWeek = getActiveWeek_();
+  document.getElementById('chip-bu').textContent = currentDivision;
+  document.getElementById('chipSnapshot').textContent = snapshotHistoryLoaded ? snapshotCount + '日付' : '未読込';
+  document.getElementById('chipPeriod').textContent = getMrrPeriodLabel_(selectedPeriod) || '—';
+  document.getElementById('periodCurrentLabel').innerHTML = escapeHtml_(getWeekLabel_(activeWeek) || '—') +
+    (activeWeek === MRR_LIVE_WEEK_KEY ? '<span class="current-badge">現在</span>' : '');
+  var historyBtn = document.getElementById('historyLoadBtn');
+  if (historyBtn) {
+    historyBtn.disabled = !!loadingHistory;
+    historyBtn.textContent = loadingHistory
+      ? '履歴読み込み中'
+      : (!snapshotHistoryLoaded ? '履歴を読み込む' : (D && D.history && D.history.hasMore ? 'さらに過去を読み込む' : '履歴読込済み'));
+  }
+  var stamp = M && M.snapshotAt ? M.snapshotAt : '';
+  document.getElementById('headerUpdated').textContent = formatHeaderTime_(stamp);
+  document.getElementById('headerUpdatedSub').textContent = formatRelativeTime_(stamp);
+  var parts = [];
   if (loadingHistory) parts.push('スナップショット準備中');
   if (snapshotLoadError) parts.push('履歴エラー: ' + snapshotLoadError);
-  meta.textContent = parts.join(' / ');
-  button.textContent = !snapshotHistoryLoaded ? '履歴を読み込む' : 'さらに過去を読み込む';
-  var canLoadMore = D.history && D.history.hasMore && D.history.oldestDate;
-  button.classList.toggle('hidden', loadingHistory || !(!snapshotHistoryLoaded || canLoadMore));
+  var warnings = getCurrentDiagnosticWarnings_();
+  if (warnings.length) parts.push('現在値警告: ' + warnings.join(', '));
+  setNotice_(parts.join(' / '));
 }
 
-function getSnapshotCount_() {
-  return D && Array.isArray(D.weeks)
-    ? D.weeks.filter(function(week) { return week !== MRR_LIVE_WEEK_KEY; }).length
-    : 0;
-}
-
-function getCurrentDiagnosticWarnings_() {
-  var rows = D && D.diagnostics && Array.isArray(D.diagnostics.current)
-    ? D.diagnostics.current
-    : [];
-  return rows.filter(function(item) {
-    return item && item.status !== 'ok';
-  }).map(function(item) {
-    var reason = item.reason || item.error || 'unknown';
-    return (item.deptKey || '-') + ':' + reason;
+function renderKpis_() {
+  var primary = document.getElementById('kpiPrimary');
+  var secondary = document.getElementById('kpiSecondary');
+  var extra = document.getElementById('extraKpis');
+  var defs = getRenderableMetricDefs_();
+  primary.innerHTML = PRIMARY_KEYS.map(function(key) {
+    return renderKpiCard_(findMetricDef_(defs, key), false);
+  }).filter(Boolean).join('');
+  secondary.innerHTML = SECONDARY_KEYS.map(function(key) {
+    return renderKpiCard_(findMetricDef_(defs, key), true);
+  }).filter(Boolean).join('');
+  var extraDefs = defs.filter(function(def) {
+    return PRIMARY_KEYS.indexOf(def.key) === -1 && SECONDARY_KEYS.indexOf(def.key) === -1 && MODULE_KEYS.indexOf(def.key) === -1;
   });
-}
-
-function emptyMetric_() {
-  return { target: 0, actual: 0, expectedMrr: 0, fcst: 0 };
-}
-
-function getWeekMap_(week) {
-  return (D && D.data && D.data[week]) || {};
-}
-
-function getDeptData(week, dept) {
-  var rows = getWeekMap_(week);
-  if (!D) return emptyMetric_();
-  if (dept === D.allLabel) return rows[D.totalDeptKey] || emptyMetric_();
-  return rows[dept] || emptyMetric_();
-}
-
-function getMetricDefinitions_() {
-  return (D && Array.isArray(D.metricDefinitions)) ? D.metricDefinitions : [];
-}
-
-function renderCards() {
-  var area = document.getElementById('cards');
-  if (!area) return;
-  if (!D.weeks.length) {
-    var warnings = getCurrentDiagnosticWarnings_();
-    var detail = warnings.length ? warnings.join(' / ') : '現在値の対象データがありません';
-    area.innerHTML = '<div class="card"><div class="card-label">状態</div><div class="card-value">現在値未取得</div><div class="card-sub val-neg">' + escapeHtml_(detail) + '</div></div>';
-    return;
-  }
-  var data = currentView === 'weekly'
-    ? getDeptData(D.weeks[D.weeks.length - 1], getSelectedDept_())
-    : getDeptData(getSelectedWeek_(), D.allLabel);
-  var defs = getMetricDefinitions_();
-  var target = Number(data.target) || 0;
-  area.innerHTML = defs.map(function(def) {
-    var value = Number(data[def.key]) || 0;
-    var sub = '';
-    var subClass = 'val-neutral';
-    if (def.key !== 'target' && target) {
-      var diff = value - target;
-      sub = 'vs 目標 ' + (diff >= 0 ? '+' : '') + fmt(diff);
-      subClass = diff >= 0 ? 'val-pos' : 'val-neg';
-    }
-    return buildCardHtml_(def.label || def.key, fmt(value), sub, valClass_(value), subClass);
+  extra.innerHTML = extraDefs.map(function(def, idx) {
+    return renderKpiCard_(def, true, 'bd-extra-' + ['a','b','c'][idx % 3]);
   }).join('');
+  extra.classList.toggle('hidden', !extraDefs.length);
 }
 
-function buildCardHtml_(label, value, sub, valueClass, subClass) {
-  return '<div class="card">' +
-    '<div class="card-label">' + escapeHtml_(label) + '</div>' +
-    '<div class="card-value ' + escapeHtml_(valueClass || 'val-neutral') + '">' + escapeHtml_(value) + '</div>' +
-    (sub ? '<div class="card-sub ' + escapeHtml_(subClass || 'val-neutral') + '">' + escapeHtml_(sub) + '</div>' : '') +
+function renderKpiCard_(def, secondary, overrideClass) {
+  if (!def) return '';
+  var style = METRIC_STYLE[def.key] || {};
+  var value = metricValue_(M.totals, def.key);
+  var prev = metricValue_(M.totalsPrev, def.key);
+  var trend = buildTrend_(value, prev, 'yen');
+  var progress = buildKpiProgress_(def.key, value, M.totals);
+  return '<div class="kpi-card ' + escapeHtml_(overrideClass || style.className || 'bd-extra-a') + (secondary ? ' is-secondary' : '') + '">' +
+    (secondary && style.derive ? '<div class="kpi-derive-from">' + escapeHtml_(style.derive) + '</div>' : '') +
+    '<div class="kpi-label">' + escapeHtml_(def.label || def.key) + '<span class="kpi-meta-tag">' + escapeHtml_(style.tag || '指標') + '</span></div>' +
+    '<div class="kpi-value-row"><span class="kpi-value num">' + escapeHtml_(formatNumberFace_(value)) + '</span>' + (value === null ? '' : '<span class="kpi-unit">円</span>') + '</div>' +
+    '<div class="kpi-trend-row ' + trend.className + '"><span class="kpi-trend-label">先週比</span><span class="kpi-trend-icon">' + trend.icon + '</span><span class="kpi-trend-value num">' + escapeHtml_(trend.label) + '</span></div>' +
+    progress +
   '</div>';
 }
 
-function renderChart() {
-  var canvas = document.getElementById('mainChart');
-  if (!canvas || !D) return;
-  clearChartError_();
-  if (typeof Chart !== 'function') {
-    renderChartError_('グラフライブラリを読み込めませんでした。数値とKey Dealは表示しています。');
+function buildKpiProgress_(key, value, totals) {
+  var spec = {
+    target: { label: '確定比', num: 'confirmed', den: 'target', objective: true },
+    fcstAdjusted: { label: '目標比', num: 'fcstAdjusted', den: 'target', objective: true },
+    confirmed: { label: 'FCST(調整後)比', num: 'confirmed', den: 'fcstAdjusted', objective: true },
+    fcstCommit: { label: 'FCST(調整後)比', num: 'fcstCommit', den: 'fcstAdjusted', objective: false },
+    expectedMrr: { label: 'FCST(コミット)比', num: 'expectedMrr', den: 'fcstCommit', objective: false }
+  }[key];
+  if (!spec) return '';
+  var ratio = safeRatio_(metricValue_(totals, spec.num), metricValue_(totals, spec.den));
+  if (ratio === null) return '';
+  var under = spec.objective && ratio < 1;
+  return '<div class="kpi-progress">' +
+    '<div class="kpi-progress-meta"><span>' + escapeHtml_(spec.label) + '</span><span class="kpi-progress-pct num">' + escapeHtml_(formatPct_(ratio)) + '</span></div>' +
+    '<div class="kpi-progress-track"><div class="kpi-progress-fill' + (under ? ' is-under' : '') + '" style="width:' + Math.min(100, Math.max(0, ratio * 100)).toFixed(1) + '%"></div></div>' +
+  '</div>';
+}
+
+function renderRatios_() {
+  var area = document.getElementById('ratiosCard');
+  var section = document.getElementById('ratioSection');
+  var ratios = buildRatios_();
+  if (!ratios.length) {
+    section.classList.add('hidden');
     return;
   }
-  if (chart) chart.destroy();
-  if (!D.weeks.length) return;
+  section.classList.remove('hidden');
+  area.innerHTML = ratios.map(function(ratio) {
+    var status = ratioStatus_(ratio);
+    var trend = buildPpTrend_(ratio.current, ratio.prev);
+    return '<div class="ratio-tile">' +
+      '<div class="ratio-name">' + escapeHtml_(ratio.label) + '</div>' +
+      '<div class="ratio-formula mono">' + escapeHtml_(ratio.formula) + '</div>' +
+      '<div class="ratio-value num' + (status.warn ? ' warn' : '') + '">' + escapeHtml_(formatPct_(ratio.current)) + '</div>' +
+      '<span class="ratio-status ' + status.className + '">' + escapeHtml_(status.label) + '</span>' +
+      '<div class="ratio-trend num">' + trend.icon + ' 先週比 ' + escapeHtml_(trend.label) + '</div>' +
+      '<div class="ratio-bar"><div class="ratio-bar-fill' + (status.warn ? ' warn' : '') + '" style="width:' + Math.min(100, Math.max(0, ratio.current * 100)).toFixed(1) + '%"></div></div>' +
+    '</div>';
+  }).join('');
+}
 
-  var ctx = canvas.getContext('2d');
-  var options = buildChartOptions_();
+function buildRatios_() {
+  var t = M.totals || {};
+  var p = M.totalsPrev || {};
+  return [
+    ratioDef_('目標達成率', '確定 ÷ 目標', t.confirmed, t.target, p.confirmed, p.target, true, '達成', '途上', '未達'),
+    ratioDef_('調整後達成率', '確定 ÷ FCST(調整後)', t.confirmed, t.fcstAdjusted, p.confirmed, p.fcstAdjusted, true, '達成', '途上', '未達'),
+    ratioDef_('見立て充足率', 'FCST(調整後) ÷ 目標', t.fcstAdjusted, t.target, p.fcstAdjusted, p.target, true, '達成', '途上', '未達'),
+    ratioDef_('コミット位置', 'FCST(コミット) ÷ FCST(調整後)', t.fcstCommit, t.fcstAdjusted, p.fcstCommit, p.fcstAdjusted, false, '差分あり', '差分あり', '差分あり'),
+    ratioDef_('MRR厚み', '期待MRR ÷ FCST(コミット)', t.expectedMrr, t.fcstCommit, p.expectedMrr, p.fcstCommit, false, '標準', '標準', '標準')
+  ].filter(Boolean);
+}
+
+function ratioDef_(label, formula, num, den, prevNum, prevDen, objective, okLabel, neutralLabel, warnLabel) {
+  var current = safeRatio_(num, den);
+  if (current === null) return null;
+  return {
+    label: label,
+    formula: formula,
+    current: current,
+    prev: safeRatio_(prevNum, prevDen),
+    objective: objective,
+    okLabel: okLabel,
+    neutralLabel: neutralLabel,
+    warnLabel: warnLabel
+  };
+}
+
+function ratioStatus_(ratio) {
+  if (!ratio.objective) return { label: ratio.neutralLabel, className: 'neutral', warn: false };
+  if (ratio.current >= 1) return { label: ratio.okLabel, className: 'ok', warn: false };
+  var away = ratio.prev !== null && ratio.current < ratio.prev;
+  return away
+    ? { label: ratio.warnLabel, className: 'warn', warn: true }
+    : { label: ratio.neutralLabel, className: 'neutral', warn: false };
+}
+
+function renderModules_() {
+  var card = document.getElementById('modulesCard');
+  if (!card || currentDivision !== 'BO') return;
+  var modules = M.modules;
+  if (!modules) {
+    card.innerHTML = '<div class="empty-state">モジュール構成に必要な指標がありません</div>';
+    return;
+  }
+  card.innerHTML = renderModuleRow_('FCST(コミット)', '予測', modules.fcstCommit) +
+    renderModuleRow_('確定', '実績', modules.confirmed);
+}
+
+function renderModuleRow_(title, tag, values) {
+  var total = moduleTotal_(values);
+  return '<div class="module-row">' +
+    '<div class="module-row-head"><div class="module-row-title">' + escapeHtml_(title) + '<span class="module-tag">' + escapeHtml_(tag) + '</span></div><div class="num">' + escapeHtml_(formatYen_(total)) + '</div></div>' +
+    '<div class="stack-bar">' + MODULE_DEFS.map(function(def) {
+      var width = total ? Math.max(0, Number(values[def.key]) || 0) / Math.abs(total) * 100 : 0;
+      return '<div class="stack-seg ' + def.seg + '" style="width:' + Math.max(0, Math.min(100, width)).toFixed(1) + '%"></div>';
+    }).join('') + '</div>' +
+    '<div class="module-mini">' + MODULE_DEFS.map(function(def) {
+      var val = Number(values[def.key]) || 0;
+      var pct = total ? val / total : null;
+      return '<div class="module-cell"><div class="module-cell-label">' + escapeHtml_(def.label) + '</div><div class="module-cell-value num">' + escapeHtml_(formatYen_(val)) + '</div><div class="module-cell-label num">' + escapeHtml_(pct === null ? '—' : formatPct_(pct)) + '</div></div>';
+    }).join('') + '</div>' +
+  '</div>';
+}
+
+function renderCharts_() {
+  renderMainChart_();
+  renderModuleChart_();
+}
+
+function renderMainChart_() {
+  var canvas = document.getElementById('mainChart');
+  if (!canvas || !D || typeof Chart !== 'function') return;
+  if (chart) chart.destroy();
+  var labels;
+  var rows;
+  var emptySet = {};
   if (currentView === 'weekly') {
     var dept = getSelectedDept_();
-    var rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: D.weeks.map(getWeekLabel_),
-        datasets: buildMetricDatasets_(rows)
-      },
-      options: Object.assign(options, {
-        onClick: function(_, elements) {
-          chartFilter = elements.length
-            ? toggleFilter_('week', D.weeks[elements[0].index])
-            : null;
-          renderDeals();
-        }
-      })
-    });
-    return;
+    labels = D.weeks.map(getWeekLabel_);
+    rows = D.weeks.map(function(week) { return getDeptData(week, dept); });
+  } else {
+    labels = M.departments.map(function(row) { return row.name; });
+    rows = M.departments;
+    M.departments.forEach(function(row) { if (row.isEmpty) emptySet[row.name] = true; });
   }
-
-  var week = getSelectedWeek_();
-  var targets = D.depts.map(function(dept) { return getDeptData(week, dept).target || 0; });
-  chart = new Chart(ctx, {
+  chart = new Chart(canvas.getContext('2d'), {
     type: 'bar',
     data: {
-      labels: D.depts,
-      datasets: buildMetricDatasets_(D.depts.map(function(dept) { return getDeptData(week, dept); }))
+      labels: labels,
+      datasets: buildPrimaryDatasets_(rows)
     },
-    options: Object.assign(options, {
-      onClick: function(_, elements) {
-        chartFilter = elements.length
-          ? toggleFilter_('dept', D.depts[elements[0].index])
-          : null;
-        renderDeals();
-      }
-    }),
-    plugins: [makeTargetTickPlugin_('targetTicks', targets)]
+    plugins: [targetLinePlugin],
+    options: buildChartOptions_(emptySet, function(index) {
+      chartFilter = currentView === 'weekly'
+        ? toggleFilter_('week', D.weeks[index])
+        : toggleFilter_('dept', M.departments[index] && M.departments[index].name);
+      renderDeals();
+    })
   });
 }
 
-function clearChartError_() {
-  var canvas = document.getElementById('mainChart');
-  if (canvas) canvas.style.display = '';
-  var err = document.getElementById('chartError');
-  if (err && err.parentNode) err.parentNode.removeChild(err);
-}
-
-function renderChartError_(message) {
-  if (chart) {
-    try { chart.destroy(); } catch (e) {}
-    chart = null;
-  }
-  var canvas = document.getElementById('mainChart');
-  if (canvas) canvas.style.display = 'none';
-  var panel = document.querySelector('.chart-panel');
-  if (!panel) return;
-  var err = document.getElementById('chartError');
-  if (!err) {
-    err = document.createElement('div');
-    err.id = 'chartError';
-    err.className = 'empty-state';
-    panel.appendChild(err);
-  }
-  err.textContent = message;
-}
-
-function toggleFilter_(type, value) {
-  return chartFilter && chartFilter.type === type && chartFilter.value === value
-    ? null
-    : { type: type, value: value };
-}
-
-function buildMetricDatasets_(rows) {
-  return getMetricDefinitions_().map(function(def) {
-    var isLine = def.type === 'line' || def.key === 'target';
+function buildPrimaryDatasets_(rows) {
+  var defs = [
+    { key: 'target', label: metricLabel_('target', '目標'), color: '#D70C18', target: true },
+    { key: 'fcstAdjusted', label: metricLabel_('fcstAdjusted', 'FCST(調整後)'), color: cssVar_('--bu-strong') },
+    { key: 'fcstCommit', label: metricLabel_('fcstCommit', 'FCST(コミット)'), color: cssVar_('--bu-main') },
+    { key: 'expectedMrr', label: metricLabel_('expectedMrr', '期待MRR'), color: cssVar_('--bu-sub1') },
+    { key: 'confirmed', label: metricLabel_('confirmed', '確定'), color: '#333333' }
+  ].filter(function(def) {
+    return def.key === 'target' || findMetricDef_(getRenderableMetricDefs_(), def.key);
+  });
+  return defs.map(function(def) {
     return {
-      label: def.label || def.key,
-      data: rows.map(function(row) { return Number(row[def.key]) || 0; }),
-      type: isLine ? 'line' : 'bar',
-      borderColor: def.color || '#5f6368',
-      backgroundColor: isLine ? 'transparent' : ((def.color || '#5f6368') + '66'),
-      borderWidth: isLine ? 2 : 1,
-      borderDash: def.dash ? [8, 4] : [],
-      pointRadius: isLine ? 0 : undefined,
-      tension: 0
+      label: def.label,
+      data: rows.map(function(row) { return metricValue_(row, def.key); }),
+      type: def.target ? 'line' : 'bar',
+      backgroundColor: def.target ? '#D70C18' : def.color,
+      borderColor: def.color,
+      borderWidth: def.target ? 0 : 0,
+      pointRadius: 0,
+      showLine: false,
+      maxBarThickness: 22,
+      borderRadius: 2,
+      order: def.target ? 0 : 1
     };
   });
 }
 
-function buildChartOptions_() {
+var targetLinePlugin = {
+  id: 'targetLine',
+  afterDatasetsDraw: function(chartInstance) {
+    var dataset = chartInstance.data.datasets.find(function(d) { return d.label === metricLabel_('target', '目標'); });
+    if (!dataset) return;
+    var ctx = chartInstance.ctx;
+    var chartArea = chartInstance.chartArea;
+    var xScale = chartInstance.scales.x;
+    var yScale = chartInstance.scales.y;
+    var targets = dataset.data || [];
+    if (!targets.length) return;
+    var categoryWidth = (chartArea.right - chartArea.left) / targets.length;
+    var halfWidth = categoryWidth * 0.42;
+    ctx.save();
+    ctx.strokeStyle = '#D70C18';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'square';
+    targets.forEach(function(val, i) {
+      if (val == null) return;
+      var xCenter = xScale.getPixelForValue(i);
+      var yPos = yScale.getPixelForValue(val);
+      ctx.beginPath();
+      ctx.moveTo(xCenter - halfWidth, yPos);
+      ctx.lineTo(xCenter + halfWidth, yPos);
+      ctx.stroke();
+    });
+    ctx.fillStyle = '#D70C18';
+    ctx.font = '700 9px "Noto Sans JP", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    targets.forEach(function(val, i) {
+      if (val == null) return;
+      var xCenter = xScale.getPixelForValue(i);
+      var yPos = yScale.getPixelForValue(val);
+      ctx.fillText((val / 1e6).toFixed(0) + 'M', xCenter + halfWidth, yPos - 3);
+    });
+    ctx.restore();
+  }
+};
+
+function renderModuleChart_() {
+  var canvas = document.getElementById('moduleChart');
+  if (!canvas || currentDivision !== 'BO' || typeof Chart !== 'function') {
+    if (modChart) { modChart.destroy(); modChart = null; }
+    return;
+  }
+  if (modChart) modChart.destroy();
+  var modules = M.modules;
+  if (!modules || !modules.perDept.length) return;
+  modChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: modules.perDept.map(function(row) { return row.name; }),
+      datasets: buildModDatasets(moduleChartMode)
+    },
+    options: buildModuleChartOptions_()
+  });
+}
+
+function buildModDatasets(mode) {
+  var modules = M && M.modules;
+  if (!modules) return [];
+  return MODULE_DEFS.map(function(def) {
+    return {
+      label: def.label,
+      data: modules.perDept.map(function(row) { return row[mode] ? row[mode][def.key] || 0 : 0; }),
+      backgroundColor: moduleColor_(def.key),
+      maxBarThickness: 36,
+      borderWidth: 0
+    };
+  });
+}
+
+function setModuleChartMode_(mode) {
+  moduleChartMode = mode === 'confirmed' ? 'confirmed' : 'fcstCommit';
+  document.querySelectorAll('[data-module-mode]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.moduleMode === moduleChartMode);
+  });
+  if (modChart) {
+    modChart.data.datasets = buildModDatasets(moduleChartMode);
+    modChart.update();
+  }
+}
+
+function buildChartOptions_(emptySet, clickHandler) {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
-      legend: { position: 'top' }
-    },
-    onHover: function(evt, elements) {
-      if (evt && evt.native && evt.native.target) {
-        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-      }
-    },
-    scales: {
-      y: {
-        ticks: {
-          callback: function(value) {
-            return Number(value).toLocaleString('ja-JP');
+      legend: {
+        position: 'top',
+        align: 'start',
+        labels: {
+          boxWidth: 14,
+          boxHeight: 10,
+          padding: 12,
+          font: { size: 11, weight: '700' },
+          usePointStyle: true,
+          pointStyle: 'rectRounded',
+          generateLabels: function(chartInstance) {
+            var items = Chart.defaults.plugins.legend.labels.generateLabels(chartInstance);
+            var target = items.find(function(item) { return item.text === metricLabel_('target', '目標'); });
+            if (target) {
+              target.fillStyle = '#D70C18';
+              target.strokeStyle = '#D70C18';
+              target.lineWidth = 3;
+              target.pointStyle = 'line';
+            }
+            return items;
           }
         }
+      },
+      tooltip: tooltipOptions_()
+    },
+    onClick: function(_, elements) {
+      if (elements.length && clickHandler) clickHandler(elements[0].index);
+    },
+    scales: {
+      x: {
+        ticks: {
+          font: { weight: '700' },
+          color: function(ctx) {
+            var label = ctx.tick && ctx.tick.label || '';
+            return emptySet && emptySet[label] ? '#999999' : '#333333';
+          },
+          callback: function(val) {
+            var label = this.getLabelForValue(val);
+            return emptySet && emptySet[label] ? label + '  (未連携)' : label;
+          }
+        },
+        grid: { display: false }
+      },
+      y: {
+        ticks: { callback: yTickFormatter },
+        grid: { color: '#ECECEC' }
       }
     }
   };
 }
 
-function makeTargetTickPlugin_(pluginId, targets) {
+function buildModuleChartOptions_() {
   return {
-    id: pluginId,
-    afterDatasetsDraw: function(chartInstance) {
-      var bars = chartInstance.data.datasets
-        .map(function(_, idx) { return chartInstance.getDatasetMeta(idx); })
-        .filter(function(meta) { return meta.type === 'bar'; });
-      if (!bars.length || !targets.length) return;
-      var ctx = chartInstance.ctx;
-      ctx.save();
-      ctx.strokeStyle = '#ea4335';
-      ctx.lineWidth = 3;
-      targets.forEach(function(value, index) {
-        var y = chartInstance.scales.y.getPixelForValue(value);
-        var centerX = chartInstance.scales.x.getPixelForValue(index);
-        var bandHalf = chartInstance.scales.x.width / (chartInstance.data.labels.length * 2);
-        ctx.beginPath();
-        ctx.moveTo(centerX - bandHalf, y);
-        ctx.lineTo(centerX + bandHalf, y);
-        ctx.stroke();
-      });
-      ctx.restore();
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', align: 'start', labels: { font: { size: 11, weight: '700' } } },
+      tooltip: tooltipOptions_()
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false }, ticks: { font: { weight: '700' } } },
+      y: { stacked: true, ticks: { callback: yTickFormatter }, grid: { color: '#ECECEC' } }
     }
   };
+}
+
+function tooltipOptions_() {
+  return {
+    backgroundColor: '#000000',
+    titleColor: '#ffffff',
+    bodyColor: '#e0e0e0',
+    padding: 10,
+    cornerRadius: 4,
+    boxPadding: 4,
+    titleFont: { weight: '700' },
+    callbacks: {
+      label: function(ctx) {
+        var v = ctx.parsed && ctx.parsed.y;
+        if (v == null) return ctx.dataset.label + ': データなし';
+        return ctx.dataset.label + ': ' + Number(v).toLocaleString('ja-JP') + '円';
+      }
+    }
+  };
+}
+
+function yTickFormatter(v) {
+  if (v === 0) return '0';
+  if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(1) + '億';
+  if (Math.abs(v) >= 1e4) return (v / 1e4).toFixed(0) + '万';
+  return Number(v).toLocaleString('ja-JP');
+}
+
+function refreshChartColors() {
+  if (chart) renderMainChart_();
+  if (modChart) renderModuleChart_();
 }
 
 function renderDeals() {
   var area = document.getElementById('dealArea');
   if (!area || !D || !D.weeks.length) return;
   renderFilterChip_();
-
   var context = getDealContext_();
   var cacheKey = [currentDivision, context.week, context.dept, selectedPeriod || ''].join('|');
   if (dealErrorCache[cacheKey]) {
@@ -1062,13 +1607,11 @@ function renderDeals() {
     area.innerHTML = '<div class="empty-state">Key Deal を読み込み中...</div>';
     return;
   }
-
   var deals = dealCache[cacheKey].slice();
   if (!deals.length) {
     area.innerHTML = '<div class="empty-state">Key Deal はありません</div>';
     return;
   }
-
   if (dealSortKey) {
     deals.sort(function(left, right) {
       var a = left[dealSortKey];
@@ -1080,7 +1623,6 @@ function renderDeals() {
       return 0;
     });
   }
-
   var html = '<div class="deal-scroll"><table class="deal-table"><thead><tr>' +
     sortTh_('dept', '部署') +
     sortTh_('company', '会社名') +
@@ -1090,13 +1632,12 @@ function renderDeals() {
     sortTh_('completedMonth', '完了予定月') +
     '</tr></thead><tbody>';
   deals.forEach(function(deal) {
-    var rowClass = deal.mrr > 0 ? 'pos' : (deal.mrr < 0 ? 'neg' : '');
-    html += '<tr class="' + rowClass + '">' +
+    html += '<tr>' +
       '<td>' + escapeHtml_(deal.dept || '') + '</td>' +
       '<td>' + escapeHtml_(deal.company || '') + '</td>' +
-      '<td class="' + valClass_(deal.mrr) + '">' + escapeHtml_(fmt(deal.mrr)) + '</td>' +
+      '<td class="num ' + valClass_(deal.mrr) + '">' + escapeHtml_(formatYen_(deal.mrr)) + '</td>' +
       '<td>' + escapeHtml_(deal.phase || '') + '</td>' +
-      '<td class="' + valClass_(deal.yomi) + '">' + escapeHtml_(fmt(deal.yomi)) + '</td>' +
+      '<td class="num ' + valClass_(deal.yomi) + '">' + escapeHtml_(formatYen_(deal.yomi)) + '</td>' +
       '<td>' + escapeHtml_(deal.completedMonth || '') + '</td>' +
     '</tr>';
   });
@@ -1106,7 +1647,7 @@ function renderDeals() {
 
 function getDealContext_() {
   var week = currentView === 'weekly'
-    ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || D.weeks[D.weeks.length - 1])
+    ? ((chartFilter && chartFilter.type === 'week' && chartFilter.value) || getActiveWeek_())
     : getSelectedWeek_();
   var dept = D.allLabel;
   if (currentView === 'weekly') {
@@ -1142,11 +1683,8 @@ function renderFilterChip_() {
     chip.innerHTML = '';
     return;
   }
-  chip.innerHTML =
-    '<span class="filter-chip-badge">' +
-      'フィルタ中: ' + escapeHtml_(chartFilter.value) +
-      '<button type="button" class="filter-chip-clear" onclick="clearChartFilter_()" aria-label="フィルタ解除">×</button>' +
-    '</span>';
+  chip.innerHTML = '<span class="filter-chip-badge">フィルタ中: ' + escapeHtml_(chartFilter.value) +
+    '<button type="button" class="filter-chip-clear" onclick="clearChartFilter_()" aria-label="フィルタ解除">×</button></span>';
 }
 
 function clearChartFilter_() {
@@ -1155,8 +1693,7 @@ function clearChartFilter_() {
 }
 
 function sortTh_(key, label) {
-  var indicator = '';
-  if (dealSortKey === key) indicator = dealSortAsc ? ' ▲' : ' ▼';
+  var indicator = dealSortKey === key ? (dealSortAsc ? ' ▲' : ' ▼') : '';
   return '<th onclick="setSortKey(\'' + key + '\')">' + escapeHtml_(label + indicator) + '</th>';
 }
 
@@ -1170,16 +1707,266 @@ function setSortKey(key) {
   renderDeals();
 }
 
-function fmt(v) {
-  var num = Number(v) || 0;
-  return (num < 0 ? '-' : '') + Math.abs(num).toLocaleString('ja-JP');
+function switchView(view) {
+  currentView = view === 'weekly' ? 'weekly' : 'dept';
+  chartFilter = null;
+  updateViewMode_();
+  render();
 }
 
-function valClass_(v) {
-  var num = Number(v) || 0;
-  if (num > 0) return 'val-pos';
-  if (num < 0) return 'val-neg';
-  return 'val-neutral';
+function updateViewMode_() {
+  document.body.classList.toggle('mode-weekly', currentView === 'weekly');
+  document.body.classList.toggle('mode-dept', currentView === 'dept');
+  document.querySelectorAll('#view-seg button').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.view === currentView);
+  });
+}
+
+function loadMoreSnapshots_() {
+  if (!D || loadingHistory) return;
+  if (!snapshotHistoryLoaded) {
+    loadSnapshotData_(currentDivision, '');
+    return;
+  }
+  if (!D.history || !D.history.hasMore || !D.history.oldestDate) return;
+  loadSnapshotData_(currentDivision, D.history.oldestDate);
+}
+
+function moveWeek(direction) {
+  if (!D || !D.weeks.length) return;
+  currentWeekIdx = Math.max(0, Math.min(D.weeks.length - 1, currentWeekIdx + direction));
+  chartFilter = null;
+  render();
+}
+
+function reloadForPeriod_() {
+  chartFilter = null;
+  dealCache = {};
+  dealErrorCache = {};
+  loadingDealKey = '';
+  refreshAllData();
+}
+
+function selectMrrQuarter_(quarterKey) {
+  if (!D || selectedQuarterKey === quarterKey && selectedPeriod === quarterKey) return;
+  selectedQuarterKey = quarterKey;
+  selectedPeriod = quarterKey;
+  reloadForPeriod_();
+}
+
+function selectMrrPeriod_(periodKey) {
+  if (!D || selectedPeriod === periodKey) return;
+  selectedPeriod = periodKey;
+  selectedQuarterKey = getMrrQuarterKeyForPeriod_(D.periodOptions || [], periodKey) || selectedQuarterKey;
+  reloadForPeriod_();
+}
+
+function buildDeptOptions_() {
+  var select = document.getElementById('deptSelect');
+  if (!select || !D) return;
+  var selected = select.value || D.allLabel;
+  select.innerHTML = '';
+  [D.allLabel].concat(D.depts || []).forEach(function(dept) {
+    var option = document.createElement('option');
+    option.value = dept;
+    option.textContent = dept;
+    select.appendChild(option);
+  });
+  select.value = [D.allLabel].concat(D.depts || []).indexOf(selected) !== -1 ? selected : D.allLabel;
+}
+
+function getSelectedDept_() {
+  var select = document.getElementById('deptSelect');
+  return select && select.value ? select.value : (D && D.allLabel) || '';
+}
+
+function getSelectedWeek_() {
+  if (!D || !D.weeks.length) return '';
+  return D.weeks[currentWeekIdx] || '';
+}
+
+function getActiveWeek_() {
+  if (!D || !D.weeks.length) return '';
+  if (currentView === 'dept') return getSelectedWeek_();
+  return D.weeks[D.weeks.length - 1] || '';
+}
+
+function getPreviousWeek_(week) {
+  if (!D || !D.weeks.length) return '';
+  var idx = D.weeks.indexOf(week);
+  if (idx <= 0) return '';
+  return D.weeks[idx - 1] || '';
+}
+
+function getWeekLabel_(weekKey) {
+  return (D && D.weekLabels && D.weekLabels[weekKey]) || weekKey || '';
+}
+
+function getWeekMap_(week) {
+  return (D && D.data && D.data[week]) || {};
+}
+
+function getDeptData(week, dept) {
+  var rows = getWeekMap_(week);
+  if (!D) return {};
+  if (dept === D.allLabel) return rows[D.totalDeptKey] || {};
+  return rows[dept] || {};
+}
+
+function getRenderableMetricDefs_() {
+  return (D && D.metricDefinitions || []).filter(function(def) {
+    return def && def.key && metricExists_(def.key);
+  });
+}
+
+function metricExists_(key) {
+  if (!D || !D.data) return false;
+  return Object.keys(D.data).some(function(week) {
+    return Object.keys(D.data[week] || {}).some(function(dept) {
+      return hasOwn_(D.data[week][dept] || {}, key);
+    });
+  });
+}
+
+function findMetricDef_(defs, key) {
+  return (defs || []).filter(function(def) { return def.key === key; })[0] || null;
+}
+
+function metricLabel_(key, fallback) {
+  var def = findMetricDef_(getRenderableMetricDefs_(), key);
+  return (def && def.label) || fallback || key;
+}
+
+function metricValue_(metric, key) {
+  if (!metric || !hasOwn_(metric, key)) return null;
+  return normalizeNumberOrNull_(metric[key]);
+}
+
+function normalizeNumberOrNull_(value) {
+  if (value === null || value === undefined || value === '') return null;
+  var num = Number(value);
+  return isNaN(num) ? null : num;
+}
+
+function buildModulesModel_(week) {
+  var hasAny = MODULE_KEYS.some(metricExists_);
+  if (!hasAny) return null;
+  var totalMetric = getDeptData(week, D.allLabel);
+  return {
+    fcstCommit: moduleValuesFromMetric_(totalMetric, 'fcst'),
+    confirmed: moduleValuesFromMetric_(totalMetric, 'confirmed'),
+    perDept: (D.depts || []).map(function(dept) {
+      var metric = getDeptData(week, dept);
+      return {
+        name: dept,
+        fcstCommit: moduleValuesFromMetric_(metric, 'fcst'),
+        confirmed: moduleValuesFromMetric_(metric, 'confirmed')
+      };
+    })
+  };
+}
+
+function moduleValuesFromMetric_(metric, mode) {
+  var values = {};
+  MODULE_DEFS.forEach(function(def) {
+    values[def.key] = Number(metric && metric[mode === 'confirmed' ? def.confirmed : def.fcst]) || 0;
+  });
+  return values;
+}
+
+function moduleTotal_(values) {
+  return MODULE_DEFS.reduce(function(sum, def) {
+    return sum + (Number(values && values[def.key]) || 0);
+  }, 0);
+}
+
+function moduleColor_(key) {
+  return {
+    receive: cssVar_('--bu-strong'),
+    bond: cssVar_('--bu-main'),
+    bondLite: cssVar_('--bu-sub1'),
+    cost: cssVar_('--bu-sub2')
+  }[key] || cssVar_('--bu-main');
+}
+
+function getEmptyDeptSet_() {
+  var set = {};
+  var rows = D && D.diagnostics && Array.isArray(D.diagnostics.current) ? D.diagnostics.current : [];
+  rows.forEach(function(item) {
+    if (item && item.status !== 'ok' && item.deptKey) set[item.deptKey] = true;
+  });
+  return set;
+}
+
+function getCurrentDiagnosticWarnings_() {
+  var rows = D && D.diagnostics && Array.isArray(D.diagnostics.current) ? D.diagnostics.current : [];
+  return rows.filter(function(item) { return item && item.status !== 'ok'; }).map(function(item) {
+    return (item.deptKey || '-') + ':' + (item.reason || item.error || 'unknown');
+  });
+}
+
+function getSnapshotCount_() {
+  return D && Array.isArray(D.weeks) ? D.weeks.filter(function(week) { return week !== MRR_LIVE_WEEK_KEY; }).length : 0;
+}
+
+function getSnapshotTimestamp_(week) {
+  return week && week !== MRR_LIVE_WEEK_KEY ? week : '';
+}
+
+function getSelectedPeriodInfo_() {
+  var label = getMrrPeriodLabel_(selectedPeriod);
+  var match = String(selectedPeriod || '').match(/^(\d{4})-(\d{2})$/);
+  return {
+    year: match ? Number(match[1]) : null,
+    month: match ? Number(match[2]) : null,
+    label: label || selectedPeriod || '—'
+  };
+}
+
+function setLoading_(isLoading, message) {
+  document.getElementById('main').classList.toggle('is-loading', !!isLoading);
+  setNotice_(isLoading ? (message || '読み込み中...') : '');
+}
+
+function setNotice_(message) {
+  var notice = document.getElementById('inlineNotice');
+  if (!notice) return;
+  if (!message) {
+    notice.classList.add('hidden');
+    notice.textContent = '';
+    return;
+  }
+  notice.textContent = message;
+  notice.classList.remove('hidden');
+}
+
+function sortWeeks_(weeks) {
+  return (weeks || []).slice().sort(function(a, b) {
+    if (a === MRR_LIVE_WEEK_KEY && b !== MRR_LIVE_WEEK_KEY) return 1;
+    if (b === MRR_LIVE_WEEK_KEY && a !== MRR_LIVE_WEEK_KEY) return -1;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
+}
+
+function getMrrQuarterOption_(periodOptions, quarterKey) {
+  var key = String(quarterKey || '');
+  return (periodOptions || []).filter(function(option) { return option && option.key === key; })[0] || null;
+}
+
+function getMrrQuarterKeyForPeriod_(periodOptions, periodKey) {
+  var key = String(periodKey || '');
+  var option = (periodOptions || []).filter(function(item) {
+    return item && (item.key === key || (item.months || []).indexOf(key) !== -1);
+  })[0];
+  return option ? option.key : '';
+}
+
+function isValidMrrPeriod_(periodOptions, periodKey) {
+  var key = String(periodKey || '');
+  if (!key) return false;
+  return (periodOptions || []).some(function(option) {
+    return option && (option.key === key || (option.months || []).indexOf(key) !== -1);
+  });
 }
 
 function getMrrPeriodLabel_(periodKey) {
@@ -1199,21 +1986,95 @@ function formatMrrMonthLabel_(monthKey) {
   return Number(match[2]) + '月';
 }
 
+function buildTrend_(value, prev, unit) {
+  if (value === null || prev === null) return { className: 'flat', icon: '→', label: '—' };
+  var diff = value - prev;
+  var cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  var icon = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+  var label = unit === 'yen' ? formatSignedYen_(diff) : formatSignedPp_(diff);
+  return { className: cls, icon: icon, label: label };
+}
+
+function buildPpTrend_(value, prev) {
+  if (value === null || prev === null) return { icon: '→', label: '—' };
+  var diff = (value - prev) * 100;
+  return { icon: diff > 0 ? '↑' : diff < 0 ? '↓' : '→', label: formatSignedPp_(diff) };
+}
+
+function safeRatio_(num, den) {
+  num = normalizeNumberOrNull_(num);
+  den = normalizeNumberOrNull_(den);
+  if (num === null || den === null || den === 0) return null;
+  return num / den;
+}
+
+function formatNumberFace_(value) {
+  return value === null ? '—' : Number(value).toLocaleString('en-US');
+}
+
+function formatYen_(value) {
+  value = Number(value) || 0;
+  return value.toLocaleString('en-US') + '円';
+}
+
+function formatSignedYen_(value) {
+  value = Number(value) || 0;
+  if (value === 0) return '±0円';
+  return (value > 0 ? '+' : '-') + Math.abs(value).toLocaleString('en-US') + '円';
+}
+
+function formatPct_(ratio) {
+  return ratio === null || isNaN(ratio) ? '—' : (ratio * 100).toFixed(1) + '%';
+}
+
+function formatSignedPp_(value) {
+  value = Number(value) || 0;
+  if (value === 0) return '±0.0pp';
+  return (value > 0 ? '+' : '-') + Math.abs(value).toFixed(1) + 'pp';
+}
+
+function valClass_(v) {
+  var num = Number(v) || 0;
+  if (num < 0) return 'val-neg';
+  return 'val-neutral';
+}
+
+function formatHeaderTime_(stamp) {
+  if (!stamp) return '—';
+  var date = new Date(stamp);
+  if (isNaN(date)) return stamp;
+  return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+}
+
+function formatRelativeTime_(stamp) {
+  if (!stamp) return '';
+  var date = new Date(stamp);
+  if (isNaN(date)) return '';
+  var mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+  return '(' + mins + '分前)';
+}
+
+function cssVar_(name) {
+  return getComputedStyle(document.body).getPropertyValue(name).trim();
+}
+
 function escapeHtml_(value) {
-  return String(value === null || value === undefined ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
 }
 
 function escapeJsString_(value) {
-  return String(value === null || value === undefined ? '' : value)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/\r/g, '\\r')
-    .replace(/\n/g, '\\n');
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function hasOwn_(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
+function getErrorMessage_(err) {
+  if (!err) return 'Unknown error';
+  return err.message || err.toString() || 'Unknown error';
 }
 
 bootstrap_();

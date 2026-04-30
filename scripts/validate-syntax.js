@@ -76,10 +76,10 @@ function validateHtmlTemplate(filePath, content) {
       'MRR進捗ダッシュボード',
       '週次',
       '部署別',
-      '読込中',
+      '読み込み中',
       'getMrrDashboardData',
-      '<h1>',
-      '</h1>'
+      '<header class="header">',
+      '<main class="main"'
     ].forEach((marker) => {
       if (!content.includes(marker)) {
         throw new Error(`mrr-index.html: missing "${marker}"`);
