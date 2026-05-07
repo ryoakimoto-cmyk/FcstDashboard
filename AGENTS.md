@@ -15,6 +15,20 @@
 
 テーマworkspaceでは、そのテーマに必要なファイルをまとめて扱ってよい。`shared / fcst / opp` の固定laneへ作業を戻さない。
 
+## Handoff Rules
+
+テーマ間で作業を渡すHandoffは、必ず共通Handoff置き場に作成する。
+
+```text
+C:\Users\RyoAkimoto\Documents\FcstDashboard-handoffs
+```
+
+- Handoffはテーマworkspace内だけに置かない
+- 別テーマへ渡す最終報告では、Handoffファイルの絶対パスを必ず書く
+- Handoffには、source workspace、branch、commit hash、変更ファイル、取り込み先、deploy可否、残リスクを明記する
+- テーマworkspace内で一時的にHandoffを作った場合も、完了前に共通Handoff置き場へコピーまたは作成し直す
+- 別テーマのHandoffを参照する場合は、workspace内検索ではなく、まず共通Handoff置き場の絶対パスを確認する
+
 ## Start-of-Task Checklist
 
 作業開始時に必ず確認する。
