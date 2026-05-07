@@ -115,6 +115,21 @@ deploy後は、versionと影響範囲を報告する。
 
 認証待ちの間は、原因調査や別手段の試行で時間を使わず、ユーザー認証を待つ。
 
+## Apps Script Runtime Diagnostics Rule
+
+このプロジェクトでは `clasp run` を使わない。
+
+`clasp run` は実行/API権限や認証条件で失敗しやすく、この環境の診断経路として信頼しない。毎回試して失敗するのは時間の無駄なので禁止する。
+
+実データ確認・バックフィル・手動診断が必要な場合は、次のいずれかを使う。
+
+- Apps Scriptエディタ上で対象関数を手動実行する
+- Web Appの実画面で動作確認する
+- Apps Scriptの実行ログを確認する
+- 必要なら、手動実行専用の診断関数を追加して validate -> push -> version -> deploy の通常経路で反映する
+
+`clasp` CLIで使ってよい代表例は、`push`、`version`、`deploy`、`deployments`、`status`、`login`。`run` は使わない。
+
 ## Autonomous Completion Rule
 
 ユーザーが「deployまで」「本番反映まで」「最後まで」進めてよいと言っているタスクでは、途中で確認待ちにしない。
