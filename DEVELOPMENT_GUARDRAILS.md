@@ -4,10 +4,11 @@
 
 ## Local Search Rules
 
-- この Windows 環境では `rg` / `rg.exe` が `Access is denied` で失敗することがあるため、FcstDashboard 作業では `rg` を使わない。
+- この Windows 環境では、FcstDashboard 作業で `rg` / `rg.exe` を使わない。失敗するか試さず、最初から PowerShell 検索を使う。
 - ファイル検索は PowerShell の `Get-ChildItem` を使う。
 - 文字列検索は PowerShell の `Select-String` を使う。
 - 複数ファイルを読む場合も、`rg` に戻さず `Get-ChildItem` と `Select-String` を組み合わせる。
+- 「rgが実行拒否されたのでPowerShell検索に切り替える」という試行・報告はしない。
 
 例:
 

@@ -104,10 +104,12 @@ FcstDashboard の設計・実装・レビューでは、開発者都合ではな
 
 ## Search and Shell Rules
 
-このWindows環境では、FcstDashboard作業で `rg` を使わない。
+このWindows環境では、FcstDashboard作業で `rg` / `rg.exe` を使わない。最初からPowerShell検索を使う。
 
 - ファイル検索: `Get-ChildItem`
 - 文字列検索: `Select-String`
+- `rg` を試して失敗してから切り替える、という手順は禁止
+- ユーザーへの作業ログで「rgが拒否されたので切り替えた」と報告しない
 - Apps Script CLIは必要に応じて `cmd /c clasp ...`
 
 ## Implementation Rules
