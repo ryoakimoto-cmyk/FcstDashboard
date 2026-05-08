@@ -30,7 +30,8 @@ C:\Users\RyoAkimoto\Documents\FcstDashboard-handoffs
 - 別テーマのHandoffを参照する場合は、workspace内検索ではなく、まず共通Handoff置き場の絶対パスを確認する
 - Codex同士へ渡す実装指示・調査依頼・レビュー依頼・Handoffは、原則として英語で書く
 - 相談用正本で作成するHandoffや、各テーマworkspaceで作成するHandoffも英語で書く
-- ユーザーへの通常報告は日本語でよいが、別Codexが読む成果物は英語で、実装対象・禁止事項・検証条件・完了条件を明確に書く
+- ユーザーへの通常報告・途中経過・最終報告は日本語で書く
+- 別Codexが読む成果物は英語で、実装対象・禁止事項・検証条件・完了条件を明確に書く
 
 ## User-First Design Rule
 
