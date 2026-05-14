@@ -67,7 +67,9 @@ assertIncludes(cacheLayerRemove, "key + ':chunk:' + i", 'CacheLayer_remove must 
 assertIncludes(cacheLayerRemove, 'cache.removeAll(keys)', 'CacheLayer_remove must remove base and chunk cache keys');
 
 const appDataCache = read('AppDataCache.gs');
-assertIncludes(appDataCache, "CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true })", 'initData cache read path missing');
+assertIncludes(appDataCache, 'CacheLayer_read(deptKey, cacheLayerKey, { skipSharedSheet: true })', 'initData cache read path missing');
+assertIncludes(appDataCache, "'initData'", 'initData cache key literal missing');
+assertIncludes(appDataCache, "'initData:fast'", 'initData fast scope cache key literal missing');
 assertIncludes(appDataCache, "CacheLayer_read(deptKey, 'oppList', { skipSharedSheet: true })", 'oppList cache read path missing');
 assertIncludes(appDataCache, "CacheLayer_write(deptKey, 'oppList', result, { persistToSheet: false })", 'oppList must stay ephemeral');
 assertIncludes(
@@ -93,8 +95,9 @@ const aggregatedCache = read('AggregatedCache.gs');
   "prefix + 'latestSnapshotData'",
   "prefix + 'cachedAt'"
 ].forEach((token) => assertIncludes(aggregatedCache, token, 'aggregated cache payload shape changed'));
-assertIncludes(aggregatedCache, "FcstSnapshot_getLatestMembers(deptKey, { includeKeyDeals: false })", 'aggregated refresh must avoid historical Key Deal loading for previous snapshot');
-assertIncludes(aggregatedCache, "FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], { includeKeyDeals: false })", 'aggregated refresh must avoid historical Key Deal loading for latest snapshot');
+assertIncludes(aggregatedCache, 'FcstSnapshot_getLatestMembers(deptKey, snapshotOpts)', 'aggregated refresh must call FcstSnapshot_getLatestMembers with snapshotOpts (includeKeyDeals: false)');
+assertIncludes(aggregatedCache, 'FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], snapshotOpts)', 'aggregated refresh must call FcstSnapshot_getDataByDate with snapshotOpts (includeKeyDeals: false)');
+assertMatches(aggregatedCache, /snapshotOpts[^;]*includeKeyDeals:\s*false/, 'snapshotOpts must include includeKeyDeals: false to prevent historical Key Deal loading');
 if (getFunctionBody(aggregatedCache, 'AggregatedCache_refresh').includes('FcstSnapshot_attachCurrentKeyDealsToData_')) {
   throw new Error('AggregatedCache_refresh must not attach current Key Deals into shared aggregate cache');
 }

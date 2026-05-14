@@ -8,6 +8,37 @@ function FcstPeriods_isSupportedDate_(date) {
   return target >= base;
 }
 
+// Returns month keys around `now`: `before` months before and `after` months
+// after, plus the current month. Months earlier than the fiscal base are
+// dropped (no data for them anyway).
+function FcstPeriods_getActiveMonthsAroundNow_(now, before, after) {
+  var base = (now instanceof Date && !isNaN(now)) ? now : new Date();
+  var b = Math.max(0, Number(before) || 0);
+  var a = Math.max(0, Number(after) || 0);
+  var year = base.getFullYear();
+  var month = base.getMonth() + 1; // 1-12
+  var months = [];
+  for (var offset = -b; offset <= a; offset++) {
+    var monthKey = FcstPeriods_addMonthsToMonthKey_(year, month, offset);
+    if (!FcstPeriods_getQuarterKeyFromMonthKey_(monthKey)) continue; // before fiscal base
+    months.push(monthKey);
+  }
+  return months;
+}
+
+// Quarter keys that contain any of the given month keys.
+function FcstPeriods_getQuarterKeysForMonths_(monthKeys) {
+  var seen = {};
+  var result = [];
+  (monthKeys || []).forEach(function(monthKey) {
+    var qKey = FcstPeriods_getQuarterKeyFromMonthKey_(monthKey);
+    if (!qKey || seen[qKey]) return;
+    seen[qKey] = true;
+    result.push(qKey);
+  });
+  return result;
+}
+
 function FcstPeriods_formatMonthKey_(date) {
   return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
 }

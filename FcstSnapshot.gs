@@ -346,21 +346,19 @@ function FcstSnapshot_deleteRows_(sheet, rowNumbers) {
   sheet.deleteRows(start, count);
 }
 
-function FcstSnapshot_getWeekOverWeek(deptKey) {
+function FcstSnapshot_getWeekOverWeek(deptKey, opts) {
+  var activePeriodSet = opts && opts.activePeriodKeys ? opts.activePeriodKeys : null;
   var values = FcstSnapshot_getAllValues_(4);
   if (!values.length) return {};
   var dateKeys = [];
-  values.slice().sort(function(a, b) {
-    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
-    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
-    return ad - bd;
-  }).forEach(function(row) {
+  var seenDate = {};
+  values.forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
     if (!nameRaw.startsWith(deptKey + ':')) return;
     var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
-    if (dateKeys.indexOf(key) === -1) dateKeys.push(key);
+    if (!seenDate[key]) { seenDate[key] = true; dateKeys.push(key); }
   });
   dateKeys.sort(function(a, b) { return b < a ? -1 : b > a ? 1 : 0; });
   if (dateKeys.length < 2) return {};
@@ -368,18 +366,16 @@ function FcstSnapshot_getWeekOverWeek(deptKey) {
   var prevKey = dateKeys[1];
   var latestMap = {};
   var prevMap = {};
-  values.slice().sort(function(a, b) {
-    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
-    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
-    return ad - bd;
-  }).forEach(function(row) {
+  values.forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
     if (!nameRaw.startsWith(deptKey + ':')) return;
-    var name = nameRaw.slice(deptKey.length + 1);
     var key = Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd');
+    if (key !== latestKey && key !== prevKey) return;
     var period = String(row[2] || '').trim();
+    if (activePeriodSet && !activePeriodSet[period]) return;
+    var name = nameRaw.slice(deptKey.length + 1);
     var mapKey = name + '|' + period;
     var metric;
     try {
@@ -388,7 +384,7 @@ function FcstSnapshot_getWeekOverWeek(deptKey) {
       metric = {};
     }
     if (key === latestKey) latestMap[mapKey] = metric;
-    if (key === prevKey) prevMap[mapKey] = metric;
+    else prevMap[mapKey] = metric;
   });
   var result = {};
   Object.keys(latestMap).forEach(function(mapKey) {
@@ -408,16 +404,13 @@ function FcstSnapshot_getLatestMembers(deptKey, options) {
   return { members: data.members, date: data.date, periodOptions: data.periodOptions };
 }
 
-function FcstSnapshot_getSnapshotDates(deptKey) {
+function FcstSnapshot_getSnapshotDates(deptKey, opts) {
+  var limit = opts && opts.limit ? Number(opts.limit) : 0;
   var values = FcstSnapshot_getAllValues_(2);
   if (!values.length) return [];
   var seen = {};
   var dates = [];
-  values.slice().sort(function(a, b) {
-    var ad = a && a[0] instanceof Date ? a[0].getTime() : 0;
-    var bd = b && b[0] instanceof Date ? b[0].getTime() : 0;
-    return ad - bd;
-  }).forEach(function(row) {
+  values.forEach(function(row) {
     var d = row[0];
     var nameRaw = String(row[1] || '').trim();
     if (!(d instanceof Date) || isNaN(d)) return;
@@ -429,6 +422,7 @@ function FcstSnapshot_getSnapshotDates(deptKey) {
     }
   });
   dates.sort(function(a, b) { return a > b ? -1 : a < b ? 1 : 0; });
+  if (limit > 0 && dates.length > limit) dates = dates.slice(0, limit);
   return dates;
 }
 
@@ -455,6 +449,7 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt, o
     rows = FcstSnapshot_getAllValues_(4);
     if (!rows.length) return { members: [], fcstAdjusted: {}, weekOverWeekMap: {}, notes: {}, date: '', periodOptions: [] };
   }
+  var activePeriodSet = options && options.activePeriodKeys ? options.activePeriodKeys : null;
   var memberMap = {};
   var fcstAdjusted = {};
   var weekOverWeekMap = {};
@@ -469,6 +464,7 @@ function FcstSnapshot_getDataByTimestampKey_(deptKey, timestampKey, valuesOpt, o
     var name = rowInfo.name;
     if (Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm') !== timestampKey) return;
     var period = String(row[2] || '').trim();
+    if (activePeriodSet && !activePeriodSet[period]) return;
     var payload;
     try {
       payload = JSON.parse(String(row[3] || '{}'));

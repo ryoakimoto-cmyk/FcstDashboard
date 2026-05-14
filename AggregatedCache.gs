@@ -1,9 +1,10 @@
-function AggregatedCache_read(deptKey) {
-  var sheet = AggregatedCache_getSheet_(deptKey);
+function AggregatedCache_read(deptKey, opts) {
+  var effectiveKey = AggregatedCache_effectiveKey_(deptKey, opts);
+  var sheet = AggregatedCache_getSheet_(effectiveKey);
   if (!sheet || sheet.getLastRow() < 1) return null;
 
   var values = sheet.getRange(1, 1, sheet.getLastRow(), 3).getValues();
-  var map = AggregatedCache_decodeMap_(deptKey, values);
+  var map = AggregatedCache_decodeMap_(effectiveKey, values);
 
   if (!map.hasOwnProperty('members')) return null;
   if (!Array.isArray(map.members)) return null;
@@ -23,13 +24,14 @@ function AggregatedCache_read(deptKey) {
   };
 }
 
-function AggregatedCache_write(deptKey, data) {
+function AggregatedCache_write(deptKey, data, opts) {
+  var effectiveKey = AggregatedCache_effectiveKey_(deptKey, opts);
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sheet = AggregatedCache_getOrCreateSheet_(deptKey);
+    var sheet = AggregatedCache_getOrCreateSheet_(effectiveKey);
     var cachedAt = new Date().toISOString();
-    var prefix = deptKey + ':';
+    var prefix = effectiveKey + ':';
     var rows = [];
 
     rows = rows.concat(AggregatedCache_encodeRows_(prefix + 'members', JSON.stringify(data.members || []), cachedAt));
@@ -84,18 +86,40 @@ function AggregatedCache_writeKey(deptKey, dataKey, value) {
   }
 }
 
-function AggregatedCache_refresh(deptKey) {
+function AggregatedCache_refresh(deptKey, opts) {
   try {
+    var scope = (opts && opts.scope) || 'all';
+    var fastMode = scope === 'fast';
+    var activeMonthSet = null;
+    var activePeriodSet = null;
+    if (fastMode) {
+      // Window: current month ±2 (5 months total). Quarters that cover any of
+      // these months are included so quarter-level period keys still resolve.
+      var activeMonths = FcstPeriods_getActiveMonthsAroundNow_(new Date(), 2, 2);
+      if (activeMonths.length) {
+        activeMonthSet = {};
+        activePeriodSet = {};
+        activeMonths.forEach(function(m) { activeMonthSet[m] = true; activePeriodSet[m] = true; });
+        FcstPeriods_getQuarterKeysForMonths_(activeMonths).forEach(function(qKey) {
+          activePeriodSet[qKey] = true;
+        });
+      }
+    }
+    var sfOpts = activeMonthSet ? { activeMonths: activeMonthSet } : {};
+    var snapshotOpts = activePeriodSet
+      ? { includeKeyDeals: false, activePeriodKeys: activePeriodSet }
+      : { includeKeyDeals: false };
+
     var context = AssignmentMaster_getContext(deptKey);
-    var result = SfDataReader_getAggregated(deptKey, context);
+    var result = SfDataReader_getAggregated(deptKey, context, undefined, sfOpts);
     var fcstState = FcstAdjusted_getState(deptKey);
     result.notes = fcstState.notes;
     result.fcstAdjusted = fcstState.adjusted;
-    result.weekOverWeekMap = FcstSnapshot_getWeekOverWeek(deptKey);
-    result.snapshotDates = FcstSnapshot_getSnapshotDates(deptKey);
-    result.previousSnapshot = FcstSnapshot_getLatestMembers(deptKey, { includeKeyDeals: false });
+    result.weekOverWeekMap = FcstSnapshot_getWeekOverWeek(deptKey, activePeriodSet ? { activePeriodKeys: activePeriodSet } : undefined);
+    result.snapshotDates = FcstSnapshot_getSnapshotDates(deptKey, fastMode ? { limit: 2 } : undefined);
+    result.previousSnapshot = FcstSnapshot_getLatestMembers(deptKey, snapshotOpts);
     result.latestSnapshotData = result.snapshotDates.length
-      ? FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], { includeKeyDeals: false })
+      ? FcstSnapshot_getDataByDate(deptKey, result.snapshotDates[0], snapshotOpts)
       : null;
     result.sfLastUpdated = result.lastUpdated || AggregatedCache_getSfLastUpdated_(deptKey);
 
@@ -103,14 +127,20 @@ function AggregatedCache_refresh(deptKey) {
       AggregatedCache_stripProposalProductFields_(result);
     }
 
-    AggregatedCache_write(deptKey, result);
+    var writeOpts = fastMode ? { scope: 'fast' } : undefined;
+    AggregatedCache_write(deptKey, result, writeOpts);
     try { AggregatedCache_cacheSfLastUpdated_(deptKey, result.sfLastUpdated); } catch (e) {}
-    try { CacheLayer_write(deptKey, 'initData', result); } catch (e) {}
+    try { CacheLayer_write(deptKey, fastMode ? 'initData:fast' : 'initData', result); } catch (e) {}
     try { primeClientPayloadCaches_(deptKey, result); } catch (e) {}
     return result;
   } catch (e) {
     throw new Error('集計キャッシュ更新失敗: [' + (e && e.message ? e.message : String(e)) + ']');
   }
+}
+
+function AggregatedCache_effectiveKey_(deptKey, opts) {
+  if (opts && opts.scope === 'fast') return String(deptKey || '') + '__fast';
+  return deptKey;
 }
 
 function AggregatedCache_stripProposalProductFields_(result) {

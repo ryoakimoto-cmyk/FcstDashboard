@@ -1,15 +1,19 @@
-function AppDataCache_getInitData(deptKey) {
-  var cached = CacheLayer_read(deptKey, 'initData', { skipSharedSheet: true });
+function AppDataCache_getInitData(deptKey, opts) {
+  var scope = (opts && opts.scope) || 'fast';
+  var cacheLayerKey = scope === 'fast' ? 'initData:fast' : 'initData';
+  var aggregatedOpts = scope === 'fast' ? { scope: 'fast' } : undefined;
+
+  var cached = CacheLayer_read(deptKey, cacheLayerKey, { skipSharedSheet: true });
   if (cached) return cached;
 
-  var aggregated = AggregatedCache_read(deptKey);
+  var aggregated = AggregatedCache_read(deptKey, aggregatedOpts);
   if (aggregated) {
     AppDataCache_attachFcstKeyDeals_(deptKey, aggregated);
-    CacheLayer_write(deptKey, 'initData', aggregated, { persistToSheet: false });
+    CacheLayer_write(deptKey, cacheLayerKey, aggregated, { persistToSheet: false });
     return aggregated;
   }
 
-  return AppDataCache_refreshInitData(deptKey);
+  return AppDataCache_refreshInitData(deptKey, { scope: scope });
 }
 
 function AppDataCache_attachFcstKeyDeals_(deptKey, data) {
@@ -17,10 +21,13 @@ function AppDataCache_attachFcstKeyDeals_(deptKey, data) {
   return data;
 }
 
-function AppDataCache_refreshInitData(deptKey) {
-  var result = AggregatedCache_refresh(deptKey);
+function AppDataCache_refreshInitData(deptKey, opts) {
+  var scope = (opts && opts.scope) || 'fast';
+  var cacheLayerKey = scope === 'fast' ? 'initData:fast' : 'initData';
+  var refreshOpts = scope === 'fast' ? { scope: 'fast' } : undefined;
+  var result = AggregatedCache_refresh(deptKey, refreshOpts);
   AppDataCache_attachFcstKeyDeals_(deptKey, result);
-  CacheLayer_write(deptKey, 'initData', result, { persistToSheet: false });
+  CacheLayer_write(deptKey, cacheLayerKey, result, { persistToSheet: false });
   return result;
 }
 

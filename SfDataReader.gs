@@ -1,4 +1,20 @@
-function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
+function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargetsOrOpts, maybeOpts) {
+  // 4th-arg may be either legacy targets (object of breakdown values) or an
+  // options bag `{ activeMonths: { '2026-04': true, ... } }`. Disambiguate by
+  // looking for the `activeMonths` property.
+  var legacyTargets;
+  var opts;
+  if (maybeOpts !== undefined) {
+    legacyTargets = legacyTargetsOrOpts;
+    opts = maybeOpts || {};
+  } else if (legacyTargetsOrOpts && typeof legacyTargetsOrOpts === 'object' && legacyTargetsOrOpts.activeMonths) {
+    opts = legacyTargetsOrOpts;
+  } else {
+    legacyTargets = legacyTargetsOrOpts;
+    opts = {};
+  }
+  var activeMonthSet = opts && opts.activeMonths ? opts.activeMonths : null;
+
   var context = SfDataReader_normalizeContext_(deptKey, contextOrUsers, legacyTargets);
   var sheet = SfDataReader_getSheet_(deptKey);
   if (!sheet) {
@@ -19,6 +35,7 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
     if (!date || !FcstPeriods_isSupportedDate_(date)) return;
 
     var monthKey = FcstPeriods_formatMonthKey_(date);
+    if (activeMonthSet && !activeMonthSet[monthKey]) return;
     monthKeyMap[monthKey] = true;
 
     var sourceName = SfDataReader_formatCell_(SfDataReader_valueByKeys_(row, headerMap, ['ユーザー'])).trim();
@@ -68,7 +85,9 @@ function SfDataReader_getAggregated(deptKey, contextOrUsers, legacyTargets) {
   Object.keys(context.targets || {}).forEach(function(key) {
     var match = String(key).match(/\|(\d{6})$/);
     if (!match) return;
-    monthKeyMap[match[1].slice(0, 4) + '-' + match[1].slice(4, 6)] = true;
+    var targetMonthKey = match[1].slice(0, 4) + '-' + match[1].slice(4, 6);
+    if (activeMonthSet && !activeMonthSet[targetMonthKey]) return;
+    monthKeyMap[targetMonthKey] = true;
   });
 
   var periodOptions = FcstPeriods_buildDefinitionsFromMonthKeys_(Object.keys(monthKeyMap));
